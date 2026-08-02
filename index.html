@@ -3,29 +3,48 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<title>Pole Stripper</title>
+<title>Strip Club Idle</title>
 <style>
-html,body{margin:0;height:100%;background:#0a0a12;overflow:hidden;touch-action:none;font-family:system-ui}
+html,body{margin:0;height:100%;background:#0a0a12;overflow:hidden;touch-action:none;font-family:system-ui;color:#fff}
 canvas{display:block;width:100%;height:100%}
-#ui{position:absolute;top:10px;left:10px;color:#fff;text-shadow:0 0 6px #000;font-size:15px;line-height:1.4;pointer-events:none;z-index:5}
+#ui{position:absolute;top:8px;left:8px;text-shadow:0 0 6px #000;font-size:14px;line-height:1.35;pointer-events:none;z-index:5}
 #ui b{color:#f0a}
-#btns{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:6px;z-index:5}
-button{background:#f0a;border:0;color:#111;padding:7px 12px;border-radius:6px;font-weight:700;font-size:13px}
-#hint{position:absolute;bottom:14px;width:100%;text-align:center;color:#f0a;font-size:14px;pointer-events:none;z-index:5}
+#panel{position:absolute;bottom:0;left:0;right:0;background:rgba(10,5,20,0.92);padding:10px;z-index:10;max-height:38%;overflow-y:auto}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+button{background:#f0a;border:0;color:#111;padding:8px 10px;border-radius:6px;font-weight:700;font-size:12px;flex:1;min-width:110px}
+button:disabled{opacity:0.35}
+#hint{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#f0a;font-size:13px;pointer-events:none;opacity:0.7;z-index:4}
 </style>
 </head>
 <body>
-<div id="ui">Tips: <b id="tips">0</b><br>Stage: <b id="stage">Bikini</b><br>Score: <b id="score">0</b><br>Best: <b id="best">0</b><br>Girl: <b id="girl">Amber</b></div>
-<div id="btns">
-  <button id="girlBtn">Next Girl</button>
-  <button id="musicBtn">Music</button>
+<div id="ui">
+  $<b id="money">0</b><br>
+  $/s: <b id="rate">0</b><br>
+  Tips: <b id="tips">0</b><br>
+  Stage: <b id="stage">Bikini</b><br>
+  Girl: <b id="girl">Amber</b>
 </div>
 <div id="hint">Drag to spin • Tap to tip</div>
+<div id="panel">
+  <div class="row">
+    <button id="buyAuto">Auto Tip ($50)</button>
+    <button id="buySpeed">Faster Spin ($30)</button>
+  </div>
+  <div class="row">
+    <button id="buyIncome">Better Tips ($80)</button>
+    <button id="buyGirl">New Girl ($200)</button>
+  </div>
+  <div class="row">
+    <button id="buyStage">Skip Stage ($150)</button>
+    <button id="musicBtn">Music</button>
+  </div>
+</div>
 <canvas id="c"></canvas>
 <script>
 const c=document.getElementById('c'),x=c.getContext('2d');
-let t=0,stage=0,tips=0,score=0,best=+localStorage.best||0,girl=0;
-let spinSpeed=1.25,targetSpeed=1.25,drag=false,lastX=0;
+let t=0,stage=0,tips=0,girl=0;
+let money=0, rate=1, autoTip=false, spinMult=1, tipMult=1;
+let spinSpeed=1.2,targetSpeed=1.2,drag=false,lastX=0;
 let unlocks={pasties:false,oil:false,invert:false};
 const stages=['Bikini','Micro Skirt','Topless'];
 const girls=[
@@ -33,7 +52,9 @@ const girls=[
   {skin:'#e8c4a8',hair:'#1a0a05',out:'#00e5ff',name:'Jade'},
   {skin:'#f5d0c5',hair:'#5c3a1e',out:'#ffe066',name:'Lola'}
 ];
-document.getElementById('best').textContent=best;
+
+// prices
+let pAuto=50,pSpeed=30,pIncome=80,pGirl=200,pStage=150;
 
 function resize(){
   c.width=innerWidth*devicePixelRatio;
@@ -51,16 +72,8 @@ function playChaChing(){
   const o=actx.createOscillator(),g=actx.createGain();
   o.type='square';o.frequency.setValueAtTime(1400,actx.currentTime);
   o.frequency.exponentialRampToValueAtTime(500,actx.currentTime+0.18);
-  g.gain.setValueAtTime(0.2,actx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,actx.currentTime+0.25);
+  g.gain.setValueAtTime(0.15,actx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,actx.currentTime+0.25);
   o.connect(g);g.connect(actx.destination);o.start();o.stop(actx.currentTime+0.3);
-}
-function playMoan(){
-  ensureAudio();
-  const o=actx.createOscillator(),g=actx.createGain();
-  o.type='sine';o.frequency.setValueAtTime(300,actx.currentTime);
-  o.frequency.linearRampToValueAtTime(150,actx.currentTime+0.4);
-  g.gain.setValueAtTime(0.14,actx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,actx.currentTime+0.5);
-  o.connect(g);g.connect(actx.destination);o.start();o.stop(actx.currentTime+0.55);
 }
 function startMusic(){
   ensureAudio();if(bassOsc)return;
@@ -72,11 +85,11 @@ function startMusic(){
     if(!musicOn)return;
     beat=(beat+1)%4;const now=actx.currentTime;
     bassGain.gain.cancelScheduledValues(now);
-    bassGain.gain.setValueAtTime(0.2,now);bassGain.gain.exponentialRampToValueAtTime(0.015,now+0.25);
+    bassGain.gain.setValueAtTime(0.18,now);bassGain.gain.exponentialRampToValueAtTime(0.01,now+0.25);
     if(beat%2===0){
       const h=actx.createOscillator(),hg=actx.createGain();
       h.type='square';h.frequency.value=9000;
-      hg.gain.setValueAtTime(0.035,now);hg.gain.exponentialRampToValueAtTime(0.001,now+0.04);
+      hg.gain.setValueAtTime(0.03,now);hg.gain.exponentialRampToValueAtTime(0.001,now+0.04);
       h.connect(hg);hg.connect(actx.destination);h.start(now);h.stop(now+0.05);
     }
   },300);
@@ -85,35 +98,85 @@ function stopMusic(){
   if(musicInterval){clearInterval(musicInterval);musicInterval=null;}
   if(bassOsc){try{bassOsc.stop();}catch(e){}bassOsc=null;bassGain=null;}
 }
-function toggleMusic(){
+document.getElementById('musicBtn').onclick=()=>{
   ensureAudio();musicOn=!musicOn;
   document.getElementById('musicBtn').textContent=musicOn?'Mute':'Music';
   if(musicOn)startMusic();else stopMusic();
+};
+
+// upgrades
+document.getElementById('buyAuto').onclick=()=>{
+  if(money<pAuto)return;
+  money-=pAuto;autoTip=true;pAuto=Math.floor(pAuto*2.2);
+  document.getElementById('buyAuto').textContent='Auto Tip ON';
+  document.getElementById('buyAuto').disabled=true;
+  updateUI();
+};
+document.getElementById('buySpeed').onclick=()=>{
+  if(money<pSpeed)return;
+  money-=pSpeed;spinMult+=0.4;pSpeed=Math.floor(pSpeed*1.7);
+  document.getElementById('buySpeed').textContent=`Faster Spin ($${pSpeed})`;
+  updateUI();
+};
+document.getElementById('buyIncome').onclick=()=>{
+  if(money<pIncome)return;
+  money-=pIncome;tipMult+=0.6;rate=1+stage*2+tipMult*3;pIncome=Math.floor(pIncome*1.8);
+  document.getElementById('buyIncome').textContent=`Better Tips ($${pIncome})`;
+  updateUI();
+};
+document.getElementById('buyGirl').onclick=()=>{
+  if(money<pGirl||girl>=girls.length-1)return;
+  money-=pGirl;girl++;pGirl=Math.floor(pGirl*2.5);
+  document.getElementById('girl').textContent=girls[girl].name;
+  document.getElementById('buyGirl').textContent=girl>=girls.length-1?'All Girls':'New Girl ($'+pGirl+')';
+  if(girl>=girls.length-1)document.getElementById('buyGirl').disabled=true;
+  updateUI();
+};
+document.getElementById('buyStage').onclick=()=>{
+  if(money<pStage||stage>=2)return;
+  money-=pStage;stage++;pStage=Math.floor(pStage*2);
+  document.getElementById('stage').textContent=stages[stage];
+  document.getElementById('buyStage').textContent=stage>=2?'Max Stage':'Skip Stage ($'+pStage+')';
+  if(stage>=2){document.getElementById('buyStage').disabled=true;unlocks.pasties=true;unlocks.oil=true;}
+  rate=1+stage*2+tipMult*3;
+  updateUI();
+};
+
+function updateUI(){
+  document.getElementById('money').textContent=Math.floor(money);
+  document.getElementById('rate').textContent=rate.toFixed(1);
+  document.getElementById('tips').textContent=tips;
 }
-document.getElementById('musicBtn').onclick=toggleMusic;
-document.getElementById('girlBtn').onclick=()=>{girl=(girl+1)%girls.length;document.getElementById('girl').textContent=girls[girl].name;};
 
 c.addEventListener('pointerdown',e=>{drag=true;lastX=e.clientX;c.setPointerCapture(e.pointerId);});
-c.addEventListener('pointermove',e=>{if(!drag)return;targetSpeed=Math.max(0.5,Math.min(4.2,targetSpeed+(e.clientX-lastX)*0.03));lastX=e.clientX;});
+c.addEventListener('pointermove',e=>{if(!drag)return;targetSpeed=Math.max(0.5,Math.min(5,targetSpeed+(e.clientX-lastX)*0.03));lastX=e.clientX;});
 c.addEventListener('pointerup',()=>drag=false);
 c.addEventListener('pointercancel',()=>drag=false);
 
 function tip(){
-  tips++;score+=10+stage*8;
-  document.getElementById('tips').textContent=tips;document.getElementById('score').textContent=score;
+  tips++;
+  money+=8*tipMult;
   playChaChing();
-  if(score>best){best=score;localStorage.best=best;document.getElementById('best').textContent=best;}
-  if(tips>=5&&stage<2){
-    stage++;tips=0;document.getElementById('tips').textContent=0;document.getElementById('stage').textContent=stages[stage];
-    playMoan();if(stage===2){unlocks.pasties=true;unlocks.oil=true;}
+  if(tips>=6&&stage<2){
+    stage++;tips=0;
+    document.getElementById('stage').textContent=stages[stage];
+    if(stage===2){unlocks.pasties=true;unlocks.oil=true;}
+    rate=1+stage*2+tipMult*3;
   }
-  if(score>=80)unlocks.invert=true;
+  updateUI();
 }
 c.addEventListener('click',e=>{if(!drag)tip();});
 
+// idle income + auto tip
+setInterval(()=>{
+  money+=rate*0.1;
+  if(autoTip&&Math.random()<0.15)tip();
+  updateUI();
+},100);
+
 function draw(){
   t+=0.016;
-  spinSpeed+=(targetSpeed-spinSpeed)*0.1;
+  spinSpeed+=(targetSpeed*spinMult-spinSpeed)*0.1;
   const w=innerWidth,h=innerHeight,G=girls[girl];
   x.clearRect(0,0,w,h);
   x.fillStyle='#0a0a12';x.fillRect(0,0,w,h);
@@ -123,25 +186,23 @@ function draw(){
     x.fillStyle=`hsla(${i*50+t*20},70%,50%,0.12)`;
     x.arc(60+i*60,50+Math.sin(t+i)*25,38,0,7);x.fill();
   }
-  x.fillStyle='#120c1c';x.fillRect(0,h*0.82,w,h*0.18);
+  x.fillStyle='#120c1c';x.fillRect(0,h*0.78,w,h*0.22);
 
   const px=w/2;
-  x.fillStyle='#d0d0d0';x.fillRect(px-4,h*0.05,8,h*0.77);
+  x.fillStyle='#d0d0d0';x.fillRect(px-4,h*0.05,8,h*0.72);
   x.fillStyle='#999';x.fillRect(px-6,h*0.05,12,7);
 
   const dir=(unlocks.invert&&stage===2)?-1:1;
   const ang=t*spinSpeed*dir;
   const r=34;
   const cx=px+Math.sin(ang)*r;
-  const cy=h*0.37;
+  const cy=h*0.36;
   const lean=Math.sin(ang)*14;
 
-  // ===== BODY - solid filled shapes only =====
   x.fillStyle=G.skin;
 
-  // LEGS as filled tapered shapes
+  // legs
   const swing=Math.sin(t*2.8)*14;
-  // left thigh+calf
   x.beginPath();
   x.moveTo(cx-8+lean*0.2,cy+38);
   x.quadraticCurveTo(cx-36+lean,cy+95+swing,cx-22+lean*0.4,cy+155);
@@ -150,7 +211,6 @@ function draw(){
   x.quadraticCurveTo(cx-4,cy+140,cx-2,cy+50);
   x.closePath();x.fill();
 
-  // right thigh+calf
   x.beginPath();
   x.moveTo(cx+8+lean*0.2,cy+38);
   x.quadraticCurveTo(cx+36+lean,cy+90-swing,cx+24+lean*0.3,cy+152);
@@ -159,18 +219,13 @@ function draw(){
   x.quadraticCurveTo(cx+6,cy+135,cx+4,cy+50);
   x.closePath();x.fill();
 
-  // heels
   x.fillStyle='#1a1a1a';
   x.beginPath();x.moveTo(cx-16+lean*0.25,cy+190);x.lineTo(cx-24,cy+204);x.lineTo(cx-6,cy+204);x.closePath();x.fill();
   x.beginPath();x.moveTo(cx+14+lean*0.15,cy+188);x.lineTo(cx+24,cy+202);x.lineTo(cx+6,cy+202);x.closePath();x.fill();
 
-  // HIPS / ASS
   x.fillStyle=G.skin;
-  x.beginPath();
-  x.ellipse(cx+lean*0.12,cy+36,32,18,0,0,7);
-  x.fill();
+  x.beginPath();x.ellipse(cx+lean*0.12,cy+36,32,18,0,0,7);x.fill();
 
-  // TORSO hourglass
   x.beginPath();
   x.moveTo(cx-24+lean*0.2,cy+28);
   x.quadraticCurveTo(cx-15+lean*0.25,cy+5,cx-17+lean*0.3,cy-25);
@@ -180,22 +235,13 @@ function draw(){
   x.quadraticCurveTo(cx+15+lean*0.25,cy+5,cx+24+lean*0.2,cy+28);
   x.closePath();x.fill();
 
-  // BREASTS - large and round
   const b=Math.sin(t*7.5)*4;
-  x.beginPath();
-  x.ellipse(cx+lean*0.28-16,cy-28+b,17,19,-0.18,0,7);
-  x.fill();
-  x.beginPath();
-  x.ellipse(cx+lean*0.28+16,cy-28-b*0.65,17,19,0.18,0,7);
-  x.fill();
+  x.beginPath();x.ellipse(cx+lean*0.28-16,cy-28+b,17,19,-0.18,0,7);x.fill();
+  x.beginPath();x.ellipse(cx+lean*0.28+16,cy-28-b*0.65,17,19,0.18,0,7);x.fill();
 
-  // NECK
   x.beginPath();x.ellipse(cx+lean*0.38,cy-60,10,13,0,0,7);x.fill();
-
-  // HEAD
   x.beginPath();x.ellipse(cx+lean*0.4,cy-90,25,28,0,0,7);x.fill();
 
-  // HAIR
   x.fillStyle=G.hair;
   x.beginPath();x.ellipse(cx+lean*0.4,cy-106,31,25,0,Math.PI,0);x.fill();
   x.beginPath();
@@ -209,34 +255,21 @@ function draw(){
   x.quadraticCurveTo(cx+lean*0.4+8,cy-25,cx+lean*0.4+14,cy-85);
   x.fill();
 
-  // FACE
   x.fillStyle='#222';
   x.beginPath();x.arc(cx+lean*0.4-9,cy-94,3,0,7);x.arc(cx+lean*0.4+9,cy-94,3,0,7);x.fill();
   x.strokeStyle='#c66';x.lineWidth=2;
   x.beginPath();x.arc(cx+lean*0.4,cy-80,5,0.25,Math.PI-0.25);x.stroke();
 
-  // ARMS
   x.strokeStyle=G.skin;x.lineWidth=12;x.lineCap='round';
-  // back arm
-  x.beginPath();
-  x.moveTo(cx-10+lean*0.25,cy-30);
-  x.quadraticCurveTo(cx-32,cy-75,px-5,cy-120);
-  x.stroke();
-  // front arm
-  x.beginPath();
-  x.moveTo(cx+10+lean*0.25,cy-25);
-  x.quadraticCurveTo(cx+25,cy-60,px+7,cy-98);
-  x.stroke();
+  x.beginPath();x.moveTo(cx-10+lean*0.25,cy-30);x.quadraticCurveTo(cx-32,cy-75,px-5,cy-120);x.stroke();
+  x.beginPath();x.moveTo(cx+10+lean*0.25,cy-25);x.quadraticCurveTo(cx+25,cy-60,px+7,cy-98);x.stroke();
 
-  // ===== CLOTHING =====
   if(stage===0){
     x.fillStyle=G.out;
-    // top
     x.beginPath();x.ellipse(cx+lean*0.28-15,cy-28,15,13,-0.15,0,7);x.fill();
     x.beginPath();x.ellipse(cx+lean*0.28+15,cy-28,15,13,0.15,0,7);x.fill();
     x.strokeStyle=G.out;x.lineWidth=2.5;
     x.beginPath();x.moveTo(cx+lean*0.28-30,cy-28);x.lineTo(cx+lean*0.28+30,cy-28);x.stroke();
-    // bottoms
     x.beginPath();
     x.moveTo(cx-20+lean*0.12,cy+28);
     x.quadraticCurveTo(cx,cy+46,cx+20+lean*0.12,cy+28);
@@ -270,13 +303,10 @@ function draw(){
     }
   }
 
-  if(unlocks.invert&&stage===2){
-    x.fillStyle='#0f0';x.font='12px system-ui';x.fillText('INVERT',14,h-36);
-  }
-
   requestAnimationFrame(draw);
 }
 draw();
+updateUI();
 </script>
 </body>
 </html>
