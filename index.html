@@ -26,7 +26,7 @@ function resize(){
 resize();
 window.onresize=resize;
 
-const stages=['Dress','Bra + Skirt','Topless'];
+const stages=['Bikini','Micro Skirt','Topless'];
 
 function draw(){
   t+=0.016;
@@ -35,7 +35,6 @@ function draw(){
 
   // bg
   x.fillStyle='#0a0a12';x.fillRect(0,0,w,h);
-  // soft lights
   for(let i=0;i<6;i++){
     x.beginPath();
     x.fillStyle=`hsla(${i*50+t*20},70%,55%,0.12)`;
@@ -52,7 +51,7 @@ function draw(){
   x.fillRect(px-5,h*0.08,10,h*0.7);
   x.fillStyle='#999';x.fillRect(px-7,h*0.08,14,8);
 
-  // dancer spin around pole
+  // dancer
   const ang=t*1.4;
   const radius=38;
   const cx=px+Math.sin(ang)*radius;
@@ -70,6 +69,11 @@ function draw(){
   x.moveTo(cx+lean*0.2,cy+55);
   x.quadraticCurveTo(cx+40+lean,cy+120-legSwing,cx+25+lean*0.4,cy+185);
   x.stroke();
+
+  // high heels
+  x.fillStyle='#111';
+  x.beginPath();x.moveTo(cx-15+lean*0.5,cy+190);x.lineTo(cx-22,cy+205);x.lineTo(cx-8,cy+205);x.fill();
+  x.beginPath();x.moveTo(cx+25+lean*0.4,cy+185);x.lineTo(cx+32,cy+200);x.lineTo(cx+18,cy+200);x.fill();
 
   // torso
   x.fillStyle='#fdb';
@@ -99,7 +103,7 @@ function draw(){
   x.strokeStyle='#c66';x.lineWidth=2;
   x.beginPath();x.arc(cx+lean*0.4,cy-48,5,0.15,Math.PI-0.15);x.stroke();
 
-  // arms reaching pole
+  // arms
   x.strokeStyle='#fdb';x.lineWidth=11;
   x.beginPath();
   x.moveTo(cx+lean*0.2,cy-15);
@@ -110,26 +114,35 @@ function draw(){
   x.lineTo(px+6,cy-90);
   x.stroke();
 
-  // clothing / tits
-  if(stage===0){
-    x.fillStyle='#e91e8c';
+  // OUTFITS
+  if(stage===0){ // tiny bikini
+    // top
+    x.fillStyle='#ff1493';
+    x.beginPath();x.arc(cx+lean*0.3-15,cy+2,14,0,7);x.arc(cx+lean*0.3+15,cy+2,14,0,7);x.fill();
+    // string
+    x.strokeStyle='#ff1493';x.lineWidth=2;
+    x.beginPath();x.moveTo(cx+lean*0.3-28,cy+2);x.lineTo(cx+lean*0.3+28,cy+2);x.stroke();
+    // bottoms
+    x.fillStyle='#ff1493';
     x.beginPath();
-    x.moveTo(cx+lean*0.3-28,cy-15);
-    x.lineTo(cx+lean*0.3+28,cy-15);
-    x.lineTo(cx+lean*0.3+32,cy+80);
-    x.lineTo(cx+lean*0.3-32,cy+80);
+    x.moveTo(cx+lean*0.3-18,cy+55);
+    x.lineTo(cx+lean*0.3+18,cy+55);
+    x.lineTo(cx+lean*0.3+12,cy+78);
+    x.lineTo(cx+lean*0.3-12,cy+78);
     x.closePath();x.fill();
-  }else if(stage===1){
-    x.fillStyle='#fff';
-    x.beginPath();x.arc(cx+lean*0.3-15,cy+5,15,0,7);x.arc(cx+lean*0.3+15,cy+5,15,0,7);x.fill();
-    x.fillStyle='#e91e8c';
-    x.fillRect(cx+lean*0.3-26,cy+50,52,16);
-  }else{
+  }else if(stage===1){ // micro skirt only (top off)
+    x.fillStyle='#ff1493';
+    x.fillRect(cx+lean*0.3-22,cy+58,44,14);
+    // garter lines
+    x.strokeStyle='#ff1493';x.lineWidth=2;
+    x.beginPath();x.moveTo(cx+lean*0.3-12,cy+72);x.lineTo(cx+lean*0.3-18,cy+110);x.stroke();
+    x.beginPath();x.moveTo(cx+lean*0.3+12,cy+72);x.lineTo(cx+lean*0.3+18,cy+110);x.stroke();
+  }else{ // topless + pasties optional, just tits
     const b=Math.sin(t*8)*5;
     x.fillStyle='#fdb';
-    x.beginPath();x.arc(cx+lean*0.3-16,cy+8+b,18,0,7);x.arc(cx+lean*0.3+16,cy+8-b*0.6,18,0,7);x.fill();
+    x.beginPath();x.arc(cx+lean*0.3-16,cy+6+b,18,0,7);x.arc(cx+lean*0.3+16,cy+6-b*0.6,18,0,7);x.fill();
     x.fillStyle='#c44';
-    x.beginPath();x.arc(cx+lean*0.3-16,cy+10+b,5,0,7);x.arc(cx+lean*0.3+16,cy+10-b*0.6,5,0,7);x.fill();
+    x.beginPath();x.arc(cx+lean*0.3-16,cy+8+b,5,0,7);x.arc(cx+lean*0.3+16,cy+8-b*0.6,5,0,7);x.fill();
   }
 
   // UI
