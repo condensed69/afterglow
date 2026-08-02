@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Stripper Dance</title>
+<style>
+body{margin:0;background:#111;display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;color:#fff}
+canvas{border:2px solid #f0a;background:#222}
+</style>
+</head>
+<body>
+<canvas id="c" width="400" height="500"></canvas>
+<script>
+const c=document.getElementById('c'),x=c.getContext('2d');
+let stage=0,frame=0,tips=0;
+const stages=['Clothed','Bra on','Topless'];
+function draw(){
+  x.clearRect(0,0,400,500);
+  x.fillStyle='#fff';x.font='20px sans-serif';
+  x.fillText('Tips: '+tips,20,30);
+  x.fillText(stages[stage],20,60);
+  x.fillText('Click to tip',20,480);
+  // body
+  x.fillStyle='#fdb';
+  x.beginPath();x.ellipse(200,180,40,50,0,0,Math.PI*2);x.fill(); // head
+  x.fillRect(170,220,60,120); // torso
+  // legs dance
+  let leg=Math.sin(frame/8)*20;
+  x.fillRect(175,340,20,80+leg);x.fillRect(205,340,20,80-leg);
+  // arms
+  x.fillRect(140,230,30,80);x.fillRect(230,230,30,80);
+  // hair
+  x.fillStyle='#321';x.beginPath();x.arc(200,160,45,Math.PI,0);x.fill();
+  // face
+  x.fillStyle='#000';x.beginPath();x.arc(185,175,4,0,7);x.arc(215,175,4,0,7);x.fill();
+  // clothes / tits
+  if(stage===0){
+    x.fillStyle='#f0a';x.fillRect(165,230,70,80); // dress
+  }else if(stage===1){
+    x.fillStyle='#f0a';x.fillRect(165,280,70,30); // skirt
+    x.fillStyle='#fff';x.beginPath();x.arc(185,255,18,0,7);x.arc(215,255,18,0,7);x.fill(); // bra
+  }else{
+    // tits
+    x.fillStyle='#fdb';
+    x.beginPath();x.arc(185,255,22,0,7);x.arc(215,255,22,0,7);x.fill();
+    x.fillStyle='#c66';
+    x.beginPath();x.arc(185,255,6,0,7);x.arc(215,255,6,0,7);x.fill();
+  }
+  frame++;
+  requestAnimationFrame(draw);
+}
+c.onclick=()=>{
+  tips++;
+  if(tips>=5&&stage<2){stage++;tips=0;}
+};
+draw();
+</script>
+</body>
+</html>
