@@ -3,165 +3,231 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<title>Pole Stripper</title>
+<title>Pole Stripper Pro</title>
 <style>
-html,body{margin:0;height:100%;background:#0a0a12;overflow:hidden;touch-action:none}
-canvas{display:block;width:100%;height:100%;background:#0a0a12}
+html,body{margin:0;height:100%;background:#0a0a12;overflow:hidden;touch-action:none;font-family:system-ui}
+canvas{display:block;width:100%;height:100%}
+#ui{position:absolute;top:10px;left:10px;color:#fff;text-shadow:0 0 6px #000;font-size:15px;line-height:1.45;pointer-events:none}
+#ui b{color:#f0a}
+#btns{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:6px}
+button{background:#f0a;border:0;color:#111;padding:6px 10px;border-radius:6px;font-weight:700;font-size:13px}
+#hint{position:absolute;bottom:12px;width:100%;text-align:center;color:#f0a;font-size:14px;pointer-events:none}
 </style>
 </head>
 <body>
+<div id="ui">Tips: <b id="tips">0</b><br>Stage: <b id="stage">Bikini</b><br>Score: <b id="score">0</b><br>Best: <b id="best">0</b><br>Girl: <b id="girl">1</b></div>
+<div id="btns">
+  <button id="girlBtn">Next Girl</button>
+  <button id="musicBtn">Music</button>
+</div>
+<div id="hint">Drag to spin • Tap to tip</div>
 <canvas id="c"></canvas>
 <script>
-const c=document.getElementById('c');
-const x=c.getContext('2d');
-let W,H,stage=0,tips=0,t=0;
+const c=document.getElementById('c'),x=c.getContext('2d');
+let W,H,t=0,stage=0,tips=0,score=0,best=+localStorage.best||0,girl=0;
+let spinSpeed=1.2,targetSpeed=1.2,drag=false,lastX=0;
+let unlocks={pasties:false,oil:false,invert:false};
+const stages=['Bikini','Micro Skirt','Topless'];
+const girls=[
+  {skin:'#fdb',hair:'#2a1a10',out:'#ff1493',name:'Amber'},
+  {skin:'#e8c4a8',hair:'#1a0a05',out:'#00e5ff',name:'Jade'},
+  {skin:'#f5d0c5',hair:'#4a2c0a',out:'#ffe066',name:'Lola'}
+];
+document.getElementById('best').textContent=best;
 
 function resize(){
   W=c.width=innerWidth*devicePixelRatio;
   H=c.height=innerHeight*devicePixelRatio;
-  c.style.width=innerWidth+'px';
-  c.style.height=innerHeight+'px';
+  c.style.width=innerWidth+'px';c.style.height=innerHeight+'px';
   x.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
 }
-resize();
-window.onresize=resize;
+resize();window.onresize=resize;
 
-const stages=['Bikini','Micro Skirt','Topless'];
+// --- Web Audio ---
+const AC=window.AudioContext||window.webkitAudioContext;
+let actx,musicOn=false,musicNodes=[];
+function ensureAudio(){if(!actx)actx=new AC();}
+function playChaChing(){
+  ensureAudio();
+  const o=actx.createOscillator(),g=actx.createGain();
+  o.type='square';o.frequency.setValueAtTime(1200,actx.currentTime);
+  o.frequency.exponentialRampToValueAtTime(600,actx.currentTime+0.15);
+  g.gain.setValueAtTime(0.15,actx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001,actx.currentTime+0.3);
+  o.connect(g);g.connect(actx.destination);o.start();o.stop(actx.currentTime+0.3);
+}
+function playMoan(){
+  ensureAudio();
+  const o=actx.createOscillator(),g=actx.createGain();
+  o.type='sine';o.frequency.setValueAtTime(280,actx.currentTime);
+  o.frequency.linearRampToValueAtTime(180,actx.currentTime+0.4);
+  g.gain.setValueAtTime(0.12,actx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001,actx.currentTime+0.5);
+  o.connect(g);g.connect(actx.destination);o.start();o.stop(actx.currentTime+0.5);
+}
+function toggleMusic(){
+  ensureAudio();
+  musicOn=!musicOn;
+  document.getElementById('musicBtn').textContent=musicOn?'Mute':'Music';
+  if(musicOn){
+    // simple bass pulse loop
+    const bass=()=>{
+      if(!musicOn)return;
+      const o=actx.createOscillator(),g=actx.createGain();
+      o.type='triangle';o.frequency.value=55;
+      g.gain.setValueAtTime(0.18,actx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001,actx.currentTime+0.4);
+      o.connect(g);g.connect(actx.destination);o.start();o.stop(actx.currentTime+0.45);
+      setTimeout(bass,500);
+    };
+    bass();
+  }
+}
+document.getElementById('musicBtn').onclick=toggleMusic;
+
+// Girl switch
+document.getElementById('girlBtn').onclick=()=>{
+  girl=(girl+1)%girls.length;
+  document.getElementById('girl').textContent=girls[girl].name;
+};
+
+// Drag spin control
+c.addEventListener('pointerdown',e=>{drag=true;lastX=e.clientX;c.setPointerCapture(e.pointerId);});
+c.addEventListener('pointermove',e=>{
+  if(!drag)return;
+  const dx=e.clientX-lastX;
+  targetSpeed=Math.max(0.3,Math.min(4,targetSpeed+dx*0.02));
+  lastX=e.clientX;
+});
+c.addEventListener('pointerup',()=>drag=false);
+c.addEventListener('pointercancel',()=>drag=false);
+
+// Tip
+function tip(){
+  tips++;score+=10+stage*5;
+  document.getElementById('tips').textContent=tips;
+  document.getElementById('score').textContent=score;
+  playChaChing();
+  if(score>best){best=score;localStorage.best=best;document.getElementById('best').textContent=best;}
+  if(tips>=5&&stage<2){
+    stage++;tips=0;
+    document.getElementById('tips').textContent=0;
+    document.getElementById('stage').textContent=stages[stage];
+    playMoan();
+    if(stage===2){unlocks.pasties=true;unlocks.oil=true;}
+  }
+  // unlock invert after 80 score
+  if(score>=80)unlocks.invert=true;
+}
+c.addEventListener('click',e=>{if(!drag)tip();});
 
 function draw(){
   t+=0.016;
+  spinSpeed+=(targetSpeed-spinSpeed)*0.08;
   const w=innerWidth,h=innerHeight;
+  const G=girls[girl];
   x.clearRect(0,0,w,h);
-
-  // bg
   x.fillStyle='#0a0a12';x.fillRect(0,0,w,h);
-  for(let i=0;i<6;i++){
-    x.beginPath();
-    x.fillStyle=`hsla(${i*50+t*20},70%,55%,0.12)`;
-    x.arc(80+i*60,60+Math.sin(t+i)*30,40,0,7);
-    x.fill();
-  }
 
-  // floor
+  // lights
+  for(let i=0;i<7;i++){
+    x.beginPath();
+    x.fillStyle=`hsla(${i*45+t*30},75%,55%,0.13)`;
+    x.arc(70+i*55,50+Math.sin(t*1.2+i)*35,45,0,7);x.fill();
+  }
   x.fillStyle='#15101f';x.fillRect(0,h*0.78,w,h*0.22);
 
   // pole
   const px=w*0.5;
-  x.fillStyle='#ccc';
-  x.fillRect(px-5,h*0.08,10,h*0.7);
-  x.fillStyle='#999';x.fillRect(px-7,h*0.08,14,8);
+  x.fillStyle='#ccc';x.fillRect(px-5,h*0.07,10,h*0.72);
+  x.fillStyle='#888';x.fillRect(px-7,h*0.07,14,8);
 
-  // dancer
-  const ang=t*1.4;
-  const radius=38;
+  // spin + optional invert
+  const ang=t*spinSpeed*(unlocks.invert&&stage===2?-1:1);
+  const radius=40;
   const cx=px+Math.sin(ang)*radius;
-  const cy=h*0.42;
-  const lean=Math.sin(ang)*18;
+  const cy=h*0.41;
+  const lean=Math.sin(ang)*20;
+  const invertY=unlocks.invert&&stage===2?1:-1; // simple flip later if needed
 
-  // legs
-  x.strokeStyle='#fdb';x.lineWidth=13;x.lineCap='round';
-  const legSwing=Math.sin(t*3)*22;
-  x.beginPath();
-  x.moveTo(cx+lean*0.2,cy+55);
-  x.quadraticCurveTo(cx-35+lean,cy+130+legSwing,cx-15+lean*0.5,cy+190);
-  x.stroke();
-  x.beginPath();
-  x.moveTo(cx+lean*0.2,cy+55);
-  x.quadraticCurveTo(cx+40+lean,cy+120-legSwing,cx+25+lean*0.4,cy+185);
-  x.stroke();
+  // legs with more animation frames feel
+  x.strokeStyle=G.skin;x.lineWidth=13;x.lineCap='round';
+  const leg1=Math.sin(t*3.2)*28,leg2=Math.sin(t*3.2+1.1)*24;
+  x.beginPath();x.moveTo(cx+lean*0.2,cy+55);
+  x.quadraticCurveTo(cx-38+lean,cy+135+leg1,cx-12+lean*0.4,cy+195);x.stroke();
+  x.beginPath();x.moveTo(cx+lean*0.2,cy+55);
+  x.quadraticCurveTo(cx+42+lean,cy+125-leg2,cx+28+lean*0.3,cy+188);x.stroke();
 
-  // high heels
+  // heels
   x.fillStyle='#111';
-  x.beginPath();x.moveTo(cx-15+lean*0.5,cy+190);x.lineTo(cx-22,cy+205);x.lineTo(cx-8,cy+205);x.fill();
-  x.beginPath();x.moveTo(cx+25+lean*0.4,cy+185);x.lineTo(cx+32,cy+200);x.lineTo(cx+18,cy+200);x.fill();
+  x.fillRect(cx-20+lean*0.4,cy+193,16,12);
+  x.fillRect(cx+20+lean*0.3,cy+186,16,12);
 
   // torso
-  x.fillStyle='#fdb';
-  x.beginPath();
-  x.ellipse(cx+lean*0.3,cy+10,26,48,lean*0.015,0,7);
-  x.fill();
+  x.fillStyle=G.skin;
+  x.beginPath();x.ellipse(cx+lean*0.3,cy+8,27,50,lean*0.02,0,7);x.fill();
 
-  // head
-  x.beginPath();
-  x.ellipse(cx+lean*0.4,cy-55,28,32,0,0,7);
-  x.fill();
-
-  // hair
-  x.fillStyle='#2a1a10';
-  x.beginPath();
-  x.ellipse(cx+lean*0.4,cy-70,34,26,0,Math.PI,0);
-  x.fill();
-  x.beginPath();
-  x.moveTo(cx+lean*0.4-28,cy-55);
-  x.quadraticCurveTo(cx+lean*0.4-45,cy-10,cx+lean*0.4-20,cy+25);
-  x.quadraticCurveTo(cx+lean*0.4-5,cy-5,cx+lean*0.4-18,cy-50);
-  x.fill();
+  // head + hair
+  x.beginPath();x.ellipse(cx+lean*0.4,cy-58,29,33,0,0,7);x.fill();
+  x.fillStyle=G.hair;
+  x.beginPath();x.ellipse(cx+lean*0.4,cy-74,36,28,0,Math.PI,0);x.fill();
+  x.beginPath();x.moveTo(cx+lean*0.4-30,cy-58);
+  x.quadraticCurveTo(cx+lean*0.4-48,cy-5,cx+lean*0.4-18,cy+30);
+  x.quadraticCurveTo(cx+lean*0.4,cy,cx+lean*0.4-20,cy-55);x.fill();
 
   // face
   x.fillStyle='#000';
-  x.beginPath();x.arc(cx+lean*0.4-9,cy-60,3,0,7);x.arc(cx+lean*0.4+9,cy-60,3,0,7);x.fill();
-  x.strokeStyle='#c66';x.lineWidth=2;
-  x.beginPath();x.arc(cx+lean*0.4,cy-48,5,0.15,Math.PI-0.15);x.stroke();
+  x.beginPath();x.arc(cx+lean*0.4-10,cy-63,3.2,0,7);x.arc(cx+lean*0.4+10,cy-63,3.2,0,7);x.fill();
+  x.strokeStyle='#c66';x.lineWidth=2.2;
+  x.beginPath();x.arc(cx+lean*0.4,cy-50,5.5,0.2,Math.PI-0.2);x.stroke();
 
   // arms
-  x.strokeStyle='#fdb';x.lineWidth=11;
-  x.beginPath();
-  x.moveTo(cx+lean*0.2,cy-15);
-  x.quadraticCurveTo(cx-25,cy-70,px-4,cy-120);
-  x.stroke();
-  x.beginPath();
-  x.moveTo(cx+lean*0.2,cy-5);
-  x.lineTo(px+6,cy-90);
-  x.stroke();
+  x.strokeStyle=G.skin;x.lineWidth=11;
+  x.beginPath();x.moveTo(cx+lean*0.2,cy-18);
+  x.quadraticCurveTo(cx-30,cy-75,px-5,cy-125);x.stroke();
+  x.beginPath();x.moveTo(cx+lean*0.2,cy-8);x.lineTo(px+8,cy-95);x.stroke();
 
-  // OUTFITS
-  if(stage===0){ // tiny bikini
-    // top
-    x.fillStyle='#ff1493';
-    x.beginPath();x.arc(cx+lean*0.3-15,cy+2,14,0,7);x.arc(cx+lean*0.3+15,cy+2,14,0,7);x.fill();
-    // string
-    x.strokeStyle='#ff1493';x.lineWidth=2;
-    x.beginPath();x.moveTo(cx+lean*0.3-28,cy+2);x.lineTo(cx+lean*0.3+28,cy+2);x.stroke();
-    // bottoms
-    x.fillStyle='#ff1493';
+  // OUTFITS + unlocks
+  if(stage===0){ // bikini
+    x.fillStyle=G.out;
+    x.beginPath();x.arc(cx+lean*0.3-16,cy,15,0,7);x.arc(cx+lean*0.3+16,cy,15,0,7);x.fill();
+    x.strokeStyle=G.out;x.lineWidth=2.5;
+    x.beginPath();x.moveTo(cx+lean*0.3-30,cy);x.lineTo(cx+lean*0.3+30,cy);x.stroke();
     x.beginPath();
-    x.moveTo(cx+lean*0.3-18,cy+55);
-    x.lineTo(cx+lean*0.3+18,cy+55);
-    x.lineTo(cx+lean*0.3+12,cy+78);
-    x.lineTo(cx+lean*0.3-12,cy+78);
-    x.closePath();x.fill();
-  }else if(stage===1){ // micro skirt only (top off)
-    x.fillStyle='#ff1493';
-    x.fillRect(cx+lean*0.3-22,cy+58,44,14);
-    // garter lines
-    x.strokeStyle='#ff1493';x.lineWidth=2;
-    x.beginPath();x.moveTo(cx+lean*0.3-12,cy+72);x.lineTo(cx+lean*0.3-18,cy+110);x.stroke();
-    x.beginPath();x.moveTo(cx+lean*0.3+12,cy+72);x.lineTo(cx+lean*0.3+18,cy+110);x.stroke();
-  }else{ // topless + pasties optional, just tits
-    const b=Math.sin(t*8)*5;
-    x.fillStyle='#fdb';
-    x.beginPath();x.arc(cx+lean*0.3-16,cy+6+b,18,0,7);x.arc(cx+lean*0.3+16,cy+6-b*0.6,18,0,7);x.fill();
-    x.fillStyle='#c44';
-    x.beginPath();x.arc(cx+lean*0.3-16,cy+8+b,5,0,7);x.arc(cx+lean*0.3+16,cy+8-b*0.6,5,0,7);x.fill();
+    x.moveTo(cx+lean*0.3-20,cy+55);x.lineTo(cx+lean*0.3+20,cy+55);
+    x.lineTo(cx+lean*0.3+13,cy+80);x.lineTo(cx+lean*0.3-13,cy+80);x.closePath();x.fill();
+  }else if(stage===1){ // micro
+    x.fillStyle=G.out;
+    x.fillRect(cx+lean*0.3-24,cy+58,48,15);
+    x.strokeStyle=G.out;x.lineWidth=2;
+    x.beginPath();x.moveTo(cx+lean*0.3-14,cy+73);x.lineTo(cx+lean*0.3-20,cy+115);x.stroke();
+    x.beginPath();x.moveTo(cx+lean*0.3+14,cy+73);x.lineTo(cx+lean*0.3+20,cy+115);x.stroke();
+  }else{ // topless + optional pasties/oil
+    const b=Math.sin(t*9)*6;
+    x.fillStyle=G.skin;
+    x.beginPath();x.arc(cx+lean*0.3-17,cy+5+b,19,0,7);x.arc(cx+lean*0.3+17,cy+5-b*0.65,19,0,7);x.fill();
+    if(unlocks.pasties){
+      x.fillStyle=G.out;
+      x.beginPath();x.arc(cx+lean*0.3-17,cy+7+b,6,0,7);x.arc(cx+lean*0.3+17,cy+7-b*0.65,6,0,7);x.fill();
+    }else{
+      x.fillStyle='#c44';
+      x.beginPath();x.arc(cx+lean*0.3-17,cy+7+b,5.5,0,7);x.arc(cx+lean*0.3+17,cy+7-b*0.65,5.5,0,7);x.fill();
+    }
+    // oil shine
+    if(unlocks.oil){
+      x.fillStyle='rgba(255,255,255,0.25)';
+      x.beginPath();x.ellipse(cx+lean*0.3-12,cy-5,8,18,0.3,0,7);x.fill();
+    }
   }
 
-  // UI
-  x.fillStyle='#fff';x.font='bold 18px system-ui';
-  x.fillText('Tips: '+tips,14,28);
-  x.fillStyle='#f0a';x.fillText(stages[stage],14,52);
-  x.font='15px system-ui';
-  x.fillText(stage<2?'Tap to tip':'SHE\'S OUT',14,h-20);
+  // invert indicator
+  if(unlocks.invert&&stage===2){
+    x.fillStyle='#0f0';x.font='12px system-ui';x.fillText('INVERT UNLOCKED',14,h-40);
+  }
 
   requestAnimationFrame(draw);
 }
 draw();
-
-function tip(){
-  tips++;
-  if(tips>=5&&stage<2){stage++;tips=0;}
-}
-c.addEventListener('click',tip);
-c.addEventListener('touchstart',e=>{e.preventDefault();tip();},{passive:false});
 </script>
 </body>
 </html>
