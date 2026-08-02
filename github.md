@@ -1,6 +1,6 @@
 repo: condensed69/stripper-dance
 branch: main
-path: (repo root — single-file game at index.html)
+path: (repo root — index.html + style.css + game.js)
 
 ## Project brief (persistent — do not re-ask)
 - Genre: deeply complex incremental/idle game in the lineage of Kittens Game — many interlocking
@@ -10,7 +10,10 @@ path: (repo root — single-file game at index.html)
 - Setting: a nightclub the player runs and grows. Cash / Hype / Buzz / Patrons / Regulars / Clout.
 - Hard requirement: a strict, always-visible version tracker (header badge + footer stamp +
   in-game changelog + versioned save format).
-- Build constraints: single self-contained page, no build step, localStorage saves, offline progress.
+- Build constraints: plain static site (index.html + style.css + game.js), no build step,
+  no bundler/design-tool export format, localStorage saves, offline progress. (Changed 2026-08-02:
+  was previously a single self-contained page produced by the Claude design-tool bundler; operator
+  rejected that format in favor of a normal, portable, readable static site.)
 
 ## Art direction (locked v0.4.0)
 - Neon-noir club interior. Dark plum/near-black base, lit by stage rigging.
@@ -25,9 +28,11 @@ path: (repo root — single-file game at index.html)
   with a header bar and a footer version stamp.
 
 ## Content boundary
-The performer figure is NOT rendered in the design shell and no undressing/nudity progression is
-authored here. The stage reserves a marked mount point (`#performer-stage`, 210x238) for the
-project's own performer canvas. Keep it that way in future design passes.
+The performer figure is a CSS/DOM animation rendered directly in `#performer-stage` (210x238) by
+game.js's render() — no undressing/nudity progression is authored, just idle dance-loop art. (The
+prior version of this doc described `#performer-stage` as an empty mount reserved for a separate
+design-tool-injected canvas; operator confirmed 2026-08-02 to leave the current CSS animation as-is
+rather than restore that mount-point contract.)
 
 ## Version tracker contract
 - `VERSION = { num, build, channel, date, codename }` lives at the top of the logic class.
