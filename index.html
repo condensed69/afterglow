@@ -2,105 +2,119 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Pole Stripper</title>
+<title>3D Pole Stripper</title>
 <style>
-body{margin:0;background:#0a0a12;display:flex;justify-content:center;align-items:center;height:100vh;font-family:system-ui;color:#fff;overflow:hidden}
-canvas{border:3px solid #f0a;background:linear-gradient(#1a0a2e,#0a0a12);box-shadow:0 0 40px #f0a4}
+body{margin:0;background:#0a0a12;overflow:hidden;font-family:system-ui;color:#fff}
+#ui{position:absolute;top:15px;left:15px;z-index:10;text-shadow:0 0 8px #000;font-size:18px}
+#ui span{color:#f0a}
+#hint{position:absolute;bottom:20px;width:100%;text-align:center;color:#f0a;z-index:10}
 </style>
 </head>
 <body>
-<canvas id="c" width="480" height="640"></canvas>
+<div id="ui">Tips: <span id="tips">0</span><br><span id="stageLabel">Dress</span></div>
+<div id="hint">Click to tip</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const c=document.getElementById('c'),x=c.getContext('2d');
-let stage=0,tips=0,frame=0,spin=0;
-const stages=['Dress','Bra+Skirt','Topless'];
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x0a0a12);
+const camera=new THREE.PerspectiveCamera(50,innerWidth/innerHeight,0.1,100);
+camera.position.set(0,1.6,4.5);
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(devicePixelRatio);
+document.body.appendChild(renderer.domElement);
 
-function draw(){
-  x.clearRect(0,0,480,640);
-  // club bg
-  x.fillStyle='#12081c';x.fillRect(0,0,480,640);
-  for(let i=0;i<8;i++){x.fillStyle=`hsla(${i*40+frame},70%,50%,0.15)`;x.beginPath();x.arc(60+i*50,80+Math.sin(frame/20+i)*20,30,0,7);x.fill();}
-  // floor
-  x.fillStyle='#1a1025';x.fillRect(0,520,480,120);
-  // pole
-  x.fillStyle='#c0c0c0';x.fillRect(236,40,8,480);
-  x.fillStyle='#888';x.fillRect(234,40,12,8);
-  // dancer base position around pole
-  const cx=240, cy=300;
-  spin+=0.06;
-  const angle=spin;
-  const lean=Math.sin(angle)*25;
-  const bounce=Math.abs(Math.sin(angle*2))*8;
+// lights
+const amb=new THREE.AmbientLight(0x404060,0.6);scene.add(amb);
+const spot=new THREE.SpotLight(0xff66aa,1.2);spot.position.set(2,5,3);spot.castShadow=true;scene.add(spot);
+const spot2=new THREE.SpotLight(0x66aaff,0.7);spot2.position.set(-3,4,2);scene.add(spot2);
 
-  // legs (dancing around pole)
-  x.strokeStyle='#fdb';x.lineWidth=14;x.lineCap='round';
-  // left leg
-  x.beginPath();x.moveTo(cx+lean*0.3,cy+70);
-  x.quadraticCurveTo(cx-40+lean,cy+140+bounce,cx-20+lean*0.5,cy+200+Math.sin(angle)*15);
-  x.stroke();
-  // right leg wrap
-  x.beginPath();x.moveTo(cx+lean*0.3,cy+70);
-  x.quadraticCurveTo(cx+50+lean,cy+130,cx+30+lean,cy+190+Math.cos(angle)*20);
-  x.stroke();
+// pole
+const poleGeo=new THREE.CylinderGeometry(0.06,0.06,4,16);
+const poleMat=new THREE.MeshStandardMaterial({color:0xcccccc,metalness:0.9,roughness:0.2});
+const pole=new THREE.Mesh(poleGeo,poleMat);pole.position.y=1.5;scene.add(pole);
 
-  // torso
-  x.fillStyle='#fdb';
-  x.beginPath();
-  x.ellipse(cx+lean*0.4,cy+10+bounce*0.3,28,55,lean*0.02,0,Math.PI*2);
-  x.fill();
+// floor
+const floor=new THREE.Mesh(new THREE.CircleGeometry(3,32),new THREE.MeshStandardMaterial({color:0x1a1025}));
+floor.rotation.x=-Math.PI/2;scene.add(floor);
 
-  // head
-  x.beginPath();x.ellipse(cx+lean*0.5,cy-70+bounce*0.2,32,36,0,0,7);x.fill();
-  // hair
-  x.fillStyle='#2a1a10';
-  x.beginPath();x.ellipse(cx+lean*0.5,cy-85,38,28,0,Math.PI,0);x.fill();
-  x.beginPath();x.moveTo(cx+lean*0.5-30,cy-70);x.quadraticCurveTo(cx+lean*0.5-50,cy-20,cx+lean*0.5-25,cy+20);x.quadraticCurveTo(cx+lean*0.5-10,cy-10,cx+lean*0.5-20,cy-60);x.fill();
-  // face
-  x.fillStyle='#000';
-  x.beginPath();x.arc(cx+lean*0.5-10,cy-75,3,0,7);x.arc(cx+lean*0.5+10,cy-75,3,0,7);x.fill();
-  x.strokeStyle='#c66';x.lineWidth=2;x.beginPath();x.arc(cx+lean*0.5,cy-60,6,0.2,Math.PI-0.2);x.stroke();
+// dancer group (spins around pole)
+const dancer=new THREE.Group();scene.add(dancer);
 
-  // arms on pole
-  x.strokeStyle='#fdb';x.lineWidth=12;
-  x.beginPath();x.moveTo(cx+lean*0.3,cy-20);
-  x.quadraticCurveTo(cx-20,cy-80,cx-5,cy-140);
-  x.stroke();
-  x.beginPath();x.moveTo(cx+lean*0.3,cy-10);
-  x.lineTo(cx+15,cy-100);x.stroke();
+const skin=new THREE.MeshStandardMaterial({color:0xffddbb,roughness:0.7});
+const hairMat=new THREE.MeshStandardMaterial({color:0x2a1a10});
+const dressMat=new THREE.MeshStandardMaterial({color:0xe91e8c});
+const braMat=new THREE.MeshStandardMaterial({color:0xffffff});
 
-  // clothing / tits based on stage
-  if(stage===0){ // full dress
-    x.fillStyle='#e91e8c';
-    x.beginPath();x.moveTo(cx+lean*0.4-30,cy-20);x.lineTo(cx+lean*0.4+30,cy-20);
-    x.lineTo(cx+lean*0.4+35,cy+90);x.lineTo(cx+lean*0.4-35,cy+90);x.closePath();x.fill();
-  }else if(stage===1){ // bra + micro skirt
-    x.fillStyle='#fff';
-    x.beginPath();x.arc(cx+lean*0.4-16,cy+5,16,0,7);x.arc(cx+lean*0.4+16,cy+5,16,0,7);x.fill();
-    x.fillStyle='#e91e8c';x.fillRect(cx+lean*0.4-28,cy+55,56,18);
-  }else{ // topless + bouncing tits
-    const tBounce=Math.sin(frame/4)*6;
-    x.fillStyle='#fdb';
-    x.beginPath();x.arc(cx+lean*0.4-18,cy+8+tBounce,20,0,7);x.arc(cx+lean*0.4+18,cy+8-tBounce*0.7,20,0,7);x.fill();
-    x.fillStyle='#c44';
-    x.beginPath();x.arc(cx+lean*0.4-18,cy+10+tBounce,6,0,7);x.arc(cx+lean*0.4+18,cy+10-tBounce*0.7,6,0,7);x.fill();
-  }
+// body parts
+const torso=new THREE.Mesh(new THREE.CapsuleGeometry(0.28,0.55,4,8),skin);torso.position.y=1.35;dancer.add(torso);
+const head=new THREE.Mesh(new THREE.SphereGeometry(0.22,16,12),skin);head.position.y=1.95;dancer.add(head);
+const hair=new THREE.Mesh(new THREE.SphereGeometry(0.25,12,8),hairMat);hair.position.y=2.05;hair.scale.y=0.7;dancer.add(hair);
 
-  // UI
-  x.fillStyle='#fff';x.font='bold 22px system-ui';
-  x.fillText('Tips: '+tips,20,40);
-  x.fillText(stages[stage],20,70);
-  x.font='16px system-ui';x.fillStyle='#f0a';
-  x.fillText(stage<2?'Click to tip her':'SHE\'S FULLY OUT',20,610);
+// arms
+const armL=new THREE.Mesh(new THREE.CapsuleGeometry(0.07,0.45,4,8),skin);armL.position.set(-0.35,1.5,0);armL.rotation.z=0.4;dancer.add(armL);
+const armR=new THREE.Mesh(new THREE.CapsuleGeometry(0.07,0.45,4,8),skin);armR.position.set(0.35,1.5,0);armR.rotation.z=-0.4;dancer.add(armR);
 
-  frame++;
-  requestAnimationFrame(draw);
+// legs
+const legL=new THREE.Mesh(new THREE.CapsuleGeometry(0.09,0.6,4,8),skin);legL.position.set(-0.15,0.55,0);dancer.add(legL);
+const legR=new THREE.Mesh(new THREE.CapsuleGeometry(0.09,0.6,4,8),skin);legR.position.set(0.15,0.55,0);dancer.add(legR);
+
+// clothing
+const dress=new THREE.Mesh(new THREE.CylinderGeometry(0.35,0.45,0.9,12),dressMat);dress.position.y=1.15;dancer.add(dress);
+const braL=new THREE.Mesh(new THREE.SphereGeometry(0.13,10,8),braMat);braL.position.set(-0.15,1.45,0.2);braL.visible=false;dancer.add(braL);
+const braR=new THREE.Mesh(new THREE.SphereGeometry(0.13,10,8),braMat);braR.position.set(0.15,1.45,0.2);braR.visible=false;dancer.add(braR);
+const skirt=new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.4,0.25,12),dressMat);skirt.position.y=0.9;skirt.visible=false;dancer.add(skirt);
+
+// tits (topless)
+const titL=new THREE.Mesh(new THREE.SphereGeometry(0.16,12,10),skin);titL.position.set(-0.16,1.42,0.22);titL.visible=false;dancer.add(titL);
+const titR=new THREE.Mesh(new THREE.SphereGeometry(0.16,12,10),skin);titR.position.set(0.16,1.42,0.22);titR.visible=false;dancer.add(titR);
+const nipL=new THREE.Mesh(new THREE.SphereGeometry(0.04,8,6),new THREE.MeshStandardMaterial({color:0xcc4444}));nipL.position.set(-0.16,1.42,0.36);nipL.visible=false;dancer.add(nipL);
+const nipR=new THREE.Mesh(new THREE.SphereGeometry(0.04,8,6),new THREE.MeshStandardMaterial({color:0xcc4444}));nipR.position.set(0.16,1.42,0.36);nipR.visible=false;dancer.add(nipR);
+
+let stage=0,tips=0,t=0;
+const labels=['Dress','Bra + Skirt','Topless'];
+
+function setStage(s){
+  dress.visible=s===0;
+  braL.visible=braR.visible=skirt.visible=s===1;
+  titL.visible=titR.visible=nipL.visible=nipR.visible=s===2;
+  document.getElementById('stageLabel').textContent=labels[s];
+  if(s===2)document.getElementById('hint').textContent="SHE'S OUT";
 }
 
-c.onclick=()=>{
+function animate(){
+  requestAnimationFrame(animate);
+  t+=0.016;
+  // spin around pole
+  dancer.rotation.y+=0.025;
+  dancer.position.x=Math.sin(dancer.rotation.y)*0.35;
+  dancer.position.z=Math.cos(dancer.rotation.y)*0.35-0.1;
+  // leg dance
+  legL.rotation.x=Math.sin(t*3)*0.4;
+  legR.rotation.x=Math.sin(t*3+1)*0.4;
+  // arm reach
+  armL.rotation.x=Math.sin(t*2)*0.3-0.5;
+  armR.rotation.x=Math.sin(t*2+1)*0.3-0.5;
+  // tit bounce when topless
+  if(stage===2){
+    const b=Math.sin(t*8)*0.04;
+    titL.position.y=1.42+b;nipL.position.y=1.42+b;
+    titR.position.y=1.42-b*0.7;nipR.position.y=1.42-b*0.7;
+  }
+  renderer.render(scene,camera);
+}
+animate();
+
+window.addEventListener('click',()=>{
   tips++;
-  if(tips>=6&&stage<2){stage++;tips=0;}
-};
-draw();
+  document.getElementById('tips').textContent=tips;
+  if(tips>=5&&stage<2){stage++;tips=0;document.getElementById('tips').textContent=0;setStage(stage);}
+});
+window.addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
 </script>
 </body>
 </html>
