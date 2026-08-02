@@ -2,56 +2,103 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Stripper Dance</title>
+<title>Pole Stripper</title>
 <style>
-body{margin:0;background:#111;display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;color:#fff}
-canvas{border:2px solid #f0a;background:#222}
+body{margin:0;background:#0a0a12;display:flex;justify-content:center;align-items:center;height:100vh;font-family:system-ui;color:#fff;overflow:hidden}
+canvas{border:3px solid #f0a;background:linear-gradient(#1a0a2e,#0a0a12);box-shadow:0 0 40px #f0a4}
 </style>
 </head>
 <body>
-<canvas id="c" width="400" height="500"></canvas>
+<canvas id="c" width="480" height="640"></canvas>
 <script>
 const c=document.getElementById('c'),x=c.getContext('2d');
-let stage=0,frame=0,tips=0;
-const stages=['Clothed','Bra on','Topless'];
+let stage=0,tips=0,frame=0,spin=0;
+const stages=['Dress','Bra+Skirt','Topless'];
+
 function draw(){
-  x.clearRect(0,0,400,500);
-  x.fillStyle='#fff';x.font='20px sans-serif';
-  x.fillText('Tips: '+tips,20,30);
-  x.fillText(stages[stage],20,60);
-  x.fillText('Click to tip',20,480);
-  // body
+  x.clearRect(0,0,480,640);
+  // club bg
+  x.fillStyle='#12081c';x.fillRect(0,0,480,640);
+  for(let i=0;i<8;i++){x.fillStyle=`hsla(${i*40+frame},70%,50%,0.15)`;x.beginPath();x.arc(60+i*50,80+Math.sin(frame/20+i)*20,30,0,7);x.fill();}
+  // floor
+  x.fillStyle='#1a1025';x.fillRect(0,520,480,120);
+  // pole
+  x.fillStyle='#c0c0c0';x.fillRect(236,40,8,480);
+  x.fillStyle='#888';x.fillRect(234,40,12,8);
+  // dancer base position around pole
+  const cx=240, cy=300;
+  spin+=0.06;
+  const angle=spin;
+  const lean=Math.sin(angle)*25;
+  const bounce=Math.abs(Math.sin(angle*2))*8;
+
+  // legs (dancing around pole)
+  x.strokeStyle='#fdb';x.lineWidth=14;x.lineCap='round';
+  // left leg
+  x.beginPath();x.moveTo(cx+lean*0.3,cy+70);
+  x.quadraticCurveTo(cx-40+lean,cy+140+bounce,cx-20+lean*0.5,cy+200+Math.sin(angle)*15);
+  x.stroke();
+  // right leg wrap
+  x.beginPath();x.moveTo(cx+lean*0.3,cy+70);
+  x.quadraticCurveTo(cx+50+lean,cy+130,cx+30+lean,cy+190+Math.cos(angle)*20);
+  x.stroke();
+
+  // torso
   x.fillStyle='#fdb';
-  x.beginPath();x.ellipse(200,180,40,50,0,0,Math.PI*2);x.fill(); // head
-  x.fillRect(170,220,60,120); // torso
-  // legs dance
-  let leg=Math.sin(frame/8)*20;
-  x.fillRect(175,340,20,80+leg);x.fillRect(205,340,20,80-leg);
-  // arms
-  x.fillRect(140,230,30,80);x.fillRect(230,230,30,80);
+  x.beginPath();
+  x.ellipse(cx+lean*0.4,cy+10+bounce*0.3,28,55,lean*0.02,0,Math.PI*2);
+  x.fill();
+
+  // head
+  x.beginPath();x.ellipse(cx+lean*0.5,cy-70+bounce*0.2,32,36,0,0,7);x.fill();
   // hair
-  x.fillStyle='#321';x.beginPath();x.arc(200,160,45,Math.PI,0);x.fill();
+  x.fillStyle='#2a1a10';
+  x.beginPath();x.ellipse(cx+lean*0.5,cy-85,38,28,0,Math.PI,0);x.fill();
+  x.beginPath();x.moveTo(cx+lean*0.5-30,cy-70);x.quadraticCurveTo(cx+lean*0.5-50,cy-20,cx+lean*0.5-25,cy+20);x.quadraticCurveTo(cx+lean*0.5-10,cy-10,cx+lean*0.5-20,cy-60);x.fill();
   // face
-  x.fillStyle='#000';x.beginPath();x.arc(185,175,4,0,7);x.arc(215,175,4,0,7);x.fill();
-  // clothes / tits
-  if(stage===0){
-    x.fillStyle='#f0a';x.fillRect(165,230,70,80); // dress
-  }else if(stage===1){
-    x.fillStyle='#f0a';x.fillRect(165,280,70,30); // skirt
-    x.fillStyle='#fff';x.beginPath();x.arc(185,255,18,0,7);x.arc(215,255,18,0,7);x.fill(); // bra
-  }else{
-    // tits
+  x.fillStyle='#000';
+  x.beginPath();x.arc(cx+lean*0.5-10,cy-75,3,0,7);x.arc(cx+lean*0.5+10,cy-75,3,0,7);x.fill();
+  x.strokeStyle='#c66';x.lineWidth=2;x.beginPath();x.arc(cx+lean*0.5,cy-60,6,0.2,Math.PI-0.2);x.stroke();
+
+  // arms on pole
+  x.strokeStyle='#fdb';x.lineWidth=12;
+  x.beginPath();x.moveTo(cx+lean*0.3,cy-20);
+  x.quadraticCurveTo(cx-20,cy-80,cx-5,cy-140);
+  x.stroke();
+  x.beginPath();x.moveTo(cx+lean*0.3,cy-10);
+  x.lineTo(cx+15,cy-100);x.stroke();
+
+  // clothing / tits based on stage
+  if(stage===0){ // full dress
+    x.fillStyle='#e91e8c';
+    x.beginPath();x.moveTo(cx+lean*0.4-30,cy-20);x.lineTo(cx+lean*0.4+30,cy-20);
+    x.lineTo(cx+lean*0.4+35,cy+90);x.lineTo(cx+lean*0.4-35,cy+90);x.closePath();x.fill();
+  }else if(stage===1){ // bra + micro skirt
+    x.fillStyle='#fff';
+    x.beginPath();x.arc(cx+lean*0.4-16,cy+5,16,0,7);x.arc(cx+lean*0.4+16,cy+5,16,0,7);x.fill();
+    x.fillStyle='#e91e8c';x.fillRect(cx+lean*0.4-28,cy+55,56,18);
+  }else{ // topless + bouncing tits
+    const tBounce=Math.sin(frame/4)*6;
     x.fillStyle='#fdb';
-    x.beginPath();x.arc(185,255,22,0,7);x.arc(215,255,22,0,7);x.fill();
-    x.fillStyle='#c66';
-    x.beginPath();x.arc(185,255,6,0,7);x.arc(215,255,6,0,7);x.fill();
+    x.beginPath();x.arc(cx+lean*0.4-18,cy+8+tBounce,20,0,7);x.arc(cx+lean*0.4+18,cy+8-tBounce*0.7,20,0,7);x.fill();
+    x.fillStyle='#c44';
+    x.beginPath();x.arc(cx+lean*0.4-18,cy+10+tBounce,6,0,7);x.arc(cx+lean*0.4+18,cy+10-tBounce*0.7,6,0,7);x.fill();
   }
+
+  // UI
+  x.fillStyle='#fff';x.font='bold 22px system-ui';
+  x.fillText('Tips: '+tips,20,40);
+  x.fillText(stages[stage],20,70);
+  x.font='16px system-ui';x.fillStyle='#f0a';
+  x.fillText(stage<2?'Click to tip her':'SHE\'S FULLY OUT',20,610);
+
   frame++;
   requestAnimationFrame(draw);
 }
+
 c.onclick=()=>{
   tips++;
-  if(tips>=5&&stage<2){stage++;tips=0;}
+  if(tips>=6&&stage<2){stage++;tips=0;}
 };
 draw();
 </script>
