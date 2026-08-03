@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.4.1', build: 143, channel: 'alpha', date: '2026-08-03', codename: 'Neon Zero' };
+  VERSION = { num: '0.4.2', build: 144, channel: 'alpha', date: '2026-08-03', codename: 'Neon Zero' };
   SAVE_VER = 4;
   KEY = 'afterglow.save';
 
@@ -28,12 +28,15 @@ class Game {
   OFFLINE_STEP = 1.0;
 
   CHANGELOG = [
+    { v: '0.4.2', date: '2026-08-03', codename: 'Neon Zero', notes: [
+      'Main Stage empty-state: hires open on stage, Crew-tab CTA, no ghost idle body.',
+      'Click reliability: defer re-renders while the pointer is down so CTAs register normal presses.'
+    ]},
     { v: '0.4.1', date: '2026-08-03', codename: 'Neon Zero', notes: [
       'Bottle Service now boosts VIP Room crew income (2.2x).',
       'Offline progression applies across all short & long gaps with per-slice zero-flooring.',
       'Interactive CSS/DOM performer stage dancer with dynamic BPM motion.',
-      'UI polish: per-tab scroll preservation and fractional Hype round purchases.',
-      'Main Stage empty-state: hires open on stage, Crew-tab CTA, no ghost idle body.'
+      'UI polish: per-tab scroll preservation and fractional Hype round purchases.'
     ]},
     { v: '0.4.0', date: '2026-08-02', codename: 'Neon Zero', notes: [
       'Full visual overhaul: neon-noir club shell, Monoton / Space Grotesk / IBM Plex Mono type system.',
