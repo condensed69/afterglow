@@ -14,6 +14,8 @@ class Game {
   VERSION = { num: '0.4.0', build: 141, channel: 'alpha', date: '2026-08-02', codename: 'Neon Zero' };
   SAVE_VER = 4;
   KEY = 'afterglow.save';
+  SIM = 0.1;
+  OFFLINE_STEP = 1.0;
 
   // Dev-only tunables the Claude-artifact prop editor used to expose
   // (showDebug / simSpeed / startingCash). Fixed to their defaults now that
@@ -137,33 +139,34 @@ class Game {
     this.push(g, 'Doors open. ' + this.VERSION.codename + ' build ' + this.VERSION.build + '.', '#22d3ee');
     if (migrated) this.push(g, 'Save format changed — previous save reset.', '#ff2d78');
     if (prevVer && prevVer !== this.VERSION.num) this.push(g, 'Updated ' + prevVer + ' → ' + this.VERSION.num + '.', '#ffc94a');
-    if (offline > 60) {
+    if (offline > 0) {
       const cashBefore = Math.max(0, g.cash);
-      let remaining = offline, gain = 0;
+      let remaining = offline;
       while (remaining > 0) {
         const rates = this.rates(g);
         const cap = rates.cap;
         const left = rates.shift.len - g.shiftT;
-        const chunk = Math.min(remaining, left);
-        gain += rates.cash * chunk;
-        g.hype = Math.max(0, Math.min(cap.hype, g.hype + rates.hype * chunk));
-        g.buzz = Math.max(0, Math.min(cap.buzz, g.buzz + rates.buzz * chunk - this.buzzUse(g) * chunk));
-        g.patrons = Math.max(0, Math.min(cap.patrons, g.patrons + rates.patrons * chunk));
-        g.regulars += rates.regulars * chunk;
-        g.clout += rates.clout * chunk;
-        g.shiftT += chunk;
-        remaining -= chunk;
+        const wall = Math.min(remaining, left, this.OFFLINE_STEP);
+        const dt = wall * 0.5;
+        g.cash = Math.max(0, g.cash + rates.cash * dt);
+        g.hype = Math.max(0, Math.min(cap.hype, g.hype + rates.hype * dt));
+        g.buzz = Math.max(0, Math.min(cap.buzz, g.buzz + rates.buzz * dt - this.buzzUse(g) * dt));
+        g.patrons = Math.max(0, Math.min(cap.patrons, g.patrons + rates.patrons * dt));
+        g.regulars = Math.max(0, g.regulars + rates.regulars * dt);
+        g.clout = Math.max(0, g.clout + rates.clout * dt);
+        g.elapsed += wall;
+        g.shiftT += wall;
+        remaining -= wall;
         if (g.shiftT >= rates.shift.len) {
           g.shiftT = 0;
           g.shiftIdx = (g.shiftIdx + 1) % 4;
           if (g.shiftIdx === 0) g.night++;
         }
       }
-      gain *= 0.5;
-      if (gain < 0) gain = 0;
-      g.cash = Math.max(0, g.cash + gain);
       const reported = Math.max(0, g.cash - cashBefore);
-      this.push(g, 'Away ' + Math.round(offline / 60) + 'm — the room kept tipping: +$' + this.fmt(reported) + '.', '#ffc94a');
+      if (offline > 60) {
+        this.push(g, 'Away ' + Math.round(offline / 60) + 'm — the room kept tipping: +$' + this.fmt(reported) + '.', '#ffc94a');
+      }
     }
     g.ts = Date.now();
 
