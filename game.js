@@ -146,14 +146,14 @@ class Game {
     if (prevVer && prevVer !== this.VERSION.num) this.push(g, 'Updated ' + prevVer + ' → ' + this.VERSION.num + '.', '#ffc94a');
     if (offline > 0) {
       const cashBefore = Math.max(0, g.cash);
-      let remaining = offline, gain = 0;
+      let remaining = offline;
       while (remaining > 0) {
         const rates = this.rates(g);
         const cap = rates.cap;
         const left = rates.shift.len - g.shiftT;
         const wall = Math.min(remaining, left, this.OFFLINE_STEP);
         const dt = wall * 0.5;
-        gain += rates.cash * dt;
+        g.cash = Math.max(0, g.cash + rates.cash * dt);
         g.hype = Math.max(0, Math.min(cap.hype, g.hype + rates.hype * dt));
         g.buzz = Math.max(0, Math.min(cap.buzz, g.buzz + rates.buzz * dt - rates.buzzSpent * dt));
         g.patrons = Math.max(0, Math.min(cap.patrons, g.patrons + rates.patrons * dt));
@@ -168,8 +168,6 @@ class Game {
           if (g.shiftIdx === 0) g.night++;
         }
       }
-      if (gain < 0) gain = 0;
-      g.cash = Math.max(0, g.cash + gain);
       const reported = Math.max(0, g.cash - cashBefore);
       if (offline > 60) this.push(g, 'Away ' + Math.round(offline / 60) + 'm — the room kept tipping: +$' + this.fmt(reported) + '.', '#ffc94a');
     }
@@ -552,6 +550,7 @@ class Game {
     this.root.querySelectorAll('[data-scroll]').forEach(el => {
       this.scrollSave[el.getAttribute('data-scroll')] = [el.scrollTop, el.scrollLeft];
     });
+    const existingStage = this.root.querySelector('#performer-stage');
     const v = this.renderVals();
 
     const resourceRows = v.resources.map(r => `
@@ -794,6 +793,17 @@ class Game {
   ${changelogModal}
   ${settingsModal}
 </div>`;
+
+    const newStage = this.root.querySelector('#performer-stage');
+    if (existingStage && newStage) {
+      newStage.replaceWith(existingStage);
+      existingStage.setAttribute('style', css(v.perfStyle));
+      const perf = existingStage.querySelector('.performer');
+      if (perf && this.state.g) {
+        const onStage = this.state.g.jobs.stage > 0;
+        perf.className = (onStage ? 'performer' : 'performer idle') + (onStage && this.state.g.patrons >= 3 ? ' crowd' : '');
+      }
+    }
 
     this.root.querySelectorAll('[data-scroll]').forEach(el => {
       const saved = this.scrollSave[el.getAttribute('data-scroll')];
