@@ -163,9 +163,13 @@ class Game {
           if (g.shiftIdx === 0) g.night++;
         }
       }
-      const reported = Math.max(0, g.cash - cashBefore);
+      const delta = g.cash - cashBefore;
       if (offline > 60) {
-        this.push(g, 'Away ' + Math.round(offline / 60) + 'm — the room kept tipping: +$' + this.fmt(reported) + '.', '#ffc94a');
+        if (delta >= 0) {
+          this.push(g, 'Away ' + Math.round(offline / 60) + 'm — the room kept tipping: +$' + this.fmt(delta) + '.', '#ffc94a');
+        } else {
+          this.push(g, 'Away ' + Math.round(offline / 60) + 'm — crew wages cost: -$' + this.fmt(Math.abs(delta)) + '.', '#ff2d78');
+        }
       }
     }
     g.ts = Date.now();
@@ -184,6 +188,7 @@ class Game {
       const now = Date.now();
       let dt = Math.max(0, (now - (g.ts || now)) / 1000);
       if (dt < 0.05) dt = 0.1;
+      if (dt > 1.0) dt *= 0.5;
       this.step(Math.min(dt, 28800));
     }, 100);
     this.saver = setInterval(() => this.save('auto'), 10000);
