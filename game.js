@@ -188,8 +188,8 @@ class Game {
       const now = Date.now();
       let dt = Math.max(0, (now - (g.ts || now)) / 1000);
       if (dt < 0.05) dt = 0.1;
-      if (dt > 1.0) dt *= 0.5;
-      this.step(Math.min(dt, 28800));
+      if (dt > 1.0) { this.step(Math.min(dt, 28800), 0.5); }
+      else this.step(Math.min(dt, 28800));
     }, 100);
     this.saver = setInterval(() => this.save('auto'), 10000);
     this.forceUpdate();
@@ -257,7 +257,7 @@ class Game {
     return Math.min(g.buzz, 0.8) * (g.r.promo ? 1.6 : 1);
   }
 
-  step(dt) {
+  step(dt, rateMult = 1) {
     const g = this.state.g;
     if (!g) return;
     dt *= (this.props.simSpeed ?? 1);
@@ -269,12 +269,12 @@ class Game {
       const left = r.shift.len - g.shiftT;
       const chunk = Math.min(remaining, left);
       const chatty = remaining <= 0.5;
-      g.cash = Math.max(0, g.cash + r.cash * chunk);
-      g.hype = Math.max(0, Math.min(cap.hype, g.hype + r.hype * chunk));
-      g.buzz = Math.max(0, Math.min(cap.buzz, g.buzz + r.buzz * chunk - this.buzzUse(g) * chunk));
-      g.patrons = Math.max(0, Math.min(cap.patrons, g.patrons + r.patrons * chunk));
-      g.regulars += r.regulars * chunk;
-      g.clout += r.clout * chunk;
+      g.cash = Math.max(0, g.cash + r.cash * chunk * rateMult);
+      g.hype = Math.max(0, Math.min(cap.hype, g.hype + r.hype * chunk * rateMult));
+      g.buzz = Math.max(0, Math.min(cap.buzz, g.buzz + r.buzz * chunk * rateMult - this.buzzUse(g) * chunk * rateMult));
+      g.patrons = Math.max(0, Math.min(cap.patrons, g.patrons + r.patrons * chunk * rateMult));
+      g.regulars += r.regulars * chunk * rateMult;
+      g.clout += r.clout * chunk * rateMult;
       g.elapsed += chunk;
       g.shiftT += chunk;
       remaining -= chunk;
