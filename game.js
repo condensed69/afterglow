@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.4.1', build: 143, channel: 'alpha', date: '2026-08-03', codename: 'Neon Zero' };
+  VERSION = { num: '0.4.2', build: 144, channel: 'alpha', date: '2026-08-03', codename: 'Neon Zero' };
   SAVE_VER = 4;
   KEY = 'afterglow.save';
 
@@ -28,6 +28,10 @@ class Game {
   OFFLINE_STEP = 1.0;
 
   CHANGELOG = [
+    { v: '0.4.2', date: '2026-08-03', codename: 'Neon Zero', notes: [
+      'Main Stage empty-state: hires open on stage, Crew-tab CTA, no ghost idle body.',
+      'Click reliability: defer re-renders while the pointer is down so CTAs register normal presses.'
+    ]},
     { v: '0.4.1', date: '2026-08-03', codename: 'Neon Zero', notes: [
       'Bottle Service now boosts VIP Room crew income (2.2x).',
       'Offline progression applies across all short & long gaps with per-slice zero-flooring.',
@@ -195,6 +199,20 @@ class Game {
     } catch (e) { migrated = true; }
     if (!g) g = this.fresh();
     g.jobs = g.jobs || { stage: 0, vipjob: 0, floor: 0, off: 0 };
+    g.crew = Math.max(0, g.crew | 0);
+    // Keep assignment totals honest after old saves / partial migrations.
+    for (const k of ['stage', 'vipjob', 'floor', 'off']) g.jobs[k] = Math.max(0, g.jobs[k] | 0);
+    let jobSum = g.jobs.stage + g.jobs.vipjob + g.jobs.floor + g.jobs.off;
+    if (jobSum < g.crew) g.jobs.off += g.crew - jobSum;
+    else if (jobSum > g.crew) {
+      let over = jobSum - g.crew;
+      for (const k of ['off', 'floor', 'vipjob', 'stage']) {
+        const take = Math.min(g.jobs[k], over);
+        g.jobs[k] -= take;
+        over -= take;
+        if (!over) break;
+      }
+    }
     g.log = [];
 
     const offline = g.ts ? Math.min((Date.now() - g.ts) / 1000, 28800) : 0;
@@ -396,8 +414,9 @@ class Game {
     if (g.cash < price) return;
     g.cash -= price;
     g.crew++;
-    g.jobs.off++;
-    this.push(g, 'Hired crew member #' + g.crew + ' for $' + this.fmt(price) + '.', '#ff2d78');
+    // New hires open on Main Stage so the room doesn't stay empty after a hire.
+    g.jobs.stage++;
+    this.push(g, 'Hired crew member #' + g.crew + ' for $' + this.fmt(price) + ' — on Main Stage.', '#ff2d78');
     this.forceUpdate();
   }
   moveJob(id, d) {
@@ -504,10 +523,10 @@ class Game {
           wrapStyle: cardWrap(true), btnStyle: btn(ok), act: () => this.buyBuilding(d) };
       });
     } else if (this.state.tab === 'crew') {
-      tabHint = 'Crew cost a wage every second. Park them Off Shift when the room is dead.';
+      tabHint = 'Hire dancers, then assign them to Main Stage (Hype), VIP, or Floor. Wages tick every second — park extras Off Shift when the room is dead.';
       const price = Math.floor(250 * Math.pow(1.38, g.crew));
       const room = g.crew < cap.crew, ok = room && g.cash >= price;
-      cards = [{ name: 'Hire Crew', desc: 'Dancers, bartenders, hosts. Assign them below. Capacity comes from Dressing Rooms.',
+      cards = [{ name: 'Hire Crew', desc: 'Dancers, bartenders, hosts. New hires start on Main Stage — reassign below. Capacity comes from Dressing Rooms.',
         owned: g.crew + ' / ' + cap.crew, btn: room ? 'Hire $' + this.fmt(price) : 'At capacity',
         meta: room ? (ok ? 'affordable' : 'need $' + this.fmt(price - g.cash)) : 'build a Dressing Room',
         locked: !ok, wrapStyle: cardWrap(true), btnStyle: btn(ok), act: () => this.hireCrew() }];
@@ -566,7 +585,13 @@ class Game {
         transition: 'opacity .4s linear'
       },
       dancerHTML: this.dancerHTML(g, cap),
-      stageLine: g.jobs.stage > 0 ? g.jobs.stage + ' on rotation' : 'nobody on stage',
+      stageLine: g.jobs.stage > 0
+        ? g.jobs.stage + ' on rotation'
+        : (g.crew === 0
+          ? 'hire crew to open the stage'
+          : (g.jobs.off > 0 ? 'assign crew · Crew tab' : 'nobody on stage')),
+      // Empty-stage badge jumps to Crew so the next action is one click away.
+      stageLineAct: g.jobs.stage > 0 ? null : () => this.setState({ tab: 'crew' }),
       energyPct: Math.round(g.hype / cap.hype * 100) + '%',
       clickValue: '$' + this.fmt(clickVal),
       workCrowd: () => { g.cash += clickVal; g.buzz = Math.min(cap.buzz, g.buzz + 0.4); this.forceUpdate(); },
@@ -593,13 +618,18 @@ class Game {
 
   dancerHTML(g, cap) {
     const onStage = g.jobs.stage > 0;
-    const cls = onStage ? 'performer' : 'performer idle';
-    const crowd = onStage && g.patrons >= 3 ? ' crowd' : '';
+    // Empty stage: bare pole only. A grayed-out idle body read as "someone is
+    // stuck" while the badge said nobody — confusing. Body appears once crew
+    // is actually assigned to Main Stage.
+    if (!onStage) {
+      return '<div class="performer empty"><div class="pole"></div></div>';
+    }
+    const crowd = g.patrons >= 3 ? ' crowd' : '';
     const line = '<div class="pbody"><div class="phip"></div><div class="ptorso"></div>' +
       '<div class="pneck"></div><div class="phead"><div class="phair"></div></div>' +
       '<div class="parm pole"></div><div class="parm free"></div>' +
       '<div class="pleg l"></div><div class="pleg r"></div></div>';
-    return '<div class="' + cls + crowd + '"><div class="pole"></div>' + line + '</div>';
+    return '<div class="performer' + crowd + '"><div class="pole"></div>' + line + '</div>';
   }
 
   render() {
@@ -806,7 +836,9 @@ class Game {
 
         <div style="position:absolute;left:14px;top:14px;display:flex;flex-direction:column;gap:5px">
           <div style="font-size:9px;letter-spacing:2.6px;text-transform:uppercase;color:#7b5f90;font-weight:700">Main Stage</div>
-          <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#ff2d78">${v.stageLine}</div>
+          ${v.stageLineAct
+            ? `<button data-h="${this.bind(v.stageLineAct)}" class="hv-pink" title="Open Crew tab" style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#ff2d78;background:transparent;border:0;padding:0;cursor:pointer;text-align:left;text-decoration:underline;text-underline-offset:3px">${v.stageLine}</button>`
+            : `<div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#ff2d78">${v.stageLine}</div>`}
         </div>
 
         <div style="position:absolute;right:14px;top:14px;text-align:right">
@@ -856,10 +888,19 @@ class Game {
     if (existingStage && newStage) {
       newStage.replaceWith(existingStage);
       existingStage.setAttribute('style', css(v.perfStyle));
-      const perf = existingStage.querySelector('.performer');
-      if (perf && this.state.g) {
+      // Swap performer markup when occupancy flips so we don't keep a stale
+      // body (or empty pole) after hire/assign. Class-only updates cover the
+      // common on-stage crowd/energy path without restarting CSS animations.
+      if (this.state.g) {
         const onStage = this.state.g.jobs.stage > 0;
-        perf.className = (onStage ? 'performer' : 'performer idle') + (onStage && this.state.g.patrons >= 3 ? ' crowd' : '');
+        const perf = existingStage.querySelector('.performer');
+        const wantEmpty = !onStage;
+        const isEmpty = perf && perf.classList.contains('empty');
+        if (!perf || isEmpty !== wantEmpty) {
+          existingStage.innerHTML = v.dancerHTML;
+        } else if (perf) {
+          perf.className = 'performer' + (onStage && this.state.g.patrons >= 3 ? ' crowd' : '');
+        }
       }
     }
 
