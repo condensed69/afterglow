@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.4.0', build: 141, channel: 'alpha', date: '2026-08-02', codename: 'Neon Zero' };
+  VERSION = { num: '0.4.0', build: 142, channel: 'alpha', date: '2026-08-03', codename: 'Neon Zero' };
   SAVE_VER = 4;
   KEY = 'afterglow.save';
 
@@ -22,6 +22,7 @@ class Game {
 
   CHANGELOG = [
     { v: '0.4.0', date: '2026-08-02', codename: 'Neon Zero', notes: [
+      'Bottle Service now boosts VIP Room crew income (2.2x).',
       'Full visual overhaul: neon-noir club shell, Monoton / Space Grotesk / IBM Plex Mono type system.',
       'Three-column idle layout — resource ledger, stage, systems panel — replacing the single canvas + button strip.',
       'Strict version tracker: header badge, footer stamp, in-game changelog, save-format versioning with migration wipe.',
