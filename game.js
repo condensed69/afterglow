@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.4.0', build: 141, channel: 'alpha', date: '2026-08-02', codename: 'Neon Zero' };
+  VERSION = { num: '0.4.0', build: 143, channel: 'alpha', date: '2026-08-03', codename: 'Neon Zero' };
   SAVE_VER = 4;
   KEY = 'afterglow.save';
 
@@ -28,7 +28,11 @@ class Game {
   OFFLINE_STEP = 1.0;
 
   CHANGELOG = [
-    { v: '0.4.0', date: '2026-08-02', codename: 'Neon Zero', notes: [
+    { v: '0.4.0', date: '2026-08-03', codename: 'Neon Zero', notes: [
+      'Bottle Service now boosts VIP Room crew income (2.2x).',
+      'Offline progression applies across all short & long gaps with per-slice zero-flooring.',
+      'Interactive CSS/DOM performer stage dancer with dynamic BPM motion.',
+      'UI polish: per-tab scroll preservation and fractional Hype round purchases.',
       'Full visual overhaul: neon-noir club shell, Monoton / Space Grotesk / IBM Plex Mono type system.',
       'Three-column idle layout — resource ledger, stage, systems panel — replacing the single canvas + button strip.',
       'Strict version tracker: header badge, footer stamp, in-game changelog, save-format versioning with migration wipe.',
@@ -36,8 +40,7 @@ class Game {
       'Crew system: hire dancers, assign them to Stage / VIP / Floor / Off.',
       'Four-phase shift cycle (Early, Peak, Last Call, After Hours) with per-phase multipliers.',
       'Research tree spending Clout; upgrade tier gated behind owned buildings.',
-      'Autosave every 10s, offline progress up to 8h at 50% rate, export save to clipboard.',
-      'Performer art is a marked render target — drop your own canvas at #performer-stage.'
+      'Autosave every 10s, offline progress up to 8h at 50% rate, export save to clipboard.'
     ]},
     { v: '0.3.0', date: '2026-07-18', codename: 'Tip Jar', notes: [
       'Canvas prototype: single performer, three outfit stages, drag-to-spin.',
