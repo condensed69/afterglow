@@ -20,6 +20,13 @@ class Game {
   // this runs as a plain page instead of inside that editor.
   props = { showDebug: false, simSpeed: 1, startingCash: 20 };
 
+  // Max seconds of simulated time per catch-up slice (live tick and offline).
+  // Re-reading rates() each slice keeps a resumed window from freezing rates
+  // across a whole shift. Offline additionally chunks to this many wall-clock
+  // seconds per step so long-away windows don't drift from real elapsed time.
+  SIM = 0.1;
+  OFFLINE_STEP = 1.0;
+
   CHANGELOG = [
     { v: '0.4.0', date: '2026-08-02', codename: 'Neon Zero', notes: [
       'Full visual overhaul: neon-noir club shell, Monoton / Space Grotesk / IBM Plex Mono type system.',
@@ -137,33 +144,32 @@ class Game {
     this.push(g, 'Doors open. ' + this.VERSION.codename + ' build ' + this.VERSION.build + '.', '#22d3ee');
     if (migrated) this.push(g, 'Save format changed — previous save reset.', '#ff2d78');
     if (prevVer && prevVer !== this.VERSION.num) this.push(g, 'Updated ' + prevVer + ' → ' + this.VERSION.num + '.', '#ffc94a');
-    if (offline > 60) {
+    if (offline > 0) {
       const cashBefore = Math.max(0, g.cash);
-      let remaining = offline, gain = 0;
+      let remaining = offline;
       while (remaining > 0) {
         const rates = this.rates(g);
         const cap = rates.cap;
         const left = rates.shift.len - g.shiftT;
-        const chunk = Math.min(remaining, left);
-        gain += rates.cash * chunk;
-        g.hype = Math.max(0, Math.min(cap.hype, g.hype + rates.hype * chunk));
-        g.buzz = Math.max(0, Math.min(cap.buzz, g.buzz + rates.buzz * chunk - this.buzzUse(g) * chunk));
-        g.patrons = Math.max(0, Math.min(cap.patrons, g.patrons + rates.patrons * chunk));
-        g.regulars += rates.regulars * chunk;
-        g.clout += rates.clout * chunk;
-        g.shiftT += chunk;
-        remaining -= chunk;
+        const wall = Math.min(remaining, left, this.OFFLINE_STEP);
+        const dt = wall * 0.5;
+        g.cash = Math.max(0, g.cash + rates.cash * dt);
+        g.hype = Math.max(0, Math.min(cap.hype, g.hype + rates.hype * dt));
+        g.buzz = Math.max(0, Math.min(cap.buzz, g.buzz + rates.buzz * dt - rates.buzzSpent * dt));
+        g.patrons = Math.max(0, Math.min(cap.patrons, g.patrons + rates.patrons * dt));
+        g.regulars = Math.max(0, g.regulars + rates.regulars * dt);
+        g.clout = Math.max(0, g.clout + rates.clout * dt);
+        g.shiftT += wall;
+        g.elapsed += wall;
+        remaining -= wall;
         if (g.shiftT >= rates.shift.len) {
           g.shiftT = 0;
           g.shiftIdx = (g.shiftIdx + 1) % 4;
           if (g.shiftIdx === 0) g.night++;
         }
       }
-      gain *= 0.5;
-      if (gain < 0) gain = 0;
-      g.cash = Math.max(0, g.cash + gain);
       const reported = Math.max(0, g.cash - cashBefore);
-      this.push(g, 'Away ' + Math.round(offline / 60) + 'm — the room kept tipping: +$' + this.fmt(reported) + '.', '#ffc94a');
+      if (offline > 60) this.push(g, 'Away ' + Math.round(offline / 60) + 'm — the room kept tipping: +$' + this.fmt(reported) + '.', '#ffc94a');
     }
     g.ts = Date.now();
 
@@ -223,11 +229,12 @@ class Game {
     const hypeMult = 1 + g.hype / 140;
     const crewMult = g.u.residency ? 1.4 : 1;
     const cashMult = (g.u.twodrink ? 1.35 : 1) * hypeMult * sm;
+    const bottle = g.u.bottle ? 2.2 : 1;
 
     const railCap = g.b.rail * 6;
     let cash = (0.08 + Math.min(g.patrons, railCap) * 0.05 + g.b.bar * 0.30) * cashMult;
-    cash += g.b.vip * 0.9 * (g.u.bottle ? 2.2 : 1) * cashMult;
-    cash += g.jobs.vipjob * 1.10 * crewMult * cashMult;
+    cash += g.b.vip * 0.9 * bottle * cashMult;
+    cash += g.jobs.vipjob * 1.10 * crewMult * bottle * cashMult;
     cash += g.patrons * 0.012 * cashMult;
     if (g.r.loop) cash += g.regulars * 0.04 * cashMult;
     const wage = (g.crew - g.jobs.off) * 0.22 * (g.r.payroll ? 0.6 : 1);
@@ -238,15 +245,16 @@ class Game {
     const hype = hypeGain - decay;
 
     const buzz = (g.b.marquee * 0.10 + g.b.flyers * 0.06 + g.jobs.floor * 0.05 * crewMult) * (g.u.photog ? 1.5 : 1);
-    const pull = Math.min(g.buzz, 0.8) * (g.r.promo ? 1.6 : 1) * (1 + g.hype / 200);
-    const patrons = Math.min(pull, Math.max(0, cap.patrons - g.patrons)) - g.patrons * 0.02;
+    const promoMult = g.r.promo ? 1.6 : 1;
+    const basis = (g.buzz > 0 ? Math.min(g.buzz, 0.8) : 0) * promoMult;
+    const pull = basis * (1 + g.hype / 200);
+    const space = Math.max(0, cap.patrons - g.patrons);
+    const admitted = Math.min(pull, space);
+    const buzzSpent = basis > 0 && pull > 0 ? basis * (admitted / pull) : 0;
+    const patrons = admitted - g.patrons * 0.02;
     const regulars = g.patrons * 0.0007 * (1 + g.b.vip * 0.18) * sm;
     const clout = g.regulars * 0.0016;
-    return { cash, hype, buzz, patrons, regulars, clout, wage, cap, shift, sm, pull };
-  }
-
-  buzzUse(g) {
-    return Math.min(g.buzz, 0.8) * (g.r.promo ? 1.6 : 1);
+    return { cash, hype, buzz, patrons, regulars, clout, wage, cap, shift, sm, pull, buzzSpent };
   }
 
   step(dt) {
@@ -259,11 +267,11 @@ class Game {
       const r = this.rates(g);
       const cap = r.cap;
       const left = r.shift.len - g.shiftT;
-      const chunk = Math.min(remaining, left);
+      const chunk = Math.min(remaining, left, this.SIM);
       const chatty = remaining <= 0.5;
       g.cash = Math.max(0, g.cash + r.cash * chunk);
       g.hype = Math.max(0, Math.min(cap.hype, g.hype + r.hype * chunk));
-      g.buzz = Math.max(0, Math.min(cap.buzz, g.buzz + r.buzz * chunk - this.buzzUse(g) * chunk));
+      g.buzz = Math.max(0, Math.min(cap.buzz, g.buzz + r.buzz * chunk - r.buzzSpent * chunk));
       g.patrons = Math.max(0, Math.min(cap.patrons, g.patrons + r.patrons * chunk));
       g.regulars += r.regulars * chunk;
       g.clout += r.clout * chunk;
@@ -390,7 +398,7 @@ class Game {
     const resources = [
       { name: 'Cash', val: '$' + this.fmt(g.cash), rate: sign(r.cash), pct: 100, color: '#ffc94a', note: r.wage > 0 ? 'wages −$' + this.fmt(r.wage) + '/s' : 'no payroll yet' },
       { name: 'Hype', val: this.fmt(g.hype), rate: sign(r.hype), pct: g.hype / cap.hype * 100, color: '#ff2d78', note: 'cap ' + cap.hype + ' · x' + (1 + g.hype / 140).toFixed(2) + ' income' },
-      { name: 'Buzz', val: this.fmt(g.buzz), rate: sign(r.buzz - this.buzzUse(g)), pct: g.buzz / cap.buzz * 100, color: '#22d3ee', note: 'cap ' + cap.buzz + ' · pulls patrons in' },
+      { name: 'Buzz', val: this.fmt(g.buzz), rate: sign(r.buzz - r.buzzSpent), pct: g.buzz / cap.buzz * 100, color: '#22d3ee', note: 'cap ' + cap.buzz + ' · pulls patrons in' },
       { name: 'Patrons', val: this.fmt(g.patrons), rate: sign(r.patrons), pct: g.patrons / cap.patrons * 100, color: '#a855f7', note: 'floor cap ' + cap.patrons },
       { name: 'Regulars', val: this.fmt(g.regulars), rate: sign(r.regulars), pct: Math.min(100, g.regulars), color: '#4ade80', note: g.r.loop ? '$0.04/s each' : 'unlock Reputation Loop' },
       { name: 'Clout', val: this.fmt(g.clout), rate: sign(r.clout), pct: Math.min(100, g.clout * 2), color: '#e879f9', note: 'spent on research' }
@@ -478,7 +486,9 @@ class Game {
 
     const clickVal = 4 + g.b.rail * 1.5 + g.hype * 0.12;
     const roundPrice = Math.floor(40 + g.patrons * 6);
-    const roundOk = g.cash >= roundPrice;
+    const hypeRoom = Math.max(0, cap.hype - g.hype);
+    const roundGain = Math.min(14, hypeRoom);
+    const roundOk = g.cash >= roundPrice && roundGain > 0;
 
     return {
       ...base,
@@ -492,10 +502,12 @@ class Game {
         transform: 'translateX(-50%) scale(' + Math.max(0.42, Math.min(1, (this.state.stageH * 0.78 - 38) / 260)).toFixed(3) + ')',
         width: '190px', height: '260px',
         ['--bpm']: Math.max(0.55, 2.3 - (g.hype / cap.hype) * 1.6).toFixed(2) + 's',
+        ['--energy']: Math.round(g.hype / cap.hype * 100) + '%',
         opacity: g.jobs.stage > 0 ? 1 : 0.55,
         filter: g.jobs.stage > 0 ? 'none' : 'grayscale(.6)',
         transition: 'opacity .4s linear'
       },
+      dancerHTML: this.dancerHTML(g, cap),
       stageLine: g.jobs.stage > 0 ? g.jobs.stage + ' on rotation' : 'nobody on stage',
       energyPct: Math.round(g.hype / cap.hype * 100) + '%',
       clickValue: '$' + this.fmt(clickVal),
@@ -507,7 +519,7 @@ class Game {
         borderRadius: '8px', color: roundOk ? '#e7d8f2' : '#4a3860', padding: '13px 16px',
         cursor: roundOk ? 'pointer' : 'not-allowed', fontSize: '12px', fontWeight: 700, minWidth: '190px'
       },
-      buyRound: () => { if (g.cash < roundPrice) return; g.cash -= roundPrice; g.hype = Math.min(cap.hype, g.hype + 14); this.push(g, 'Bought the room a round. +14 Hype.', '#ffc94a'); this.forceUpdate(); },
+      buyRound: () => { if (!roundOk) return; g.cash -= roundPrice; g.hype = Math.max(0, Math.min(cap.hype, g.hype + 14)); this.push(g, 'Bought the room a round. +' + this.fmt(roundGain) + ' Hype.', '#ffc94a'); this.forceUpdate(); },
       debugLine: (this.props.showDebug ?? false) ? 'cash ' + r.cash.toFixed(3) + '/s · hype ' + r.hype.toFixed(3) + '/s · buzz ' + r.buzz.toFixed(3) + '/s · pull ' + r.pull.toFixed(2) : ''
     };
   }
@@ -521,8 +533,24 @@ class Game {
     return this.handlers.length - 1;
   }
 
+  dancerHTML(g, cap) {
+    const onStage = g.jobs.stage > 0;
+    const cls = onStage ? 'performer' : 'performer idle';
+    const crowd = onStage && g.patrons >= 3 ? ' crowd' : '';
+    const line = '<div class="pbody"><div class="phip"></div><div class="ptorso"></div>' +
+      '<div class="pneck"></div><div class="phead"><div class="phair"></div></div>' +
+      '<div class="parm pole"></div><div class="parm free"></div>' +
+      '<div class="pleg l"></div><div class="pleg r"></div></div>';
+    return '<div class="' + cls + crowd + '"><div class="pole"></div>' + line + '</div>';
+  }
+
   render() {
     this.handlers = [];
+    if (!this.scrollSave) this.scrollSave = {};
+    this.root.querySelectorAll('[data-scroll]').forEach(el => {
+      this.scrollSave[el.getAttribute('data-scroll')] = [el.scrollTop, el.scrollLeft];
+    });
+    const existingStage = this.root.querySelector('#performer-stage');
     const v = this.renderVals();
 
     const resourceRows = v.resources.map(r => `
@@ -669,9 +697,9 @@ class Game {
     </div>
   </header>
 
-  <main style="display:grid;grid-template-columns:262px minmax(420px,1fr) 352px;min-height:0;overflow:auto">
+  <main data-scroll="main" style="display:grid;grid-template-columns:262px minmax(420px,1fr) 352px;min-height:0;overflow:auto">
 
-    <aside style="border-right:1px solid #2a1738;background:#0a0611;overflow-y:auto;padding:14px 12px">
+    <aside data-scroll="ledger" style="border-right:1px solid #2a1738;background:#0a0611;overflow-y:auto;padding:14px 12px">
       <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700;margin-bottom:10px">Ledger</div>
       <div style="display:flex;flex-direction:column;gap:9px">${resourceRows}</div>
 
@@ -715,7 +743,7 @@ class Game {
         </div>
 
         <div id="performer-stage" style="${css(v.perfStyle)}">
-          <!-- Reserved mount point for a performer canvas (210x238). No DOM performer art here. -->
+          ${v.dancerHTML}
         </div>
 
         <div style="position:absolute;left:14px;top:14px;display:flex;flex-direction:column;gap:5px">
@@ -734,7 +762,7 @@ class Game {
         <button data-h="${this.bind(v.buyRound)}" ${v.roundLocked ? 'disabled' : ''} style="${css(v.roundStyle)}">${v.roundLabel}</button>
       </div>
 
-      <div style="background:#080510;overflow-y:auto;padding:10px 14px">
+      <div data-scroll="log" style="background:#080510;overflow-y:auto;padding:10px 14px">
         <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700;margin-bottom:7px">Night log</div>
         <div style="display:flex;flex-direction:column;gap:3px">${logRows}</div>
       </div>
@@ -743,7 +771,7 @@ class Game {
     <aside style="border-left:1px solid #2a1738;background:#0a0611;display:grid;grid-template-rows:auto minmax(0,1fr);min-height:0">
       <div style="display:flex;border-bottom:1px solid #2a1738;background:#0d0814">${tabRows}</div>
 
-      <div style="overflow-y:auto;padding:12px">
+      <div data-scroll="sys_${this.state.tab}" style="overflow-y:auto;padding:12px">
         <div style="font-size:10.5px;color:#6f5885;line-height:1.5;margin-bottom:11px">${v.tabHint}</div>
 
         <div style="display:flex;flex-direction:column;gap:8px">${cardRows}</div>
@@ -766,6 +794,21 @@ class Game {
   ${settingsModal}
 </div>`;
 
+    const newStage = this.root.querySelector('#performer-stage');
+    if (existingStage && newStage) {
+      newStage.replaceWith(existingStage);
+      existingStage.setAttribute('style', css(v.perfStyle));
+      const perf = existingStage.querySelector('.performer');
+      if (perf && this.state.g) {
+        const onStage = this.state.g.jobs.stage > 0;
+        perf.className = (onStage ? 'performer' : 'performer idle') + (onStage && this.state.g.patrons >= 3 ? ' crowd' : '');
+      }
+    }
+
+    this.root.querySelectorAll('[data-scroll]').forEach(el => {
+      const saved = this.scrollSave[el.getAttribute('data-scroll')];
+      if (saved) { el.scrollTop = saved[0]; el.scrollLeft = saved[1]; }
+    });
     this.root.querySelectorAll('[data-h]').forEach(el => {
       const fn = this.handlers[Number(el.getAttribute('data-h'))];
       if (fn) el.onclick = fn;
