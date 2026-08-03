@@ -224,10 +224,11 @@ class Game {
     const crewMult = g.u.residency ? 1.4 : 1;
     const cashMult = (g.u.twodrink ? 1.35 : 1) * hypeMult * sm;
 
+    const bottle = g.u.bottle ? 2.2 : 1;
     const railCap = g.b.rail * 6;
     let cash = (0.08 + Math.min(g.patrons, railCap) * 0.05 + g.b.bar * 0.30) * cashMult;
-    cash += g.b.vip * 0.9 * (g.u.bottle ? 2.2 : 1) * cashMult;
-    cash += g.jobs.vipjob * 1.10 * crewMult * cashMult;
+    cash += g.b.vip * 0.9 * bottle * cashMult;
+    cash += g.jobs.vipjob * 1.10 * crewMult * bottle * cashMult;
     cash += g.patrons * 0.012 * cashMult;
     if (g.r.loop) cash += g.regulars * 0.04 * cashMult;
     const wage = (g.crew - g.jobs.off) * 0.22 * (g.r.payroll ? 0.6 : 1);
@@ -775,3 +776,4 @@ class Game {
 
 const game = new Game(document.getElementById('app'));
 game.init();
+window.__game = game;
