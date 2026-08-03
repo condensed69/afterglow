@@ -46,6 +46,8 @@ a:hover { color: #67e8f9; }
 .performer { position: absolute; left: 50%; bottom: 0; width: 210px; height: 238px; transform: translateX(-50%); filter: drop-shadow(0 0 14px rgba(255,45,120,.35)); }
 .performer.idle, .performer.idle * { animation-play-state: paused; }
 .performer.idle { opacity: .55; }
+/* Bare pole while Main Stage has no assigned crew */
+.performer.empty { opacity: .72; filter: drop-shadow(0 0 10px rgba(34,211,238,.28)); }
 .performer.crowd { filter: drop-shadow(0 0 22px rgba(255,45,120,.55)); }
 .performer .pole { position: absolute; right: 26px; top: 0; width: 5px; height: 238px; border-radius: 3px; background: linear-gradient(180deg, #22d3ee, #0e7f96); box-shadow: 0 0 10px rgba(34,211,238,.5); }
 .performer .ptorso { position: absolute; left: 50%; top: 64px; width: 46px; height: 84px; margin-left: -23px; border-radius: 10px 10px 14px 14px; background: linear-gradient(180deg, #ff3d85, #a3134a); box-shadow: 0 0 12px rgba(255,45,120,.45); }
