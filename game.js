@@ -490,7 +490,7 @@ class Game {
     const roundPrice = Math.floor(40 + g.patrons * 6);
     const hypeRoom = Math.max(0, cap.hype - g.hype);
     const roundGain = Math.min(14, hypeRoom);
-    const roundOk = g.cash >= roundPrice && roundGain >= 1;
+    const roundOk = g.cash >= roundPrice && roundGain > 0;
 
     return {
       ...base,
@@ -548,9 +548,9 @@ class Game {
 
   render() {
     this.handlers = [];
-    const scrollSave = {};
+    if (!this.scrollSave) this.scrollSave = {};
     this.root.querySelectorAll('[data-scroll]').forEach(el => {
-      scrollSave[el.getAttribute('data-scroll')] = [el.scrollTop, el.scrollLeft];
+      this.scrollSave[el.getAttribute('data-scroll')] = [el.scrollTop, el.scrollLeft];
     });
     const v = this.renderVals();
 
@@ -772,7 +772,7 @@ class Game {
     <aside style="border-left:1px solid #2a1738;background:#0a0611;display:grid;grid-template-rows:auto minmax(0,1fr);min-height:0">
       <div style="display:flex;border-bottom:1px solid #2a1738;background:#0d0814">${tabRows}</div>
 
-      <div data-scroll="sys" style="overflow-y:auto;padding:12px">
+      <div data-scroll="sys_${this.state.tab}" style="overflow-y:auto;padding:12px">
         <div style="font-size:10.5px;color:#6f5885;line-height:1.5;margin-bottom:11px">${v.tabHint}</div>
 
         <div style="display:flex;flex-direction:column;gap:8px">${cardRows}</div>
@@ -796,7 +796,7 @@ class Game {
 </div>`;
 
     this.root.querySelectorAll('[data-scroll]').forEach(el => {
-      const saved = scrollSave[el.getAttribute('data-scroll')];
+      const saved = this.scrollSave[el.getAttribute('data-scroll')];
       if (saved) { el.scrollTop = saved[0]; el.scrollLeft = saved[1]; }
     });
     this.root.querySelectorAll('[data-h]').forEach(el => {
