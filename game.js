@@ -107,6 +107,53 @@ class Game {
     this.root = root;
     this.state.g = this.fresh();
     this.handlers = [];
+    // Full innerHTML re-renders replace every button node. If that happens
+    // between mousedown and mouseup the browser cancels the click, so pink
+    // CTAs (and every other button) feel dead under a normal press. Defer
+    // paints while the pointer is down, then catch up after the click.
+    this.pointerDown = false;
+    this.needsRender = false;
+    this.pointerHoldTimer = null;
+    const flush = () => {
+      if (this.pointerHoldTimer) {
+        clearTimeout(this.pointerHoldTimer);
+        this.pointerHoldTimer = null;
+      }
+      this.pointerDown = false;
+      if (this.needsRender) {
+        this.needsRender = false;
+        this.render();
+      }
+    };
+    const armFlush = (ms) => {
+      if (this.pointerHoldTimer) clearTimeout(this.pointerHoldTimer);
+      this.pointerHoldTimer = setTimeout(flush, ms);
+    };
+    const hold = () => {
+      if (this.pointerHoldTimer) clearTimeout(this.pointerHoldTimer);
+      this.pointerDown = true;
+      // Failsafe: never freeze the UI if mouseup/click is lost.
+      this.pointerHoldTimer = setTimeout(flush, 1500);
+    };
+    // Delegate clicks so handlers stay valid across the render cycle.
+    this.root.addEventListener('click', (e) => {
+      const el = e.target.closest && e.target.closest('[data-h]');
+      if (!el || el.disabled || !this.root.contains(el)) return;
+      const fn = this.handlers[Number(el.getAttribute('data-h'))];
+      if (fn) fn(e);
+    });
+    // Prefer flushing after click (bubble). mouseup alone is only a fallback
+    // because some paths (CDP, trackpads) deliver click on a later task.
+    window.addEventListener('click', () => {
+      if (this.pointerDown || this.needsRender) armFlush(0);
+    }, false);
+    window.addEventListener('pointerdown', hold, true);
+    window.addEventListener('mousedown', hold, true);
+    window.addEventListener('pointerup', () => { if (this.pointerDown) armFlush(75); }, true);
+    window.addEventListener('mouseup', () => { if (this.pointerDown) armFlush(75); }, true);
+    window.addEventListener('pointercancel', () => armFlush(0), true);
+    window.addEventListener('dragstart', () => armFlush(0), true);
+    window.addEventListener('blur', () => armFlush(0));
   }
 
   fresh() {
@@ -128,7 +175,13 @@ class Game {
     if (cb) cb();
   }
 
-  forceUpdate() { this.render(); }
+  forceUpdate() {
+    if (this.pointerDown) {
+      this.needsRender = true;
+      return;
+    }
+    this.render();
+  }
 
   init() {
     let g = null, migrated = false, prevVer = null;
@@ -814,10 +867,8 @@ class Game {
       const saved = this.scrollSave[el.getAttribute('data-scroll')];
       if (saved) { el.scrollTop = saved[0]; el.scrollLeft = saved[1]; }
     });
-    this.root.querySelectorAll('[data-h]').forEach(el => {
-      const fn = this.handlers[Number(el.getAttribute('data-h'))];
-      if (fn) el.onclick = fn;
-    });
+    // Clicks are handled via delegation on this.root (see constructor).
+    // data-h indices still index into this.handlers rebuilt each render.
   }
 }
 
