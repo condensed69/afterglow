@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.6.0', build: 164, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.6.0', build: 165, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 5;
   KEY = 'afterglow.save';
 
@@ -46,9 +46,11 @@ class Game {
       g.clicks = 0;
       g.rounds = 0;
       const b = g.b || {};
-      // v4 never tracked clicks; clubs past the opener clearly finished the click tutorial.
-      if (g.crew > 0 || g.patrons > 0 || g.regulars > 0 ||
-          Object.values(b).some(n => n > 0)) {
+      // v4 never tracked clicks. Infer the click tutorial only from explicit
+      // progression (structures / crew) — not passive walk-in patrons (0.02/s)
+      // or regulars that mint from patrons alone. A nearly untouched save with
+      // walk-ins must still see goal 1 and its $15 reward.
+      if (g.crew > 0 || Object.values(b).some(n => n > 0)) {
         g.clicks = 5;
       }
       for (const goal of this.GOALS) {
@@ -67,6 +69,8 @@ class Game {
       'Study/builtin goals check only catalog research/upgrades (orphan r.franchise does not complete study).',
       'Init persists migrate + offline catch-up immediately so a reload cannot double-count elapsed time.',
       'Init claims the offline window (persist + refresh ts) before catch-up; on setItem failure skip catch-up and surface save failed — no silent double-count on reload.',
+      'Init claim only when fresh/wiped, migrated, or offline >15s — avoids stealing a live tab via storage on open.',
+      'v4→v5 clicks backfill uses structures/crew only (not passive patrons/regulars) so walk-in saves keep goal 1.',
       'Current-format (v5) saves require sane goals/clicks/rounds; missing fields fail closed (v4 still migrates).',
       'Goal checks after step, catch-up, and player actions so offline progress can complete goals.',
       'Catch-up evaluates goals each offline slice so threshold goals (patrons/hype) complete if crossed mid-window then decay.'
@@ -600,15 +604,27 @@ class Game {
     // re-reads the prior blob once (no silent progress that cannot be written).
     // If claim succeeds and the post-catchUp write fails, disk already has the
     // claimed ts so reload cannot re-apply the gap (offline may be lost once).
+    //
+    // Do NOT claim unconditionally: a second tab that setItem's the last on-disk
+    // snapshot with a refreshed ts fires storage → onForeignSave on a live
+    // sibling, stealing ownership and discarding up to one autosave interval of
+    // progress. Under a live tab, disk ts lags by at most ~10s (autosave). Only
+    // claim when this tab must take ownership: fresh/wiped club, migration, or
+    // offline gap larger than one autosave + slack.
+    const CLAIM_OFFLINE_SEC = 15;
+    const needsClaim = !resumeExisting || upgraded || offline > CLAIM_OFFLINE_SEC;
+    // Always refresh in-memory ts so the live timer does not treat load age as a gap.
     g.ts = Date.now();
     let claimed = false;
-    try {
-      localStorage.setItem(this.KEY, JSON.stringify({
-        saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
-      }));
-      claimed = true;
-    } catch (e) {
-      this.setState({ saveState: 'save failed' });
+    if (needsClaim) {
+      try {
+        localStorage.setItem(this.KEY, JSON.stringify({
+          saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
+        }));
+        claimed = true;
+      } catch (e) {
+        this.setState({ saveState: 'save failed' });
+      }
     }
     if (offline > 0 && claimed) {
       const report = this.catchUp(g, offline);

@@ -1525,6 +1525,111 @@ test('v5 import missing goals fails closed; v4 without goals still migrates', ()
   strictEqual(game.state.g.cash, 500, 'no reward cascade on migrate');
 });
 
+// ── AAR-64 residual Codex (clicks migrate + multi-tab claim) ──────────────────
+console.log('\nAAR-64 residual Codex (clicks migrate + multi-tab claim)');
+
+test('v4 migrate does not credit work from passive patrons alone', () => {
+  const game = newGame(10);
+  // Walk-in patrons (0.02/s) + autosave can leave patrons > 0 without any clicks.
+  const g = {
+    cash: 20, hype: 0, buzz: 0, patrons: 1.2, regulars: 0.01, clout: 0,
+    crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+    b: { rail: 0, bar: 0, vip: 0, dj: 0, marquee: 0, flyers: 0, door: 0, dress: 0 },
+    u: {}, r: {},
+    elapsed: 30, night: 1, shiftIdx: 0, shiftT: 10, log: [], ts: Date.now()
+  };
+  const okImport = game.importSaveFromText(JSON.stringify({
+    saveVer: 4, ver: '0.5.3', build: 159, g
+  }));
+  strictEqual(okImport, true);
+  const loaded = game.state.g;
+  strictEqual(loaded.clicks, 0, 'clicks stay 0 without structures/crew');
+  ok(!loaded.goals.includes('work'), 'work not pre-completed from walk-ins');
+  strictEqual(game.activeGoal(loaded).id, 'work', 'active goal remains Work the room');
+  strictEqual(loaded.cash, 20, 'no back-paid $15 work reward');
+});
+
+test('v4 migrate still credits work from structures or crew', () => {
+  const game = newGame(10);
+  const withRail = {
+    cash: 50, hype: 0, buzz: 0, patrons: 0, regulars: 0, clout: 0,
+    crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+    b: { rail: 1, bar: 0, vip: 0, dj: 0, marquee: 0, flyers: 0, door: 0, dress: 0 },
+    u: {}, r: {},
+    elapsed: 60, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: Date.now()
+  };
+  strictEqual(game.importSaveFromText(JSON.stringify({
+    saveVer: 4, ver: '0.5.3', build: 159, g: { ...withRail }
+  })), true);
+  ok(game.state.g.clicks >= 5, 'structures imply clicks tutorial done');
+  ok(game.state.g.goals.includes('work'), 'work credited with rail');
+
+  const withCrew = {
+    cash: 80, hype: 0, buzz: 0, patrons: 0, regulars: 0, clout: 0,
+    crew: 1, jobs: { stage: 1, vipjob: 0, floor: 0, off: 0 },
+    b: { rail: 0, bar: 0, vip: 0, dj: 0, marquee: 0, flyers: 0, door: 0, dress: 0 },
+    u: {}, r: {},
+    elapsed: 60, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: Date.now()
+  };
+  strictEqual(game.importSaveFromText(JSON.stringify({
+    saveVer: 4, ver: '0.5.3', build: 159, g: withCrew
+  })), true);
+  ok(game.state.g.clicks >= 5, 'crew implies clicks tutorial done');
+  ok(game.state.g.goals.includes('work'), 'work credited with crew');
+});
+
+test('init skips claim when offline small (does not clobber live sibling)', () => {
+  // Simulate a live tab's last autosave: recent ts, mature v5 club on disk.
+  const game = newGame(20);
+  const b = { rail: 2, bar: 1, vip: 0, dj: 0, marquee: 0, flyers: 1, door: 0, dress: 0 };
+  const diskTs = Date.now() - 5000; // 5s ago — within autosave lag, below 15s claim threshold
+  const diskG = {
+    cash: 777, hype: 10, buzz: 5, patrons: 4, regulars: 0, clout: 0,
+    crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+    b, u: {}, r: {},
+    goals: ['work', 'rail', 'word'], clicks: 5, rounds: 0,
+    elapsed: 120, night: 1, shiftIdx: 0, shiftT: 30, log: [], ts: diskTs
+  };
+  localStorage.setItem('afterglow.save', JSON.stringify({
+    saveVer: 5, ver: '0.6.0', build: 164, g: diskG
+  }));
+  const rawBefore = localStorage.getItem('afterglow.save');
+
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+
+  const rawAfter = localStorage.getItem('afterglow.save');
+  strictEqual(rawAfter, rawBefore, 'init must not setItem when offline is small and not migrated');
+  const disk = JSON.parse(rawAfter);
+  strictEqual(disk.g.ts, diskTs, 'disk ts unchanged (live sibling keeps ownership)');
+  strictEqual(disk.g.cash, 777, 'disk cash unchanged');
+  // In-memory club still loads and runs from the snapshot.
+  strictEqual(game.state.g.cash, 777);
+  ok(game.state.g.ts > diskTs, 'in-memory ts refreshed for live timer');
+});
+
+test('init still claims on large offline gap', () => {
+  const game = newGame(20);
+  const b = { rail: 2, bar: 1, vip: 0, dj: 0, marquee: 0, flyers: 1, door: 0, dress: 0 };
+  const hourAgo = Date.now() - 3600_000;
+  localStorage.setItem('afterglow.save', JSON.stringify({
+    saveVer: 5, ver: '0.6.0', build: 164, g: {
+      cash: 100, hype: 10, buzz: 5, patrons: 4, regulars: 0, clout: 0,
+      crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      b, u: {}, r: {},
+      goals: ['work', 'rail', 'word'], clicks: 5, rounds: 0,
+      elapsed: 120, night: 1, shiftIdx: 0, shiftT: 30, log: [], ts: hourAgo
+    }
+  }));
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+  const stored = JSON.parse(localStorage.getItem('afterglow.save'));
+  ok(stored.g.ts > hourAgo + 3_000_000, 'large offline still claims ts on disk');
+  ok(game.state.g.cash > 100, 'large offline still applies catch-up once claimed');
+});
+
 // ── Results ──────────────────────────────────────────────────────────────────
 
 console.log('\n───────────────────────────────────────');
