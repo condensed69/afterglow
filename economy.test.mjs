@@ -1294,6 +1294,26 @@ test('peak goal does not complete offline; completes live', () => {
   strictEqual(g.cash, cashAfter, 'no double-pay peak');
 });
 
+// Live step can cross Peak→Last Call in one call (dt ≤ 2). Goals must run per
+// slice before shift rollover or peak never awards despite Hype ≥ 60 mid-Peak.
+test('peak goal completes on live step slice that ends Peak Hours', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g.goals = ['work', 'rail', 'word', 'pulse', 'contract', 'energy', 'house',
+    'backstage', 'regulars', 'study', 'roster'];
+  g.hype = 65;
+  g.shiftIdx = 1; // Peak Hours (len 55)
+  g.shiftT = 54.95; // next slice ends Peak
+  g.cash = 1000;
+  const cashBefore = g.cash;
+  game.step(0.2);
+  ok(g.goals.includes('peak'), 'peak awarded mid-step before Peak rollover');
+  ok(g.log.some(e => /Peak-hour hero/.test(e.msg)), 'peak completion logged from live step');
+  // Reward is +$100; sim also moves cash slightly — require the goal pay landed.
+  ok(g.cash >= cashBefore + 99, 'peak reward ~$100 applied during live step');
+  strictEqual(g.shiftIdx, 2, 'rolled into Last Call after Peak-ending slice');
+});
+
 test('completing all 14 leaves activeGoal null and never throws', () => {
   const game = newGame(20);
   const g = game.state.g;
