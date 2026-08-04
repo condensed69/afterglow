@@ -1,9 +1,9 @@
 # DESIGN.md — Afterglow Club Idle
 
 **Game:** Afterglow Club Idle (repo: stripper-dance)  
-**Spec target:** post PLAN-NEXT A–C (`game.js` v0.6.1, SAVE_VER 5)  
+**Spec target:** post workstreams A–C — file save, Owner's List, balance + `pacing.mjs` (`game.js` v0.6.1, SAVE_VER 5)  
 **Source of truth for numbers:** `game.js` (`caps()`, `rates()`, constant tables) — re-diff this file when those change  
-**Related:** `PRESTIGE.md` (future prestige), `.omo/PLAN-NEXT.md` (workstream plan), `AGENTS.md` (repo gates)  
+**Related:** `PRESTIGE.md` (future prestige), `PLAN.md` (logic-fix predecessor, shipped), `AGENTS.md` (repo gates). Workstream sequencing for save I/O → Owner's List → balance → prestige → this rewrite lived in a local orchestrator plan (not published in the repo tree).  
 **Ancestry:** this branch stacks A (file save) → B (Owner's List) → C (`pacing.mjs` + balance) → D (`PRESTIGE.md`) so every claim below is present in-tree.
 
 This document replaces the 0.3.x canvas prototype design system. It describes what the shipped neon-noir club-management idle **actually does**, not aspirational UI kits.
@@ -469,7 +469,7 @@ Full locked design — fantasy, gate, reset rules, Legacy formula, starter perks
 ## Doc maintenance
 
 - Rewrite claims against `game.js`, not against stale plans.  
-- Owner's List UI copy may lag formulas (e.g. rail goal `why` still saying $0.05/s while `rates` uses $0.06/s) — treat copy polish as a separate change; do not silent-fix economy to match copy.  
+- Keep Owner's List UI copy aligned with formulas when both change in the same PR (rail goal `why` matches tip rate +$0.06/s). Do not silent-fix economy numbers to match stale copy.  
 - After any balance PR: re-check §4–§8 tables and run `pacing.mjs`.  
 - After prestige ships: fold a short “as shipped” summary into §12 and keep `PRESTIGE.md` as the deep design archive or retire it deliberately.
 
