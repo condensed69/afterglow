@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.6.0', build: 170, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.6.0', build: 171, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 5;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -102,6 +102,7 @@ class Game {
       'Age-only claim writes PROBE_KEY then waits for a live owner to refresh LEASE_KEY before claiming (no immediate re-read race).',
       'Non-owner tabs are read-only: sim and controls pause with a banner until reload/import/manual save takes over.',
       'Successful import acquires ownership and starts autosave (same as manual save).',
+      'Import persists before replacing the live club: setItem failure surfaces import failed, leaves the prior club, and does not clear tabStale or restart autosave.',
       'pageshow clears RELOAD_KEY so BFCache restore does not leave a stealable reload marker for tab-duplicate.',
       'Live step evaluates Owner\'s List goals each shift slice (before rollover) so Peak-hour hero is not missed at the Peak→Last Call boundary.',
       'v4→v5 clicks backfill uses structures/crew only (not passive patrons/regulars) so walk-in saves keep goal 1.',
@@ -551,8 +552,9 @@ class Game {
     return true;
   }
 
-  // Parse + validate + migrate + sanitize a save blob. On success replaces state.g and persists.
-  // On any failure: saveState 'import failed', current club unchanged.
+  // Parse + validate + migrate + sanitize a save blob. On success persists then replaces state.g.
+  // On any failure (including setItem throw): saveState 'import failed', current club unchanged.
+  // Ownership (tabStale clear + autosave restart) only after a successful disk write.
   importSaveFromText(text) {
     try {
       const p = JSON.parse(text);
@@ -576,24 +578,30 @@ class Game {
       }
       // Stamp now so the next tick does not treat export age as offline progress.
       g.ts = Date.now();
-      this._onStrike = false;
-      this.state.g = g;
+      // Log on the candidate g before write so disk and memory share the restore line.
       this.push(g, 'Save restored from clipboard.', '#22d3ee');
       try {
-        if (this._probeTimer) {
-          clearTimeout(this._probeTimer);
-          this._probeTimer = null;
-        }
         localStorage.setItem(this.KEY, JSON.stringify({
           saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
         }));
-        // Successful persist is an explicit ownership take (like save('manual')):
-        // a non-claiming second tab must start autosave and mark owner so later
-        // progress is not lost after pausing siblings via the storage event.
-        this.state.tabStale = false;
-        this.markTabOwner();
-        this.startAutosave();
-      } catch (e) { /* state already replaced; footer still shows imported */ }
+      } catch (e) {
+        // Persist failed: leave live club, tabStale, and autosave ownership untouched.
+        this.setState({ saveState: 'import failed' });
+        return false;
+      }
+      // Disk write succeeded — only now replace live state and take ownership.
+      if (this._probeTimer) {
+        clearTimeout(this._probeTimer);
+        this._probeTimer = null;
+      }
+      this._onStrike = false;
+      this.state.g = g;
+      // Successful persist is an explicit ownership take (like save('manual')):
+      // a non-claiming second tab must start autosave and mark owner so later
+      // progress is not lost after pausing siblings via the storage event.
+      this.state.tabStale = false;
+      this.markTabOwner();
+      this.startAutosave();
       this.setState({ tabStale: false, saveState: 'imported' });
       return true;
     } catch (e) {

@@ -2040,6 +2040,50 @@ test('import from non-owner acquires ownership and starts autosave', () => {
   if (game.saver) clearInterval(game.saver);
 });
 
+// AAR-73 / Reviewer hunt: setItem throw must not claim import success or ownership
+// (mirrors AAR-67 on file-save branch; holes non-owner pause if tabStale is cleared).
+test('import setItem throw fails closed without claiming ownership', () => {
+  const game = newGame(25);
+  if (game.saver) {
+    clearInterval(game.saver);
+    game.saver = null;
+  }
+  game.state.tabStale = true;
+  game.state.saveState = 'paused (other tab)';
+  const priorCash = game.state.g.cash;
+  const priorG = game.state.g;
+  const priorRaw = localStorage.getItem(game.KEY);
+  const origSet = localStorage.setItem.bind(localStorage);
+  localStorage.setItem = () => { throw new Error('quota'); };
+  const g = {
+    cash: 999, hype: 2, buzz: 0, patrons: 0, regulars: 0, clout: 0, crew: 0,
+    jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+    b: { rail: 0, bar: 0, vip: 0, dj: 0, marquee: 0, flyers: 0, door: 0, dress: 0 },
+    u: {}, r: {},
+    goals: [], clicks: 0, rounds: 0,
+    elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: Date.now()
+  };
+  let okImport;
+  try {
+    okImport = game.importSaveFromText(JSON.stringify({
+      saveVer: game.SAVE_VER,
+      ver: game.VERSION.num,
+      build: game.VERSION.build,
+      g
+    }));
+  } finally {
+    localStorage.setItem = origSet;
+  }
+  strictEqual(okImport, false);
+  strictEqual(game.state.saveState, 'import failed');
+  strictEqual(game.state.tabStale, true, 'must not clear tabStale when persist fails');
+  ok(!game.saver, 'must not restart autosave when persist fails');
+  strictEqual(game.state.g, priorG, 'live club reference unchanged');
+  strictEqual(game.state.g.cash, priorCash, 'live club cash unchanged');
+  strictEqual(localStorage.getItem(game.KEY), priorRaw, 'disk blob unchanged');
+  ok(!game.isTabOwner(), 'must not mark owner when persist fails');
+});
+
 test('pageshow clears RELOAD_KEY (BFCache restore must not leave stealable marker)', () => {
   const game = newGame(20);
   // Become owner so lifecycle listeners bind.
