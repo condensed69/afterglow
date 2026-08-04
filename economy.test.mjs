@@ -1174,11 +1174,11 @@ test('catchUp completion: state satisfying goal 4 completes via post-catchUp not
   g.b.flyers = 1;
   g.patrons = 7.5;
   g.buzz = 50;
-  // Simulate catchUp path: run catchUp then noteGoals (same as init/timer)
+  // Simulate catchUp path: run catchUp then offline noteGoals (same as init/timer)
   game.catchUp(g, 30);
   // Ensure patrons can reach 8 either via catchUp or direct (buzz pull may vary)
   if (g.patrons < 8) g.patrons = 8;
-  game.noteGoals(g);
+  game.noteGoals(g, { live: false });
   ok(g.goals.includes('pulse'), 'pulse completed after catchUp evaluation');
   ok(g.log.some(e => /Owner's list: A floor with a pulse/.test(e.msg)), 'log line on complete');
 });
@@ -1207,6 +1207,67 @@ test('migration 4→5: v4 save with rail+flyers pre-completes those goals, no re
   strictEqual(loaded.cash, cash, 'no back-paid goal rewards on migrate');
   const stored = JSON.parse(localStorage.getItem(game.KEY));
   strictEqual(stored.saveVer, 5);
+});
+
+test('migration 4→5 mid-game: credits non-sequential goals without reward cascade', () => {
+  const game = newGame(10);
+  const cash = 500;
+  const clout = 4;
+  // Mid-game v4 club: past house (rounds unknown) but already has VIP job, regulars,
+  // research, roster, and an upgrade. house check fails (rounds=0); later goals true.
+  const g = {
+    cash, hype: 30, buzz: 10, patrons: 12, regulars: 5, clout,
+    crew: 3, jobs: { stage: 1, vipjob: 1, floor: 1, off: 0 },
+    b: { rail: 2, flyers: 1, bar: 1, vip: 1, dress: 1, dj: 2, marquee: 0, door: 0 },
+    u: { led: true }, r: { loop: true },
+    elapsed: 600, night: 4, shiftIdx: 0, shiftT: 10, log: [], ts: Date.now()
+  };
+  const okImport = game.importSaveFromText(JSON.stringify({ saveVer: 4, ver: '0.5.3', build: 159, g }));
+  strictEqual(okImport, true);
+  const loaded = game.state.g;
+  // Credit without sequential break — holes (house) ok; later satisfied ids still present.
+  for (const id of ['work', 'rail', 'word', 'pulse', 'contract', 'energy',
+    'backstage', 'regulars', 'study', 'roster', 'builtin']) {
+    ok(loaded.goals.includes(id), `mid-game migrate credits ${id}`);
+  }
+  ok(!loaded.goals.includes('house'), 'house not credited without rounds');
+  ok(!loaded.goals.includes('peak'), 'peak not credited (not Peak / not live)');
+  ok(!loaded.goals.includes('name'), 'name not credited (regulars < 25)');
+  strictEqual(loaded.cash, cash, 'no back-paid cash rewards');
+  strictEqual(loaded.clout, clout, 'no back-paid clout rewards');
+  // Live cascade must not pay already-credited goals when house is next.
+  strictEqual(game.activeGoal(loaded).id, 'house');
+  const cashBefore = loaded.cash;
+  const cloutBefore = loaded.clout;
+  loaded.rounds = 1;
+  for (let i = 0; i < 10; i++) game.noteGoals(loaded, { live: true });
+  ok(loaded.goals.includes('house'), 'house completes live once rounds exist');
+  // Only house reward ($40) — not backstage/regulars/study/roster cascade.
+  strictEqual(loaded.cash, cashBefore + 40, 'only house reward paid after migrate');
+  strictEqual(loaded.clout, cloutBefore, 'no cascade clout after migrate');
+});
+
+test('peak goal does not complete offline; completes live', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  // Unlock through roster so peak is active
+  g.goals = ['work', 'rail', 'word', 'pulse', 'contract', 'energy', 'house',
+    'backstage', 'regulars', 'study', 'roster'];
+  g.hype = 65;
+  g.shiftIdx = 1; // Peak Hours
+  g.cash = 1000;
+  game.catchUp(g, 5);
+  const cashAfterCatchUp = g.cash;
+  game.noteGoals(g, { live: false });
+  ok(!g.goals.includes('peak'), 'peak must not complete offline');
+  strictEqual(g.cash, cashAfterCatchUp, 'no peak reward offline (cash unchanged by noteGoals)');
+  // Live path (step / default noteGoals)
+  game.noteGoals(g, { live: true });
+  ok(g.goals.includes('peak'), 'peak completes live');
+  strictEqual(g.cash, cashAfterCatchUp + 200, 'peak reward $200 once live');
+  const cashAfter = g.cash;
+  game.noteGoals(g, { live: true });
+  strictEqual(g.cash, cashAfter, 'no double-pay peak');
 });
 
 test('completing all 14 leaves activeGoal null and never throws', () => {

@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.6.0', build: 160, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.6.0', build: 161, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 5;
   KEY = 'afterglow.save';
 
@@ -38,6 +38,9 @@ class Game {
       this.sanitizeG(g);
     },
     // v4 → v5: Owner's List fields; backfill completed goals without paying rewards.
+    // Credit every satisfied check (no sequential break) so mid-game saves don't get
+    // live reward cascades for already-earned state. Holes are fine — activeGoal
+    // still returns the first missing id for live play.
     4(g) {
       g.goals = [];
       g.clicks = 0;
@@ -50,7 +53,6 @@ class Game {
       }
       for (const goal of this.GOALS) {
         if (goal.check(g)) g.goals.push(goal.id);
-        else break;
       }
     }
   };
@@ -60,6 +62,8 @@ class Game {
       'Owner\'s List: sequential 14-goal onboarding panel at the top of the systems column.',
       'Goals pay cash/clout once on completion; night log records each finish.',
       'New save fields goals / clicks / rounds (SAVE_VER 5); v4 saves migrate with credit, no back-paid rewards.',
+      'Migration credits every already-satisfied goal (no sequential break) so mid-game clubs are not re-paid live.',
+      'Peak-hour hero (goal 12) completes only on live step/actions — not offline catch-up.',
       'Goal checks after step, catch-up, and player actions so offline progress can complete goals.'
     ]},
     { v: '0.5.3', date: '2026-08-04', codename: 'Neon Zero', notes: [
@@ -552,7 +556,8 @@ class Game {
     if (offline > 0) {
       const report = this.catchUp(g, offline);
       if (offline > 60) this.push(g, this.awayMsg(offline, report), '#ffc94a');
-      this.noteGoals(g);
+      // Offline: peak (goal 12) must not complete here — live-only.
+      this.noteGoals(g, { live: false });
     }
     g.ts = Date.now();
 
@@ -577,7 +582,8 @@ class Game {
         const gap = Math.min(dt, 28800);
         const report = this.catchUp(g, gap);
         if (dt > 60) this.push(g, this.awayMsg(gap, report), '#ffc94a');
-        this.noteGoals(g);
+        // Large-gap catchUp is offline rate — peak stays live-only.
+        this.noteGoals(g, { live: false });
         g.ts = Date.now();
         this.setState(s => ({ tick: s.tick + 1 }));
       } else {
@@ -781,7 +787,7 @@ class Game {
         }
       }
     }
-    this.noteGoals(g);
+    this.noteGoals(g, { live: true });
     g.ts = Date.now();
     this.setState(s => ({ tick: s.tick + 1 }));
   }
@@ -793,13 +799,18 @@ class Game {
     return this.GOALS.find(goal => !done.includes(goal.id)) || null;
   }
 
-  noteGoals(g) {
+  // Evaluate the single active goal. opts.live (default true): peak-hour hero only
+  // completes when live is true — offline catchUp / load must pass { live: false }.
+  noteGoals(g, opts = {}) {
     if (!g) return;
+    const live = opts.live !== false;
     if (!Array.isArray(g.goals)) g.goals = [];
     if (typeof g.clicks !== 'number' || !Number.isFinite(g.clicks)) g.clicks = 0;
     if (typeof g.rounds !== 'number' || !Number.isFinite(g.rounds)) g.rounds = 0;
     const goal = this.activeGoal(g);
     if (!goal || typeof goal.check !== 'function' || !goal.check(g)) return;
+    // Goal 12 (peak): live play only — not offline catch-up or load-time evaluation.
+    if (goal.id === 'peak' && !live) return;
     const rew = goal.reward || {};
     if (rew.cash) g.cash = (g.cash || 0) + rew.cash;
     if (rew.clout) g.clout = (g.clout || 0) + rew.clout;
