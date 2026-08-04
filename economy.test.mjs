@@ -1243,6 +1243,105 @@ test('importSaveFile routes FileReader text into importSaveFromText', () => {
   ok(!msgs.some(m => /clipboard/i.test(m)), 'restore log must not mention clipboard after file load');
 });
 
+// ── Import log sanitization + tabStale ownership (AAR-58 / PR #10 residual) ───
+console.log('\nImport log sanitization + tabStale ownership (AAR-58)');
+
+test('crafted HTML in imported log does not survive completeImportedG', () => {
+  const game = newGame(10);
+  const payload = {
+    saveVer: game.SAVE_VER,
+    ver: game.VERSION.num,
+    build: game.VERSION.build,
+    g: {
+      cash: 50, hype: 1, buzz: 0, patrons: 0, regulars: 0, clout: 0, crew: 0,
+      jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      b: {}, u: {}, r: {},
+      elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, ts: Date.now(),
+      log: [
+        {
+          t: '12:00',
+          msg: '<img src=x onerror="window.__xss=1">alert(1)',
+          color: 'red;background:url(javascript:alert(1))'
+        },
+        {
+          t: '<script>x</script>',
+          msg: 'ok line',
+          color: '#22d3ee'
+        }
+      ]
+    }
+  };
+  const okImport = game.importSaveFromText(JSON.stringify(payload));
+  strictEqual(okImport, true);
+  const log = game.state.g.log;
+  // Imported crafted entries must not retain raw markup (escaped entities instead).
+  for (const entry of log) {
+    if (entry.msg === 'Save restored.') continue;
+    ok(!entry.msg.includes('<'), `msg must not contain raw <: ${entry.msg}`);
+    ok(!entry.msg.includes('>'), `msg must not contain raw >: ${entry.msg}`);
+    ok(!entry.t.includes('<'), `t must not contain raw <: ${entry.t}`);
+    ok(entry.msg.includes('&lt;') || entry.msg === 'ok line' || !/onerror|script/i.test(entry.msg),
+      `dangerous markup must be entity-escaped: ${entry.msg}`);
+  }
+  const xssEntry = log.find(e => /onerror|img/i.test(e.msg));
+  ok(xssEntry, 'crafted entry retained in sanitized form');
+  ok(xssEntry.msg.includes('&lt;img'), 'angle brackets escaped to entities');
+  ok(!xssEntry.msg.includes('<img'), 'raw <img tag must not survive');
+  // Color injection blocked — only hex colors allowed.
+  strictEqual(xssEntry.color, '#b9a5c9', 'unsafe color falls back to default');
+  const okColor = log.find(e => e.msg === 'ok line' || e.msg.includes('ok line'));
+  // May be escaped identically; find by color path: second entry had #22d3ee and plain msg.
+  const hexEntry = log.find(e => e.color === '#22d3ee');
+  ok(hexEntry, 'valid hex color preserved');
+  // renderVals must not reintroduce raw HTML into display fields.
+  const v = game.renderVals();
+  for (const row of v.log) {
+    ok(!String(row.msg).includes('<img'), 'renderVals msg has no raw img tag');
+    ok(!String(row.t).includes('<script'), 'renderVals t has no raw script tag');
+    if (row.style && row.style.color) {
+      ok(/^#[0-9a-fA-F]{3,8}$/.test(row.style.color), `render color is hex: ${row.style.color}`);
+    }
+  }
+});
+
+test('successful import clears tabStale and restarts autosave', () => {
+  const game = newGame(25);
+  // Simulate foreign-tab pause: autosave stopped, banner armed.
+  if (game.saver) {
+    clearInterval(game.saver);
+    game.saver = null;
+  }
+  game.state.tabStale = true;
+  game.state.saveState = 'paused (other tab)';
+  const g = {
+    cash: 77, hype: 2, buzz: 0, patrons: 0, regulars: 0, clout: 0, crew: 0,
+    jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+    b: {}, u: {}, r: {},
+    elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: Date.now()
+  };
+  const okImport = game.importSaveFromText(JSON.stringify({
+    saveVer: game.SAVE_VER,
+    ver: game.VERSION.num,
+    build: game.VERSION.build,
+    g
+  }));
+  strictEqual(okImport, true);
+  strictEqual(game.state.saveState, 'imported');
+  strictEqual(game.state.tabStale, false, 'explicit restore takes ownership');
+  strictEqual(game.state.g.cash, 77);
+  ok(game.saver != null, 'autosave interval restarted after import');
+  // Autosave must write again (not no-op under stale guard).
+  game.state.g.cash = 99;
+  game.save('auto');
+  const raw = localStorage.getItem(game.KEY);
+  ok(raw, 'autosave wrote after import ownership');
+  strictEqual(JSON.parse(raw).g.cash, 99);
+  if (game.saver) {
+    clearInterval(game.saver);
+    game.saver = null;
+  }
+});
+
 // ── Results ──────────────────────────────────────────────────────────────────
 
 console.log('\n───────────────────────────────────────');
