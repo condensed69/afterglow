@@ -88,14 +88,18 @@ On confirm of Franchise offer:
 | `prestiges` | += 1 |
 | Save-format / version fields | as always on write (`saveVer`, `ver`, `build`) |
 
-**Order of operations (locked):**
+**Order of operations (locked):** same safety pattern as import (`importSaveFromText`: log → persist → replace). Construct the post-prestige **candidate** fully, require `localStorage.setItem` success, **then** replace live state. Never replace first and leave the critical write to the next autosave — a storage failure or a reload before the next scheduled autosave would restore the pre-prestige run and discard the reset + awarded Legacy.
 
 1. Compute `gain = legacyGain(g)` from **pre-reset** `regulars` and `night` (§4).  
 2. Snapshot `perks`, `legacy`, `legacyTotal`, `prestiges`.  
-3. Replace run state with `fresh()`-equivalent run fields.  
-4. Restore meta: `legacy = snapshot.legacy + gain`, `legacyTotal = snapshot.legacyTotal + gain`, `perks = snapshot.perks`, `prestiges = snapshot.prestiges + 1`.  
-5. Apply start-of-run perk effects (crew, buildings) on the new `g`.  
-6. Log the franchise line; persist via autosave **or** the explicit/manual save path when `tabStale` (see §2 stale-tab rule — never rely on a no-op auto-save after prestige).
+3. Build a **candidate** `g` (not yet live): `fresh()`-equivalent run fields.  
+4. Restore meta on the candidate: `legacy = snapshot.legacy + gain`, `legacyTotal = snapshot.legacyTotal + gain`, `perks = snapshot.perks`, `prestiges = snapshot.prestiges + 1`.  
+5. Apply start-of-run perk effects (crew, buildings) on the candidate.  
+6. Push the franchise log line onto the candidate so disk and memory share the same entry.  
+7. `localStorage.setItem` with the candidate payload — **must succeed** (use the explicit/manual save path when `tabStale` so the write is not a no-op auto-save; see §2 stale-tab rule).  
+8. Only then: replace `state.g` with the candidate and refresh UI.  
+
+If `setItem` throws (or is blocked by `tabStale` without a manual path): leave the live pre-prestige club unchanged, surface a save/prestige failure — no silent in-memory franchise.
 
 **Not a full wipe:** Settings → Wipe still clears everything including Legacy/perks (existing wipe semantics). Prestige is a soft reset, not wipe.
 
@@ -384,6 +388,7 @@ Use this as the acceptance spine when coding prestige (not part of this doc-only
 - [ ] Perks shop + spend  
 - [ ] Apply rules in `rates` / `workCrowd` / `catchUp` / door max (dynamic text) / fresh  
 - [ ] Franchise confirm blocked or manual-saved when `tabStale`  
+- [ ] Prestige candidate: setItem success **before** live `state.g` replace (import-style fail-closed)  
 - [ ] SAVE_VER 6 + `MIGRATIONS[5]` + `fresh()` defaults  
 - [ ] `perks: []` (array) rejected → `{}` in migrate **and** sanitize  
 - [ ] File/clipboard import migrates v5→v6  
@@ -400,3 +405,4 @@ Use this as the acceptance spine when coding prestige (not part of this doc-only
 |------|------|
 | 2026-08-04 | Initial lock from PLAN-NEXT §D (AAR-51). Formula table resolves plan "~7" ambiguity via exact `floor(sqrt(reg)+night/7)`. |
 | 2026-08-04 | AAR-56 / PR #13 Codex P2: House cut includes click cash; prestige scenario fails if gate missed; door max text dynamic; reject array `perks`; block/manual-save prestige when `tabStale`. |
+| 2026-08-04 | AAR-72 / PR #14 Codex P2: prestige order is candidate → setItem must succeed → live replace (same fail-closed pattern as import); never leave the critical write to autosave. |

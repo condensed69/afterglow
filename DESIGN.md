@@ -178,7 +178,7 @@ Live timer (`init` interval 100 ms):
 - `dt > 2` → `catchUp` at 50% (same path as load offline; per-slice `noteGoals({ live: false })` inside), then a post-`catchUp` `noteGoals({ live: false })`  
 - else → `step(dt)` full rate — **per-slice** `noteGoals({ live: true })` **before** shift rollover inside the sim loop (not only after the whole `step`)
 
-Load-time offline uses the same `catchUp` + away log when offline > 60 s.
+Load-time offline uses the same `catchUp` + away log when offline > 60 s, but only after the pre-catch-up timestamp **claim** succeeds (see §9.6).
 
 ---
 
@@ -392,7 +392,17 @@ Future saveVer or missing step → wipe on load (localStorage path) or import fa
 
 ### 9.6 Offline on load
 
-`offline = min((now − g.ts)/1000, 28800)` → `catchUp` → away message if > 60 s → `noteGoals({ live: false })`.
+Safety-critical order is **claim → conditional catch-up → post-catch-up write** (`game.js` `init`). Catch-up-then-persist left the prior blob (old `ts`) on disk when `setItem` failed, so every reload re-applied the same offline window (elapsed-time double-count). Documented sequence:
+
+1. Only for a successfully loaded existing save (not `fresh()` / wipe): compute  
+   `offline = min((now − g.ts) / 1000, 28800)` (8h cap).  
+2. Attach live `state.g`, push doors-open / migrate / version log lines as needed.  
+3. **Claim the offline window on disk before catch-up:** set `g.ts = now`, then `localStorage.setItem` with the current payload.  
+4. If the claim `setItem` **fails** → set `saveState: 'save failed'`, **skip catch-up** entirely. Memory may still run, but a reload re-reads the prior blob once (no silent progress that cannot be written).  
+5. If claim **succeeds** and `offline > 0`: run `catchUp(g, offline)`; if `offline > 60` push the away message; `noteGoals({ live: false })` once after load catch-up.  
+6. After successful catch-up, attempt a **post-catch-up** `setItem` of the progressed `g`. If that write fails → `saveState: 'save failed'`. Disk already holds the claimed `ts`, so a reload cannot re-apply the gap (offline progress may be lost once).
+
+Brand-new / wiped clubs stamp `ts` via `fresh()` and skip offline entirely (`resumeExisting` is false).
 
 ---
 
@@ -480,5 +490,6 @@ Full locked design — fantasy, gate, reset rules, Legacy formula, starter perks
 - Keep Owner's List UI copy aligned with formulas when both change in the same PR (rail goal `why` matches tip rate +$0.06/s). Do not silent-fix economy numbers to match stale copy.  
 - After any balance PR: re-check §4–§8 tables and run `pacing.mjs`.  
 - After prestige ships: fold a short “as shipped” summary into §12 and keep `PRESTIGE.md` as the deep design archive or retire it deliberately.
+- Save-path order is load-bearing: import is log → persist → replace (§9.3); load offline is claim → conditional catch-up → post-catch-up write (§9.6). Prestige (future) must match import’s persist-before-replace rule in `PRESTIGE.md`.
 
 **End of DESIGN.md**
