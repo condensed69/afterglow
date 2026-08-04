@@ -1547,6 +1547,110 @@ test('init migrate + offline persists; second init does not double-count offline
   strictEqual(JSON.parse(localStorage.getItem(game2.KEY)).saveVer, game2.SAVE_VER);
 });
 
+// AAR-59 / Codex P2: setItem throw must not leave catch-up applied only in memory
+// while the prior blob (old ts) remains — that path double-counts offline on reload.
+test('init setItem throw after migrate skips catch-up (no double-count risk)', () => {
+  localStorage.clear();
+  const b = { rail: 2, bar: 1, vip: 0, dj: 0, marquee: 0, flyers: 1, door: 0, dress: 0 };
+  const hourAgo = Date.now() - 3600_000;
+  const seed = {
+    saveVer: 4,
+    ver: '0.5.3',
+    build: 159,
+    g: {
+      cash: 100, hype: 10, buzz: 5, patrons: 4, regulars: 0, clout: 0,
+      crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      b, u: {}, r: {},
+      elapsed: 100, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: hourAgo
+    }
+  };
+  localStorage.setItem('afterglow.save', JSON.stringify(seed));
+  const origSet = localStorage.setItem.bind(localStorage);
+  // Quota / private-mode failure on every write during this init.
+  localStorage.setItem = () => { throw new Error('quota'); };
+  const game1 = new Game(root);
+  game1.forceUpdate = () => {};
+  game1.init();
+  if (game1.timer) clearInterval(game1.timer);
+  if (game1.saver) clearInterval(game1.saver);
+  localStorage.setItem = origSet;
+
+  strictEqual(game1.state.saveState, 'save failed', 'claim failure surfaces save failed');
+  // Catch-up must not have run: cash stays at seeded 100 (migrate credits no rewards).
+  strictEqual(game1.state.g.cash, 100, 'catch-up skipped when claim persist fails');
+  // Disk still holds the prior v4 blob (setItem never succeeded).
+  const diskAfterFail = JSON.parse(localStorage.getItem('afterglow.save'));
+  strictEqual(diskAfterFail.saveVer, 4, 'prior blob remains when all setItem throws');
+  strictEqual(diskAfterFail.g.ts, hourAgo, 'old ts remains on disk');
+
+  // Healthy init can still apply offline once — not twice across the failed session.
+  const game2 = new Game(root);
+  game2.forceUpdate = () => {};
+  game2.init();
+  if (game2.timer) clearInterval(game2.timer);
+  if (game2.saver) clearInterval(game2.saver);
+  ok(game2.state.g.cash > 100, 'successful claim allows catch-up once');
+  const stored = JSON.parse(localStorage.getItem(game2.KEY));
+  strictEqual(stored.saveVer, game2.SAVE_VER);
+  ok(stored.g.ts > hourAgo + 3_000_000, 'ts claimed after successful persist');
+
+  // Third init must not re-apply the hour.
+  const cashAfter = game2.state.g.cash;
+  const game3 = new Game(root);
+  game3.forceUpdate = () => {};
+  game3.init();
+  if (game3.timer) clearInterval(game3.timer);
+  if (game3.saver) clearInterval(game3.saver);
+  ok(Math.abs(game3.state.g.cash - cashAfter) < 1, 'no double-count after recover');
+});
+
+test('init post-catchUp setItem throw still claimed ts (reload cannot re-apply gap)', () => {
+  localStorage.clear();
+  const b = { rail: 2, bar: 1, vip: 0, dj: 0, marquee: 0, flyers: 1, door: 0, dress: 0 };
+  const hourAgo = Date.now() - 3600_000;
+  localStorage.setItem('afterglow.save', JSON.stringify({
+    saveVer: 4,
+    ver: '0.5.3',
+    build: 159,
+    g: {
+      cash: 100, hype: 10, buzz: 5, patrons: 4, regulars: 0, clout: 0,
+      crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      b, u: {}, r: {},
+      elapsed: 100, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: hourAgo
+    }
+  }));
+  const origSet = localStorage.setItem.bind(localStorage);
+  let writes = 0;
+  // First write = claim (ok); second write = post-catchUp results (throws).
+  localStorage.setItem = (k, v) => {
+    writes++;
+    if (writes === 1) return origSet(k, v);
+    throw new Error('quota after claim');
+  };
+  const game1 = new Game(root);
+  game1.forceUpdate = () => {};
+  game1.init();
+  if (game1.timer) clearInterval(game1.timer);
+  if (game1.saver) clearInterval(game1.saver);
+  localStorage.setItem = origSet;
+
+  strictEqual(game1.state.saveState, 'save failed', 'post-catchUp write failure surfaces');
+  ok(game1.state.g.cash > 100, 'catch-up applied in memory after claim succeeded');
+  const disk = JSON.parse(localStorage.getItem(game1.KEY));
+  strictEqual(disk.saveVer, game1.SAVE_VER, 'claim write left SAVE_VER 5 on disk');
+  ok(disk.g.ts > hourAgo + 3_000_000, 'claimed ts on disk even if progress write failed');
+  // Disk may lack full catch-up cash (second write failed) — that is one-time loss, not double-count.
+  const cashOnDisk = disk.g.cash;
+  const game2 = new Game(root);
+  game2.forceUpdate = () => {};
+  game2.init();
+  if (game2.timer) clearInterval(game2.timer);
+  if (game2.saver) clearInterval(game2.saver);
+  // Second init must not re-apply ~1h offline on top of disk state.
+  ok(Math.abs(game2.state.g.cash - cashOnDisk) < 1,
+    `reload must not re-apply offline gap (disk=${cashOnDisk}, second=${game2.state.g.cash})`);
+});
+
 test('v5 import missing goals fails closed; v4 without goals still migrates', () => {
   const game = newGame(20);
   game.state.g.cash = 20;

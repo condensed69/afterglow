@@ -74,6 +74,7 @@ class Game {
       'Peak-hour hero (goal 12) completes only on live step/actions — not offline catch-up.',
       'Study/builtin goals check only catalog research/upgrades (orphan r.franchise does not complete study).',
       'Init persists migrate + offline catch-up immediately so a reload cannot double-count elapsed time.',
+      'Init claims the offline window (persist + refresh ts) before catch-up; on setItem failure skip catch-up and surface save failed — no silent double-count on reload.',
       'Current-format (v5) saves require sane goals/clicks/rounds; missing fields fail closed (v4 still migrates).',
       'Goal checks after step, catch-up, and player actions so offline progress can complete goals.',
       'Catch-up evaluates goals each offline slice so threshold goals (patrons/hype) complete if crossed mid-window then decay.'
@@ -641,20 +642,38 @@ class Game {
       if (fromSaveVer < 5) this.push(g, "Owner's list updated.", '#ffc94a');
     }
     if (prevVer && prevVer !== this.VERSION.num) this.push(g, 'Updated ' + prevVer + ' → ' + this.VERSION.num + '.', '#ffc94a');
-    if (offline > 0) {
-      const report = this.catchUp(g, offline);
-      if (offline > 60) this.push(g, this.awayMsg(offline, report), '#ffc94a');
-      // Offline: peak (goal 12) must not complete here — live-only.
-      this.noteGoals(g, { live: false });
-    }
+
+    // Claim the offline window on disk BEFORE catch-up. Order matters:
+    // catchUp then failed setItem left the prior blob (old ts) on disk; reload
+    // re-migrated and re-applied the same gap (elapsed-time double-count).
+    // Claim first: persist + refresh ts. Only then apply catch-up. If claim fails,
+    // skip catch-up and surface save failed — memory may still run, but a reload
+    // re-reads the prior blob once (no silent progress that cannot be written).
+    // If claim succeeds and the post-catchUp write fails, disk already has the
+    // claimed ts so reload cannot re-apply the gap (offline may be lost once).
     g.ts = Date.now();
-    // Persist immediately so migrate + offline progress cannot re-apply on reload
-    // before the 10s autosave (elapsed-time double-count guard).
+    let claimed = false;
     try {
       localStorage.setItem(this.KEY, JSON.stringify({
         saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
       }));
-    } catch (e) { /* quota / private mode — in-memory state still runs */ }
+      claimed = true;
+    } catch (e) {
+      this.setState({ saveState: 'save failed' });
+    }
+    if (offline > 0 && claimed) {
+      const report = this.catchUp(g, offline);
+      if (offline > 60) this.push(g, this.awayMsg(offline, report), '#ffc94a');
+      // Offline: peak (goal 12) must not complete here — live-only.
+      this.noteGoals(g, { live: false });
+      try {
+        localStorage.setItem(this.KEY, JSON.stringify({
+          saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
+        }));
+      } catch (e) {
+        this.setState({ saveState: 'save failed' });
+      }
+    }
 
     const measure = () => {
       const el = document.getElementById('stage');
