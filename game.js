@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.6.1', build: 168, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.6.1', build: 169, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 5;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -97,7 +97,8 @@ class Game {
       'save(auto) and save(manual)/Save now no-op while tabStale or non-owner — never clobber a live sibling.',
       'Non-owner tabs are read-only (sim + controls pause) until reload takeover or successful import.',
       'Age-only claim probes first so a live owner can refresh its lease before a second tab steals.',
-      'Successful import acquires ownership and starts autosave only after setItem succeeds.'
+      'Successful import acquires ownership and starts autosave only after setItem succeeds.',
+      'Settings wipe (hardReset) no-ops while tabStale or non-owner — never removeItem a live sibling save.'
     ]},
     { v: '0.6.0', date: '2026-08-04', codename: 'Neon Zero', notes: [
       'Owner\'s List: sequential 14-goal onboarding panel at the top of the systems column.',
@@ -1400,6 +1401,9 @@ class Game {
         this.importSaveFromText(String(text).trim());
       },
       hardReset: () => {
+        // Same class as save(manual): a paused / non-owner tab must not mutate KEY.
+        // Wipe is neither reload takeover nor import — no-op until this tab owns.
+        if (this.state.tabStale || !this.isTabOwner()) return;
         if (!this.state.resetArmed) { this.setState({ resetArmed: true }); return; }
         localStorage.removeItem(this.KEY);
         this.state.g = this.fresh();
