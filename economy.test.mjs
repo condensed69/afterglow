@@ -25,11 +25,25 @@ const root = {
 Object.defineProperty(root, 'innerHTML', { set: () => {}, get: () => '' });
 Object.defineProperty(root, 'style', { value: {}, writable: true });
 
+// Capture listeners so ownership lifecycle (pagehide/pageshow/storage) is testable.
+const windowListeners = Object.create(null);
 globalThis.window = {
-  addEventListener: () => {},
-  removeEventListener: () => {},
+  addEventListener: (type, fn) => {
+    if (!windowListeners[type]) windowListeners[type] = [];
+    windowListeners[type].push(fn);
+  },
+  removeEventListener: (type, fn) => {
+    if (!windowListeners[type]) return;
+    windowListeners[type] = windowListeners[type].filter(f => f !== fn);
+  },
+  dispatchEvent: (type, event) => {
+    for (const fn of (windowListeners[type] || [])) fn(event || {});
+  },
   ResizeObserver: undefined,
 };
+function clearWindowListeners() {
+  for (const k of Object.keys(windowListeners)) delete windowListeners[k];
+}
 globalThis.document = {
   getElementById: (id) => {
     if (id === 'stage') {
@@ -71,6 +85,14 @@ globalThis.FileReader = class FileReader {
   }
 };
 globalThis.localStorage = {
+  _data: Object.create(null),
+  getItem(k) { return this._data[k] ?? null; },
+  setItem(k, v) { this._data[k] = String(v); },
+  removeItem(k) { delete this._data[k]; },
+  clear() { this._data = Object.create(null); },
+};
+// Per-tab ownership (game.OWNER_KEY) — same shape as localStorage; not shared across tabs in browsers.
+globalThis.sessionStorage = {
   _data: Object.create(null),
   getItem(k) { return this._data[k] ?? null; },
   setItem(k, v) { this._data[k] = String(v); },
@@ -130,6 +152,15 @@ function resourceNames() {
 }
 
 function newGame(startingCash) {
+  // Isolate tab-owner session flag between tests (simulates a fresh tab by default).
+  sessionStorage.clear();
+  clearWindowListeners();
+  // Drop cross-tab lease/probe left by prior tests so age-only claim is not blocked
+  // by a stale foreign heartbeat from another Game instance.
+  try {
+    localStorage.removeItem('afterglow.tabOwnerLease');
+    localStorage.removeItem('afterglow.tabOwnerProbe');
+  } catch (e) { /* ignore */ }
   const game = new Game(root);
   // Suppress render() during tests (actions call forceUpdate → render).
   game.forceUpdate = () => {};
@@ -1089,17 +1120,17 @@ test('onForeignSave stops autosave interval and marks tab stale', () => {
   strictEqual(game.state.tabStale, true);
 });
 
-test('autosave is a no-op while tabStale; manual save still writes', () => {
+test('autosave and manual save are no-ops while tabStale', () => {
   const game = newGame(10);
+  game.markTabOwner(); // even a former owner must not write while tabStale
   game.state.g.cash = 123;
   game.state.tabStale = true;
   localStorage.removeItem(game.KEY);
   game.save('auto');
   strictEqual(localStorage.getItem(game.KEY), null, 'autosave must not clobber foreign save');
   game.save('manual');
-  const raw = localStorage.getItem(game.KEY);
-  ok(raw, 'manual save still allowed (last-explicit-wins)');
-  strictEqual(JSON.parse(raw).g.cash, 123);
+  strictEqual(localStorage.getItem(game.KEY), null, 'manual save must not clobber while tabStale');
+  strictEqual(game.state.tabStale, true, 'manual save must not clear tabStale');
 });
 
 // ── Integer patrons display (PLAN §2.4) ───────────────────────────────────────
@@ -1830,6 +1861,7 @@ test('successful import clears tabStale and restarts autosave', () => {
   strictEqual(okImport, true);
   strictEqual(game.state.saveState, 'imported');
   strictEqual(game.state.tabStale, false, 'explicit restore takes ownership');
+  ok(game.isTabOwner(), 'import marks tab as owner');
   strictEqual(game.state.g.cash, 77);
   ok(game.saver != null, 'autosave interval restarted after import');
   // Autosave must write again (not no-op under stale guard).
@@ -1916,10 +1948,279 @@ test('import setItem throw fails closed without claiming ownership', () => {
   strictEqual(okImport, false);
   strictEqual(game.state.saveState, 'import failed');
   strictEqual(game.state.tabStale, true, 'must not clear tabStale when persist fails');
+  ok(!game.isTabOwner(), 'must not mark owner when persist fails');
   ok(!game.saver, 'must not restart autosave when persist fails');
   strictEqual(game.state.g, priorG, 'live club reference unchanged');
   strictEqual(game.state.g.cash, priorCash, 'live club cash unchanged');
   strictEqual(localStorage.getItem(game.KEY), priorRaw, 'disk blob unchanged');
+});
+
+
+// ── Multi-tab ownership hardening (ported from plan-next/b-owners-list / AAR-70–78) ──
+console.log('\nMulti-tab ownership hardening (AAR-70–78)');
+
+function seedSave(game, gPatch = {}, ageSec = 5) {
+  const g = game.fresh();
+  Object.assign(g, gPatch);
+  g.ts = Date.now() - ageSec * 1000;
+  localStorage.setItem(game.KEY, JSON.stringify({
+    saveVer: game.SAVE_VER, ver: game.VERSION.num, build: game.VERSION.build, g
+  }));
+  return g;
+}
+
+test('short multi-tab open does not setItem or start autosave', () => {
+  const game = newGame(20);
+  const diskTs = Date.now() - 5000;
+  const g = game.fresh();
+  g.cash = 111;
+  g.ts = diskTs;
+  localStorage.setItem(game.KEY, JSON.stringify({
+    saveVer: game.SAVE_VER, ver: game.VERSION.num, build: game.VERSION.build, g
+  }));
+  sessionStorage.clear(); // new tab: no OWNER_KEY / RELOAD_KEY
+  game.forceUpdate = () => {};
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+  strictEqual(game.isTabOwner(), false, 'non-claiming tab is not owner');
+  strictEqual(game.saver, null, 'autosave not armed');
+  strictEqual(game.state.tabStale, true, 'non-owner paused');
+  const disk = JSON.parse(localStorage.getItem(game.KEY));
+  strictEqual(disk.g.ts, diskTs, 'disk ts unchanged (live sibling keeps ownership)');
+  strictEqual(disk.g.cash, 111, 'disk cash unchanged');
+});
+
+test('same-tab RELOAD_KEY claims and starts autosave', () => {
+  const game = newGame(20);
+  const g = game.fresh();
+  g.cash = 50;
+  g.ts = Date.now() - 3000;
+  localStorage.setItem(game.KEY, JSON.stringify({
+    saveVer: game.SAVE_VER, ver: game.VERSION.num, build: game.VERSION.build, g
+  }));
+  sessionStorage.setItem(game.RELOAD_KEY, 'prev-tab-token');
+  game.forceUpdate = () => {};
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+  ok(game.isTabOwner(), 'reload intent claims ownership');
+  ok(game.saver != null, 'owner starts autosave');
+  strictEqual(game.state.tabStale, false);
+  strictEqual(sessionStorage.getItem(game.OWNER_KEY), game.tabToken, 'owner token is this page context after claim');
+  strictEqual(sessionStorage.getItem(game.RELOAD_KEY), null, 'reload intent consumed');
+});
+
+test('copied OWNER_KEY without RELOAD_KEY does not claim (tab-duplicate)', () => {
+  const game = newGame(20);
+  const g = game.fresh();
+  g.ts = Date.now() - 2000;
+  localStorage.setItem(game.KEY, JSON.stringify({
+    saveVer: game.SAVE_VER, ver: game.VERSION.num, build: game.VERSION.build, g
+  }));
+  // pagehide never ran so RELOAD_KEY is absent. Must not steal a live sibling.
+  sessionStorage.setItem(game.OWNER_KEY, game.tabToken);
+  // No RELOAD_KEY — simulates duplicate of a still-live owner tab.
+  game.forceUpdate = () => {};
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+  strictEqual(game.isTabOwner(), false, 'duplicate does not claim');
+  strictEqual(game.saver, null);
+  strictEqual(game.state.tabStale, true);
+});
+
+test('manual save from non-owner is a no-op (no ownership steal)', () => {
+  const game = newGame(20);
+  const g = game.fresh();
+  g.cash = 200;
+  g.ts = Date.now() - 4000;
+  localStorage.setItem(game.KEY, JSON.stringify({
+    saveVer: game.SAVE_VER, ver: game.VERSION.num, build: game.VERSION.build, g
+  }));
+  sessionStorage.clear();
+  game.forceUpdate = () => {};
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+  strictEqual(game.isTabOwner(), false);
+  const diskBefore = localStorage.getItem(game.KEY);
+  game.state.g.cash = 9999;
+  game.save('manual');
+  strictEqual(game.isTabOwner(), false, 'manual save must not take ownership while non-owner');
+  strictEqual(game.saver, null, 'manual save must not start autosave while non-owner');
+  strictEqual(localStorage.getItem(game.KEY), diskBefore, 'disk unchanged');
+});
+
+test('owner save(manual) writes while not tabStale', () => {
+  const game = newGame(20);
+  game.markTabOwner();
+  game.state.tabStale = false;
+  game.state.g.cash = 321;
+  localStorage.removeItem(game.KEY);
+  game.save('manual');
+  const raw = localStorage.getItem(game.KEY);
+  ok(raw, 'owner manual save writes');
+  strictEqual(JSON.parse(raw).g.cash, 321);
+});
+
+test('live foreign lease blocks age-only claim', () => {
+  const game = newGame(20);
+  const g = game.fresh();
+  g.cash = 40;
+  g.ts = Date.now() - 60_000; // offline > 15s
+  localStorage.setItem(game.KEY, JSON.stringify({
+    saveVer: game.SAVE_VER, ver: game.VERSION.num, build: game.VERSION.build, g
+  }));
+  localStorage.setItem(game.LEASE_KEY, JSON.stringify({
+    token: 'foreign-live-token', at: Date.now()
+  }));
+  sessionStorage.clear();
+  game.forceUpdate = () => {};
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+  if (game._probeTimer) clearTimeout(game._probeTimer);
+  strictEqual(game.isTabOwner(), false, 'claimant does not become owner');
+  strictEqual(game.state.tabStale, true, 'non-owner is paused read-only');
+  strictEqual(game.saver, null);
+});
+
+test('stale lease allows age-only claim after probe wait', () => {
+  const game = newGame(20);
+  const g = game.fresh();
+  g.cash = 40;
+  g.ts = Date.now() - 60_000;
+  localStorage.setItem(game.KEY, JSON.stringify({
+    saveVer: game.SAVE_VER, ver: game.VERSION.num, build: game.VERSION.build, g
+  }));
+  // Stale lease (older than LEASE_TTL_MS) must not block claim.
+  localStorage.setItem(game.LEASE_KEY, JSON.stringify({
+    token: 'stale-foreign', at: Date.now() - (game.LEASE_TTL_MS + 5000)
+  }));
+  sessionStorage.clear();
+  game.forceUpdate = () => {};
+  game.init();
+  // Probe wait: claim is deferred until finishAgeClaim (no immediate setItem race).
+  strictEqual(game.isTabOwner(), false, 'does not claim before probe wait elapses');
+  strictEqual(game.state.tabStale, true, 'read-only during probe wait');
+  strictEqual(game.state.saveState, 'checking ownership…');
+  ok(localStorage.getItem(game.PROBE_KEY), 'probe written for owner handshake');
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+  if (game._probeTimer) clearTimeout(game._probeTimer);
+  game.finishAgeClaim();
+  if (game.saver) clearInterval(game.saver);
+  if (game.timer) clearInterval(game.timer);
+  ok(game.isTabOwner(), 'stale lease allows age-only claim after probe wait');
+  strictEqual(game.state.tabStale, false, 'unpaused after successful claim');
+  ok(game.saver != null, 'autosave started after claim');
+  const lease = JSON.parse(localStorage.getItem(game.LEASE_KEY));
+  strictEqual(lease.token, game.tabToken, 'owner publishes its own lease after claim');
+});
+
+test('probe wait aborts when live owner refreshes lease', () => {
+  const game = newGame(20);
+  const g = game.fresh();
+  g.ts = Date.now() - 60_000;
+  localStorage.setItem(game.KEY, JSON.stringify({
+    saveVer: game.SAVE_VER, ver: game.VERSION.num, build: game.VERSION.build, g
+  }));
+  localStorage.setItem(game.LEASE_KEY, JSON.stringify({
+    token: 'was-stale', at: Date.now() - (game.LEASE_TTL_MS + 5000)
+  }));
+  sessionStorage.clear();
+  game.forceUpdate = () => {};
+  game.init();
+  strictEqual(game.isTabOwner(), false, 'deferred — not owner yet');
+  strictEqual(game.state.saveState, 'checking ownership…');
+  ok(localStorage.getItem(game.PROBE_KEY), 'probe written for owner handshake');
+  // Simulate live owner responding to PROBE via storage (refreshes lease).
+  localStorage.setItem(game.LEASE_KEY, JSON.stringify({
+    token: 'live-owner-now', at: Date.now()
+  }));
+  if (game._probeTimer) clearTimeout(game._probeTimer);
+  game.finishAgeClaim();
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+  strictEqual(game.isTabOwner(), false);
+  strictEqual(game.state.tabStale, true);
+  strictEqual(game.state.saveState, 'paused (other tab)');
+});
+
+test('non-owner short multi-tab open is read-only (tabStale; actions no-op)', () => {
+  const game = newGame(5000);
+  const g0 = game.fresh();
+  g0.cash = 5000;
+  g0.ts = Date.now() - 4000;
+  localStorage.setItem(game.KEY, JSON.stringify({
+    saveVer: game.SAVE_VER, ver: game.VERSION.num, build: game.VERSION.build, g: g0
+  }));
+  sessionStorage.clear();
+  game.forceUpdate = () => {};
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+  strictEqual(game.isTabOwner(), false);
+  strictEqual(game.state.tabStale, true, 'non-owner paused with banner state');
+  const cashBefore = game.state.g.cash;
+  const clicksBefore = game.state.g.clicks || 0;
+  const rail = game.BUILDINGS.find(b => b.id === 'rail');
+  game.buyBuilding(rail);
+  // workCrowd is only on renderVals
+  const v = game.renderVals();
+  v.workCrowd();
+  strictEqual(game.state.g.cash, cashBefore, 'work/buy no-op while tabStale');
+  strictEqual(game.state.g.clicks, clicksBefore, 'clicks not advanced while tabStale');
+  strictEqual(game.state.g.b.rail, 0, 'building not purchased while tabStale');
+});
+
+test('tabStale + save(manual) does not write or clear pause (AAR-78)', () => {
+  const game = newGame(20);
+  const g0 = game.fresh();
+  g0.cash = 88;
+  g0.ts = Date.now() - 3000;
+  localStorage.setItem(game.KEY, JSON.stringify({
+    saveVer: game.SAVE_VER, ver: game.VERSION.num, build: game.VERSION.build, g: g0
+  }));
+  sessionStorage.clear();
+  game.forceUpdate = () => {};
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+  strictEqual(game.state.tabStale, true);
+  const diskBefore = localStorage.getItem(game.KEY);
+  game.state.g.cash = 1;
+  game.save('manual');
+  strictEqual(game.isTabOwner(), false, 'must not mark owner while tabStale');
+  strictEqual(game.state.tabStale, true, 'manual save must not clear read-only pause');
+  strictEqual(game.saver, null, 'must not start autosave while tabStale');
+  strictEqual(localStorage.getItem(game.KEY), diskBefore, 'disk unchanged by manual save');
+});
+
+test('pageshow clears RELOAD_KEY (BFCache restore must not leave stealable marker)', () => {
+  const game = newGame(20);
+  game.markTabOwner();
+  sessionStorage.setItem(game.RELOAD_KEY, game.tabToken);
+  // ensureOwnerLifecycle bound via markTabOwner
+  window.dispatchEvent('pageshow', {});
+  strictEqual(sessionStorage.getItem(game.RELOAD_KEY), null,
+    'pageshow must clear RELOAD_KEY');
+});
+
+test('onForeignSave clears ownership and stops autosave', () => {
+  const game = newGame(10);
+  game.markTabOwner();
+  game.startAutosave();
+  ok(game.saver != null);
+  game.onForeignSave();
+  strictEqual(game.state.tabStale, true);
+  strictEqual(game.saver, null, 'autosave interval cleared');
+  strictEqual(game.isTabOwner(), false, 'owner cleared on foreign write');
+  strictEqual(sessionStorage.getItem(game.RELOAD_KEY), null, 'reload intent cleared on foreign write');
+  // Idempotent second call.
+  game.onForeignSave();
+  strictEqual(game.state.tabStale, true);
 });
 
 // ── Results ──────────────────────────────────────────────────────────────────
