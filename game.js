@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.5.3', build: 159, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.5.3', build: 160, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 4;
   KEY = 'afterglow.save';
 
@@ -42,7 +42,10 @@ class Game {
   CHANGELOG = [
     { v: '0.5.3', date: '2026-08-04', codename: 'Neon Zero', notes: [
       'Clipboard restore now completes and validates every simulation field before replacing the live club.',
-      'Crew stay on strike while non-crew revenue cannot cover payroll, preventing alternating unpaid production ticks.'
+      'Crew stay on strike while non-crew revenue cannot cover payroll, preventing alternating unpaid production ticks.',
+      'Settings: Download save (.json) — same payload as clipboard, fixed filename afterglow-save.json.',
+      'Settings: Load save from file… — FileReader into existing importSaveFromText (no parallel path).',
+      'Files and clipboard are interchangeable; settings order: Save · Download · Load file · clipboard · Wipe.'
     ]},
     { v: '0.5.2', date: '2026-08-03', codename: 'Neon Zero', notes: [
       'Reorganization only — no behavior change.',
@@ -727,6 +730,42 @@ class Game {
       toggleChangelog: () => this.setState(s => ({ showChangelog: !s.showChangelog })),
       toggleSettings: () => this.setState(s => ({ showSettings: !s.showSettings, resetArmed: false })),
       saveNow: () => this.save('manual'),
+      // File + clipboard share one payload shape so either restore path accepts either export.
+      downloadSave: () => {
+        try {
+          const json = JSON.stringify({ saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g: this.state.g });
+          const blob = new Blob([json], { type: 'application/json' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'afterglow-save.json';
+          a.click();
+          URL.revokeObjectURL(a.href);
+          this.setState({ saveState: 'downloaded' });
+        } catch (e) {
+          this.setState({ saveState: 'download failed' });
+        }
+      },
+      importSaveFile: () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json,application/json';
+        input.onchange = () => {
+          const file = input.files && input.files[0];
+          if (!file) {
+            this.setState({ saveState: 'import failed' });
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = () => {
+            this.importSaveFromText(String(reader.result || '').trim());
+          };
+          reader.onerror = () => {
+            this.setState({ saveState: 'import failed' });
+          };
+          reader.readAsText(file);
+        };
+        input.click();
+      },
       exportSave: async () => { try { await navigator.clipboard.writeText(JSON.stringify({ saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g: this.state.g })); this.setState({ saveState: 'copied' }); } catch (e) { this.setState({ saveState: 'clipboard failed' }); } },
       importSave: async () => {
         let text = '';
@@ -1047,10 +1086,12 @@ class Game {
           </div>
           <div style="padding:16px 18px;display:flex;flex-direction:column;gap:10px">
             <button data-h="${this.bind(v.saveNow)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Save now</button>
+            <button data-h="${this.bind(v.downloadSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Download save (.json)</button>
+            <button data-h="${this.bind(v.importSaveFile)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Load save from file…</button>
             <button data-h="${this.bind(v.exportSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Copy save to clipboard</button>
             <button data-h="${this.bind(v.importSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Restore save from clipboard</button>
             <button data-h="${this.bind(v.hardReset)}" style="${css(v.resetStyle)}">${v.resetLabel}</button>
-            <div style="font-size:10.5px;color:#5c4470;line-height:1.5;font-family:'IBM Plex Mono',monospace">${v.resetHint} ${v.verFull} · save format v${v.saveVer}</div>
+            <div style="font-size:10.5px;color:#5c4470;line-height:1.5;font-family:'IBM Plex Mono',monospace">${v.resetHint} Files and clipboard saves are the same format — either restores either way. ${v.verFull} · save format v${v.saveVer}</div>
           </div>
         </div>
       </div>` : '';

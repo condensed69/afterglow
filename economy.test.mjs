@@ -42,8 +42,33 @@ globalThis.document = {
     }
     return root;
   },
-  createElement: () => ({ ...root }),
+  createElement: () => ({ ...root, click: () => {}, files: null }),
   createTextNode: () => ({}),
+};
+// Blob / object-URL / FileReader shims for PLAN-NEXT §A download + load-file paths.
+// Keep the real URL constructor (Node uses it for import.meta.url); only add blob helpers.
+globalThis.Blob = class Blob {
+  constructor(parts, opts) {
+    this.parts = parts;
+    this.type = (opts && opts.type) || '';
+  }
+};
+globalThis.URL.createObjectURL = () => 'blob:test';
+globalThis.URL.revokeObjectURL = () => {};
+globalThis.FileReader = class FileReader {
+  constructor() {
+    this.result = null;
+    this.onload = null;
+    this.onerror = null;
+  }
+  readAsText(file) {
+    try {
+      this.result = file && file._text != null ? file._text : '';
+      if (typeof this.onload === 'function') this.onload();
+    } catch (e) {
+      if (typeof this.onerror === 'function') this.onerror(e);
+    }
+  }
 };
 globalThis.localStorage = {
   _data: Object.create(null),
@@ -1086,6 +1111,132 @@ test('Patrons ledger shows floor(g.patrons); sim value stays fractional', () => 
   // fmt(Math.floor(3.87)) → fmt(3) → "3.00" for values < 10
   strictEqual(row.val, game.fmt(3), `ledger must show floored patrons, got ${row.val}`);
   strictEqual(game.state.g.patrons, 3.87, 'simulation patrons must remain fractional');
+});
+
+// ── File save I/O (PLAN-NEXT §A) ──────────────────────────────────────────────
+console.log('\nFile save I/O (PLAN-NEXT §A)');
+
+test('export payload round-trips through importSaveFromText into identical g', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g.cash = 555;
+  g.hype = 18;
+  g.buzz = 7;
+  g.patrons = 4.25;
+  g.regulars = 2.5;
+  g.clout = 3;
+  g.crew = 2;
+  g.jobs = { stage: 1, vipjob: 0, floor: 0, off: 1 };
+  g.b.rail = 2;
+  g.b.bar = 1;
+  // Same envelope downloadSave / exportSave serialize.
+  const payload = {
+    saveVer: game.SAVE_VER,
+    ver: game.VERSION.num,
+    build: game.VERSION.build,
+    g: JSON.parse(JSON.stringify(g))
+  };
+  const exported = JSON.stringify(payload);
+  // Wipe live club so import must replace.
+  game.state.g = game.fresh();
+  game.state.g.cash = 1;
+  const okImport = game.importSaveFromText(exported);
+  strictEqual(okImport, true);
+  strictEqual(game.state.saveState, 'imported');
+  strictEqual(game.state.g.cash, 555);
+  strictEqual(game.state.g.hype, 18);
+  strictEqual(game.state.g.buzz, 7);
+  strictEqual(game.state.g.patrons, 4.25);
+  strictEqual(game.state.g.regulars, 2.5);
+  strictEqual(game.state.g.clout, 3);
+  strictEqual(game.state.g.crew, 2);
+  strictEqual(game.state.g.b.rail, 2);
+  strictEqual(game.state.g.b.bar, 1);
+  strictEqual(game.state.g.jobs.stage, 1);
+  strictEqual(game.state.g.jobs.off, 1);
+});
+
+test('v4 file payload imports like clipboard (shared importSaveFromText path)', () => {
+  const game = newGame(10);
+  const g = {
+    cash: 88, hype: 5, buzz: 1, patrons: 2, regulars: 0.5, clout: 1,
+    crew: 1, jobs: { stage: 1, vipjob: 0, floor: 0, off: 0 },
+    b: { rail: 1 }, u: {}, r: {}, elapsed: 10, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: Date.now()
+  };
+  // File-shaped v4 envelope (same as clipboard).
+  const fileText = JSON.stringify({
+    saveVer: 4,
+    ver: '0.5.2',
+    build: 158,
+    g
+  });
+  game.state.g.cash = 1;
+  const okImport = game.importSaveFromText(fileText);
+  strictEqual(okImport, true);
+  strictEqual(game.state.saveState, 'imported');
+  strictEqual(game.state.g.cash, 88);
+  strictEqual(game.state.g.b.rail, 1);
+  const stored = JSON.parse(localStorage.getItem(game.KEY));
+  strictEqual(stored.saveVer, game.SAVE_VER);
+  strictEqual(stored.g.cash, 88);
+});
+
+test('garbage file content fails closed with import failed', () => {
+  const game = newGame(40);
+  game.state.g.cash = 40;
+  game.state.g.hype = 9;
+  const before = game.state.g;
+  const okImport = game.importSaveFromText('{not a valid save file');
+  strictEqual(okImport, false);
+  strictEqual(game.state.saveState, 'import failed');
+  strictEqual(game.state.g, before, 'club reference must be unchanged');
+  strictEqual(game.state.g.cash, 40);
+  strictEqual(game.state.g.hype, 9);
+});
+
+test('downloadSave sets saveState downloaded (Blob path)', () => {
+  const game = newGame(20);
+  const v = game.renderVals();
+  ok(typeof v.downloadSave === 'function', 'downloadSave handler present');
+  v.downloadSave();
+  strictEqual(game.state.saveState, 'downloaded');
+});
+
+test('importSaveFile routes FileReader text into importSaveFromText', () => {
+  const game = newGame(15);
+  const g = game.state.g;
+  g.cash = 321;
+  g.b.flyers = 2;
+  const payload = JSON.stringify({
+    saveVer: game.SAVE_VER,
+    ver: game.VERSION.num,
+    build: game.VERSION.build,
+    g: JSON.parse(JSON.stringify(g))
+  });
+  game.state.g = game.fresh();
+  game.state.g.cash = 2;
+
+  // Capture the file input created by importSaveFile and drive onchange with a stub file.
+  let captured = null;
+  const prevCreate = document.createElement;
+  document.createElement = (tag) => {
+    const el = { ...root, click: () => {}, files: null, type: '', accept: '', onchange: null };
+    if (tag === 'input') captured = el;
+    return el;
+  };
+  try {
+    const v = game.renderVals();
+    v.importSaveFile();
+    ok(captured, 'hidden file input created');
+    strictEqual(captured.type, 'file');
+    captured.files = [{ _text: payload, name: 'afterglow-save.json' }];
+    captured.onchange();
+  } finally {
+    document.createElement = prevCreate;
+  }
+  strictEqual(game.state.saveState, 'imported');
+  strictEqual(game.state.g.cash, 321);
+  strictEqual(game.state.g.b.flyers, 2);
 });
 
 // ── Results ──────────────────────────────────────────────────────────────────
