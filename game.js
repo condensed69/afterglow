@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.6.0', build: 161, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.6.0', build: 162, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 5;
   KEY = 'afterglow.save';
 
@@ -64,6 +64,9 @@ class Game {
       'New save fields goals / clicks / rounds (SAVE_VER 5); v4 saves migrate with credit, no back-paid rewards.',
       'Migration credits every already-satisfied goal (no sequential break) so mid-game clubs are not re-paid live.',
       'Peak-hour hero (goal 12) completes only on live step/actions — not offline catch-up.',
+      'Study/builtin goals check only catalog research/upgrades (orphan r.franchise does not complete study).',
+      'Init persists migrate + offline catch-up immediately so a reload cannot double-count elapsed time.',
+      'Current-format (v5) saves require sane goals/clicks/rounds; missing fields fail closed (v4 still migrates).',
       'Goal checks after step, catch-up, and player actions so offline progress can complete goals.'
     ]},
     { v: '0.5.3', date: '2026-08-04', codename: 'Neon Zero', notes: [
@@ -247,7 +250,8 @@ class Game {
       why: 'Clout spent on research is permanent. Reputation Loop pays regulars forever.',
       hint: 'Research tab → spend Clout on any project (Reputation Loop is the cheap open).',
       reward: { cash: 100, clout: 0 },
-      check: g => g.r && Object.values(g.r).some(Boolean),
+      // Only catalog research — orphan r.franchise must not complete study.
+      check: g => this.RESEARCH.some(d => !!(g.r && g.r[d.id])),
       progress: null
     },
     {
@@ -271,7 +275,8 @@ class Game {
       why: 'Upgrades are one-time power spikes. Owning one means the club has a spine.',
       hint: 'Upgrades tab — meet the structure requirement, then buy (LED Pole is the usual first).',
       reward: { cash: 250, clout: 0 },
-      check: g => g.u && Object.values(g.u).some(Boolean),
+      // Only catalog upgrades — ignore any orphan u.* keys from old saves.
+      check: g => this.UPGRADES.some(d => !!(g.u && g.u[d.id])),
       progress: null
     },
     {
@@ -427,7 +432,10 @@ class Game {
   // would make rates(), simulation, or rendering unsafe. This runs on the
   // parsed candidate before state.g is replaced, so a bad import cannot poison
   // either the current session or localStorage.
-  completeImportedG(g) {
+  // opts.requireGoals: true for already-current SAVE_VER payloads (fail closed on
+  // missing/malformed goals/clicks/rounds). false after migration, which supplies them.
+  completeImportedG(g, opts = {}) {
+    const requireGoals = !!opts.requireGoals;
     const defaults = this.fresh();
     const numeric = ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'clout', 'crew',
       'elapsed', 'night', 'shiftIdx', 'shiftT', 'ts'];
@@ -462,11 +470,32 @@ class Game {
     g.log = g.log.filter(x => x && typeof x === 'object' &&
       typeof x.t === 'string' && typeof x.msg === 'string').slice(0, 40);
 
-    // Owner's List fields (SAVE_VER 5). Missing on v4 → filled after migrate; never fail import.
-    if (!Array.isArray(g.goals)) g.goals = defaults.goals.slice();
-    else g.goals = g.goals.filter(id => typeof id === 'string');
-    if (typeof g.clicks !== 'number' || !Number.isFinite(g.clicks) || g.clicks < 0) g.clicks = 0;
-    if (typeof g.rounds !== 'number' || !Number.isFinite(g.rounds) || g.rounds < 0) g.rounds = 0;
+    // Owner's List fields (SAVE_VER 5). Not in isValidSavePayload (v4 lacks them).
+    const knownGoalIds = new Set(this.GOALS.map(x => x.id));
+    if (requireGoals) {
+      // Current-format payload: require sane goals / clicks / rounds (no soft-reset re-pay).
+      if (!Array.isArray(g.goals)) return false;
+      const seen = new Set();
+      for (const id of g.goals) {
+        if (typeof id !== 'string' || !knownGoalIds.has(id) || seen.has(id)) return false;
+        seen.add(id);
+      }
+      if (typeof g.clicks !== 'number' || !Number.isFinite(g.clicks) || g.clicks < 0) return false;
+      if (typeof g.rounds !== 'number' || !Number.isFinite(g.rounds) || g.rounds < 0) return false;
+    } else {
+      // Post-migration / incomplete: fill defaults; keep only known unique ids.
+      if (!Array.isArray(g.goals)) g.goals = defaults.goals.slice();
+      else {
+        const seen = new Set();
+        g.goals = g.goals.filter(id => {
+          if (typeof id !== 'string' || !knownGoalIds.has(id) || seen.has(id)) return false;
+          seen.add(id);
+          return true;
+        });
+      }
+      if (typeof g.clicks !== 'number' || !Number.isFinite(g.clicks) || g.clicks < 0) g.clicks = 0;
+      if (typeof g.rounds !== 'number' || !Number.isFinite(g.rounds) || g.rounds < 0) g.rounds = 0;
+    }
 
     this.sanitizeG(g);
     return true;
@@ -482,13 +511,16 @@ class Game {
         return false;
       }
       const g = p.g;
+      let migrated = false;
       if (p.saveVer !== this.SAVE_VER) {
         if (!this.migrateFrom(g, p.saveVer)) {
           this.setState({ saveState: 'import failed' });
           return false;
         }
+        migrated = true;
       }
-      if (!this.completeImportedG(g)) {
+      // Current SAVE_VER requires goals/clicks/rounds; post-migration supplies them.
+      if (!this.completeImportedG(g, { requireGoals: !migrated })) {
         this.setState({ saveState: 'import failed' });
         return false;
       }
@@ -535,16 +567,20 @@ class Game {
       }
     } catch (e) { wiped = true; }
     // Recover safely from a previously persisted malformed clipboard import.
-    // Missing optional fields are completed; unsafe values reset the save.
-    if (g && !this.completeImportedG(g)) {
+    // Current SAVE_VER requires goals fields; post-migration fills them.
+    // Missing/malformed current-format goal state wipes rather than soft-reset re-pay.
+    if (g && !this.completeImportedG(g, { requireGoals: !upgraded })) {
       g = null;
       wiped = true;
     }
+    // Offline catch-up only for a successfully loaded save — not a brand-new / wiped club
+    // (fresh() stamps ts:now; a few ms later would otherwise apply a spurious offline slice).
+    const resumeExisting = !!g;
     if (!g) g = this.fresh();
     this.sanitizeG(g);
     g.log = [];
 
-    const offline = g.ts ? Math.min((Date.now() - g.ts) / 1000, 28800) : 0;
+    const offline = resumeExisting && g.ts ? Math.min((Date.now() - g.ts) / 1000, 28800) : 0;
     this.state.g = g;
     this.push(g, 'Doors open. ' + this.VERSION.codename + ' build ' + this.VERSION.build + '.', '#22d3ee');
     if (wiped) this.push(g, 'Save format changed — previous save reset.', '#ff2d78');
@@ -560,6 +596,13 @@ class Game {
       this.noteGoals(g, { live: false });
     }
     g.ts = Date.now();
+    // Persist immediately so migrate + offline progress cannot re-apply on reload
+    // before the 10s autosave (elapsed-time double-count guard).
+    try {
+      localStorage.setItem(this.KEY, JSON.stringify({
+        saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
+      }));
+    } catch (e) { /* quota / private mode — in-memory state still runs */ }
 
     const measure = () => {
       const el = document.getElementById('stage');

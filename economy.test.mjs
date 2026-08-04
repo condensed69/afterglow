@@ -836,7 +836,8 @@ test('import runs jobs sum correction (sanitizeG)', () => {
       cash: 50, hype: 0, buzz: 0, patrons: 0, regulars: 0, clout: 0,
       crew: 3,
       jobs: { stage: 1, vipjob: 0, floor: 0, off: 0 }, // sum 1 < crew 3
-      b: {}, u: {}, r: {}, elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: Date.now()
+      b: {}, u: {}, r: {}, elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: Date.now(),
+      goals: [], clicks: 0, rounds: 0
     }
   };
   const okImport = game.importSaveFromText(JSON.stringify(payload));
@@ -875,7 +876,8 @@ test('missing maps and shift metadata are safely backfilled before import', () =
     saveVer: game.SAVE_VER,
     g: {
       cash: 99, hype: 1, buzz: 2, patrons: 3, regulars: 4, clout: 5,
-      crew: 1, jobs: { stage: 1, vipjob: 0, floor: 0, off: 0 }
+      crew: 1, jobs: { stage: 1, vipjob: 0, floor: 0, off: 0 },
+      goals: [], clicks: 0, rounds: 0
     }
   };
   strictEqual(game.importSaveFromText(JSON.stringify(payload)), true);
@@ -1312,6 +1314,87 @@ test('import of a v4 payload still validates (payload checker unchanged)', () =>
   ok(game.isValidSavePayload(payload), 'v4 payload without goals fields is valid');
   // Must not require goals on the checker
   ok(!('goals' in payload.g));
+});
+
+test('study/builtin ignore orphan keys; catalog research completes study', () => {
+  const game = newGame(20);
+  const g = game.fresh();
+  g.r = { franchise: true }; // preserved orphan from pre-prestige design
+  g.u = { ghostUpgrade: true };
+  const study = game.GOALS.find(x => x.id === 'study');
+  const builtin = game.GOALS.find(x => x.id === 'builtin');
+  strictEqual(study.check(g), false, 'orphan r.franchise must not complete study');
+  strictEqual(builtin.check(g), false, 'orphan u.* must not complete builtin');
+  g.r.loop = true;
+  strictEqual(study.check(g), true, 'catalog research completes study');
+  g.u.led = true;
+  strictEqual(builtin.check(g), true, 'catalog upgrade completes builtin');
+});
+
+test('init migrate + offline persists; second init does not double-count offline', () => {
+  localStorage.clear();
+  const b = { rail: 2, bar: 1, vip: 0, dj: 0, marquee: 0, flyers: 1, door: 0, dress: 0 };
+  const hourAgo = Date.now() - 3600_000;
+  localStorage.setItem('afterglow.save', JSON.stringify({
+    saveVer: 4,
+    ver: '0.5.3',
+    build: 159,
+    g: {
+      cash: 100, hype: 10, buzz: 5, patrons: 4, regulars: 0, clout: 0,
+      crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      b, u: {}, r: {},
+      elapsed: 100, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: hourAgo
+    }
+  }));
+  const game1 = new Game(root);
+  game1.forceUpdate = () => {};
+  game1.init();
+  if (game1.timer) clearInterval(game1.timer);
+  if (game1.saver) clearInterval(game1.saver);
+  const cashAfterFirst = game1.state.g.cash;
+  const stored = JSON.parse(localStorage.getItem(game1.KEY));
+  strictEqual(stored.saveVer, game1.SAVE_VER, 'init must persist SAVE_VER 5 immediately');
+  ok(Array.isArray(stored.g.goals), 'persisted goals after migrate');
+  ok(stored.g.ts > hourAgo + 3_000_000, 'ts refreshed so offline window cannot replay');
+  // Second init loads v5 with fresh ts — must not re-apply the hour of catchUp.
+  // Tiny sub-second offline between inits can tick fractional cash; bound it tightly.
+  const game2 = new Game(root);
+  game2.forceUpdate = () => {};
+  game2.init();
+  if (game2.timer) clearInterval(game2.timer);
+  if (game2.saver) clearInterval(game2.saver);
+  const delta = Math.abs(game2.state.g.cash - cashAfterFirst);
+  ok(delta < 1, `second init must not re-apply ~1h offline (Δcash=${delta}, first=${cashAfterFirst})`);
+  strictEqual(JSON.parse(localStorage.getItem(game2.KEY)).saveVer, game2.SAVE_VER);
+});
+
+test('v5 import missing goals fails closed; v4 without goals still migrates', () => {
+  const game = newGame(20);
+  game.state.g.cash = 20;
+  const mature = {
+    cash: 500, hype: 30, buzz: 10, patrons: 12, regulars: 5, clout: 4,
+    crew: 3, jobs: { stage: 1, vipjob: 1, floor: 1, off: 0 },
+    b: { rail: 2, flyers: 1, bar: 1, vip: 1, dress: 1, dj: 2, marquee: 0, door: 0 },
+    u: { led: true }, r: { loop: true },
+    elapsed: 600, night: 4, shiftIdx: 0, shiftT: 10, log: [], ts: Date.now()
+    // goals/clicks/rounds omitted
+  };
+  const before = game.state.g;
+  const fail = game.importSaveFromText(JSON.stringify({
+    saveVer: 5, ver: '0.6.0', build: 161, g: { ...mature }
+  }));
+  strictEqual(fail, false, 'v5 missing goals must fail closed');
+  strictEqual(game.state.saveState, 'import failed');
+  strictEqual(game.state.g, before, 'club reference unchanged');
+  strictEqual(game.state.g.cash, 20);
+
+  // v4 path still migrates without those fields.
+  const okV4 = game.importSaveFromText(JSON.stringify({
+    saveVer: 4, ver: '0.5.3', build: 159, g: { ...mature }
+  }));
+  strictEqual(okV4, true, 'v4 without goals still migrates');
+  ok(Array.isArray(game.state.g.goals), 'migration supplies goals');
+  strictEqual(game.state.g.cash, 500, 'no reward cascade on migrate');
 });
 
 // ── Results ──────────────────────────────────────────────────────────────────
