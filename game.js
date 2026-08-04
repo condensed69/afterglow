@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.5.6', build: 164, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.5.7', build: 165, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 4;
   KEY = 'afterglow.save';
 
@@ -40,6 +40,9 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.5.7', date: '2026-08-04', codename: 'Neon Zero', notes: [
+      'Import strips unknown keys under buildings/upgrades/research/jobs so crafted extras cannot reach Structures (or other Object.values paths) unescaped.'
+    ]},
     { v: '0.5.6', date: '2026-08-04', codename: 'Neon Zero', notes: [
       'Night-log import keeps raw validated text and hex-only colors; HTML escape happens only at render so export→import round-trips stay idempotent.'
     ]},
@@ -326,25 +329,34 @@ class Game {
     if (g.shiftT < 0 || g.shiftT >= this.SHIFTS[g.shiftIdx].len) return false;
     if (g.elapsed < 0 || g.night < 1) return false;
 
+    // Rebuild from known IDs only — unknown keys (e.g. string-valued XSS bait under
+    // g.b) must not survive into Object.values(g.b) / Structures or other paths.
     for (const [key, defs, fallback] of [
       ['b', this.BUILDINGS, 0], ['u', this.UPGRADES, false], ['r', this.RESEARCH, false]
     ]) {
       if (g[key] === undefined) g[key] = {};
       if (!g[key] || typeof g[key] !== 'object' || Array.isArray(g[key])) return false;
+      const next = Object.create(null);
       for (const def of defs) {
-        if (g[key][def.id] === undefined) g[key][def.id] = fallback;
-        const value = g[key][def.id];
+        let value = g[key][def.id];
+        if (value === undefined) value = fallback;
         if (key === 'b') {
           if (!Number.isInteger(value) || value < 0) return false;
         } else if (typeof value !== 'boolean') return false;
+        next[def.id] = value;
       }
+      g[key] = next;
     }
 
     if (!g.jobs || typeof g.jobs !== 'object' || Array.isArray(g.jobs)) return false;
+    const jobsNext = Object.create(null);
     for (const k of ['stage', 'vipjob', 'floor', 'off']) {
-      if (g.jobs[k] === undefined) g.jobs[k] = 0;
-      if (!Number.isFinite(g.jobs[k]) || g.jobs[k] < 0) return false;
+      let value = g.jobs[k];
+      if (value === undefined) value = 0;
+      if (!Number.isFinite(value) || value < 0) return false;
+      jobsNext[k] = value;
     }
+    g.jobs = jobsNext;
     if (!Array.isArray(g.log)) g.log = [];
     // Keep raw validated t/msg (length-capped) so export→import is idempotent.
     // Escape only at the render() innerHTML boundary; restrict color to hex.
@@ -857,7 +869,8 @@ class Game {
     const stats = [
       { k: 'Crew', v: g.crew + ' / ' + cap.crew },
       { k: 'On stage', v: String(g.jobs.stage) },
-      { k: 'Structures', v: String(Object.values(g.b).reduce((a, b) => a + b, 0)) },
+      // Sum only known building IDs (defense in depth vs unknown keys).
+      { k: 'Structures', v: String(this.BUILDINGS.reduce((a, d) => a + (g.b[d.id] || 0), 0)) },
       { k: 'Night time', v: Math.floor(g.elapsed / 60) + 'm ' + Math.floor(g.elapsed % 60) + 's' }
     ];
 
