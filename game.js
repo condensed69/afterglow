@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.5.2', build: 158, channel: 'alpha', date: '2026-08-03', codename: 'Neon Zero' };
+  VERSION = { num: '0.5.3', build: 159, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 4;
   KEY = 'afterglow.save';
 
@@ -40,6 +40,10 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.5.3', date: '2026-08-04', codename: 'Neon Zero', notes: [
+      'Clipboard restore now completes and validates every simulation field before replacing the live club.',
+      'Crew stay on strike while non-crew revenue cannot cover payroll, preventing alternating unpaid production ticks.'
+    ]},
     { v: '0.5.2', date: '2026-08-03', codename: 'Neon Zero', notes: [
       'Reorganization only — no behavior change.',
       'Section headers in game.js (constants / economy / simulation / actions / render / boot).',
@@ -275,6 +279,48 @@ class Game {
     return true;
   }
 
+  // Complete optional fields from a fresh save, while rejecting values that
+  // would make rates(), simulation, or rendering unsafe. This runs on the
+  // parsed candidate before state.g is replaced, so a bad import cannot poison
+  // either the current session or localStorage.
+  completeImportedG(g) {
+    const defaults = this.fresh();
+    const numeric = ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'clout', 'crew',
+      'elapsed', 'night', 'shiftIdx', 'shiftT', 'ts'];
+    for (const k of numeric) {
+      if (g[k] === undefined) g[k] = defaults[k];
+      if (typeof g[k] !== 'number' || !Number.isFinite(g[k])) return false;
+    }
+    if (!Number.isInteger(g.shiftIdx) || !this.SHIFTS[g.shiftIdx]) return false;
+    if (g.shiftT < 0 || g.shiftT >= this.SHIFTS[g.shiftIdx].len) return false;
+    if (g.elapsed < 0 || g.night < 1) return false;
+
+    for (const [key, defs, fallback] of [
+      ['b', this.BUILDINGS, 0], ['u', this.UPGRADES, false], ['r', this.RESEARCH, false]
+    ]) {
+      if (g[key] === undefined) g[key] = {};
+      if (!g[key] || typeof g[key] !== 'object' || Array.isArray(g[key])) return false;
+      for (const def of defs) {
+        if (g[key][def.id] === undefined) g[key][def.id] = fallback;
+        const value = g[key][def.id];
+        if (key === 'b') {
+          if (!Number.isInteger(value) || value < 0) return false;
+        } else if (typeof value !== 'boolean') return false;
+      }
+    }
+
+    if (!g.jobs || typeof g.jobs !== 'object' || Array.isArray(g.jobs)) return false;
+    for (const k of ['stage', 'vipjob', 'floor', 'off']) {
+      if (g.jobs[k] === undefined) g.jobs[k] = 0;
+      if (!Number.isFinite(g.jobs[k]) || g.jobs[k] < 0) return false;
+    }
+    if (!Array.isArray(g.log)) g.log = [];
+    g.log = g.log.filter(x => x && typeof x === 'object' &&
+      typeof x.t === 'string' && typeof x.msg === 'string').slice(0, 40);
+    this.sanitizeG(g);
+    return true;
+  }
+
   // Parse + validate + migrate + sanitize a save blob. On success replaces state.g and persists.
   // On any failure: saveState 'import failed', current club unchanged.
   importSaveFromText(text) {
@@ -291,8 +337,10 @@ class Game {
           return false;
         }
       }
-      this.sanitizeG(g);
-      if (!Array.isArray(g.log)) g.log = [];
+      if (!this.completeImportedG(g)) {
+        this.setState({ saveState: 'import failed' });
+        return false;
+      }
       // Stamp now so the next tick does not treat export age as offline progress.
       g.ts = Date.now();
       this._onStrike = false;
@@ -335,6 +383,12 @@ class Game {
         }
       }
     } catch (e) { wiped = true; }
+    // Recover safely from a previously persisted malformed clipboard import.
+    // Missing optional fields are completed; unsafe values reset the save.
+    if (g && !this.completeImportedG(g)) {
+      g = null;
+      wiped = true;
+    }
     if (!g) g = this.fresh();
     this.sanitizeG(g);
     g.log = [];
@@ -452,9 +506,11 @@ class Game {
     let stageHype = g.jobs.stage * 0.22 * crewMult;
     let floorBuzz = g.jobs.floor * 0.05 * crewMult;
 
-    // Strike: broke and non-crew income cannot cover wages → crew idle, no wage drain.
+    // Strike: crew only work when the club's non-crew revenue covers payroll.
+    // Do not use cash > 0 as the recovery condition: strike ticks earn a small
+    // door trickle, which otherwise causes alternating strike/production ticks.
     let strike = false;
-    if (g.cash <= 0 && nonCrewCash - wage < 0) {
+    if (nonCrewCash < wage) {
       vipCrewCash = 0;
       stageHype = 0;
       floorBuzz = 0;

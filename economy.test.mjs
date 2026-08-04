@@ -438,15 +438,16 @@ console.log('\n5. catchUp offline simulation (PLAN §1.1)');
 
 console.log('\n6. Strike rule at cash=0 (PLAN §1.3)');
 
-test('rates() computes wage field', () => {
+test('rates() computes wage field when non-crew revenue covers payroll', () => {
   const game = newGame(5000);
   const g = game.state.g;
   g.crew = 3;
   g.jobs = { stage: 1, vipjob: 1, floor: 1, off: 0 };
+  g.b.bar = 20;
   const r = game.rates(g);
   ok(typeof r.wage === 'number', 'rates() must return a wage number');
   ok(r.wage > 0, 'wage must be > 0 when crew is working (crew=3, off=0)');
-  ok(!r.strike, 'no strike when cash is positive');
+  ok(!r.strike, 'no strike when recurring revenue covers payroll');
 });
 
 test('rates() does not crash at cash=0', () => {
@@ -484,11 +485,15 @@ test('at cash=0 with wages > non-crew income: crew output zeroed', () => {
   const struck = game.rates(g);
   strictEqual(struck.wage, 0, 'wage must be 0 on strike');
   strictEqual(struck.strike, true, 'strike active');
-  // Paid rates with same crew (cash > 0) must have higher crew contributions
+  // A cash balance alone must not end an underfunded strike.
   g.cash = 100;
+  const stillStruck = game.rates(g);
+  strictEqual(stillStruck.strike, true, 'cash balance does not cover recurring payroll');
+  // Paid rates after recurring non-crew revenue covers payroll have crew output.
+  g.b.bar = 20;
   const paid = game.rates(g);
   ok(paid.wage > 0, 'wage positive when paid');
-  ok(!paid.strike, 'no strike when cash > 0');
+  ok(!paid.strike, 'strike clears when recurring revenue covers payroll');
   // Stage hype: paid includes stage crew; struck does not (only DJ buildings = 0)
   ok(paid.hype > struck.hype, 'stage crew hype zeroed on strike');
   // Floor buzz: paid includes floor; struck has none (no marquee/flyers)
@@ -515,6 +520,21 @@ test('strike edge-triggered log fires once on onset', () => {
   game.step(0.1);
   const after = g.log.filter(l => /on strike/i.test(l.msg));
   strictEqual(after.length, 1, 'strike log remains edge-triggered (not per-tick)');
+});
+
+test('door trickle does not alternate an underfunded strike into production', () => {
+  const game = newGame(0);
+  const g = game.state.g;
+  g.crew = 2;
+  g.jobs = { stage: 1, vipjob: 0, floor: 1, off: 0 };
+  game.step(1);
+  ok(g.cash > 0, 'non-crew door revenue accumulates during strike');
+  const hype = g.hype;
+  const buzz = g.buzz;
+  game.step(1);
+  strictEqual(game.rates(g).strike, true, 'crew remain on strike with positive trickle cash');
+  strictEqual(g.hype, hype, 'stage crew do not produce on the next tick');
+  strictEqual(g.buzz, buzz, 'floor crew do not produce on the next tick');
 });
 
 test('no strike when non-crew income covers wages at cash=0', () => {
@@ -847,6 +867,47 @@ test('missing resource fields fail closed', () => {
   strictEqual(okImport, false);
   strictEqual(game.state.saveState, 'import failed');
   strictEqual(game.state.g.cash, 40, 'cash must not change on invalid payload');
+});
+
+test('missing maps and shift metadata are safely backfilled before import', () => {
+  const game = newGame(20);
+  const payload = {
+    saveVer: game.SAVE_VER,
+    g: {
+      cash: 99, hype: 1, buzz: 2, patrons: 3, regulars: 4, clout: 5,
+      crew: 1, jobs: { stage: 1, vipjob: 0, floor: 0, off: 0 }
+    }
+  };
+  strictEqual(game.importSaveFromText(JSON.stringify(payload)), true);
+  strictEqual(game.state.g.b.bar, 0);
+  strictEqual(game.state.g.u.coat, false);
+  strictEqual(game.state.g.r.loop, false);
+  strictEqual(game.state.g.shiftIdx, 0);
+  strictEqual(game.state.g.shiftT, 0);
+  ok(Number.isFinite(game.rates(game.state.g).cash), 'completed state is simulation-safe');
+});
+
+test('invalid nested state fails closed without replacing or persisting club', () => {
+  const game = newGame(40);
+  localStorage.clear();
+  const before = game.state.g;
+  const payload = { saveVer: game.SAVE_VER, g: { ...game.fresh(), b: { bar: 'many' } } };
+  strictEqual(game.importSaveFromText(JSON.stringify(payload)), false);
+  strictEqual(game.state.g, before, 'live state reference remains unchanged');
+  strictEqual(localStorage.getItem(game.KEY), null, 'invalid candidate is not persisted');
+});
+
+test('init recovers from a previously persisted malformed import', () => {
+  const game = new Game(root);
+  game.forceUpdate = () => {};
+  const poisoned = game.fresh();
+  poisoned.b = { bar: 'many' };
+  localStorage.setItem(game.KEY, JSON.stringify({ saveVer: game.SAVE_VER, g: poisoned }));
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+  strictEqual(game.state.g.b.bar, 0, 'unsafe persisted state resets to fresh');
+  ok(game.state.g.log.some(x => /previous save reset/.test(x.msg)), 'reset is disclosed in the log');
 });
 
 test('non-numeric saveVer fails closed', () => {
