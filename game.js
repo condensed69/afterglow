@@ -11,9 +11,12 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.6.0', build: 165, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.6.0', build: 166, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 5;
   KEY = 'afterglow.save';
+  // Per-tab ownership marker in sessionStorage (survives F5 in the same tab; not shared
+  // across tabs). Distinguishes same-tab short reload from a second-tab open.
+  OWNER_KEY = 'afterglow.tabOwner';
 
   // Dev-only tunables the Claude-artifact prop editor used to expose
   // (showDebug / simSpeed / startingCash). Fixed to their defaults now that
@@ -69,7 +72,8 @@ class Game {
       'Study/builtin goals check only catalog research/upgrades (orphan r.franchise does not complete study).',
       'Init persists migrate + offline catch-up immediately so a reload cannot double-count elapsed time.',
       'Init claims the offline window (persist + refresh ts) before catch-up; on setItem failure skip catch-up and surface save failed — no silent double-count on reload.',
-      'Init claim only when fresh/wiped, migrated, or offline >15s — avoids stealing a live tab via storage on open.',
+      'Init claim only when fresh/wiped, migrated, offline >15s, or this tab already owned the session — avoids stealing a live tab via storage on open.',
+      'Same-tab short reload still claims + catch-up (session owner); multi-tab short open leaves disk and g.ts alone so the gap is not permanently discarded at init.',
       'v4→v5 clicks backfill uses structures/crew only (not passive patrons/regulars) so walk-in saves keep goal 1.',
       'Current-format (v5) saves require sane goals/clicks/rounds; missing fields fail closed (v4 still migrates).',
       'Goal checks after step, catch-up, and player actions so offline progress can complete goals.',
@@ -608,37 +612,46 @@ class Game {
     // Do NOT claim unconditionally: a second tab that setItem's the last on-disk
     // snapshot with a refreshed ts fires storage → onForeignSave on a live
     // sibling, stealing ownership and discarding up to one autosave interval of
-    // progress. Under a live tab, disk ts lags by at most ~10s (autosave). Only
-    // claim when this tab must take ownership: fresh/wiped club, migration, or
-    // offline gap larger than one autosave + slack.
+    // progress. Under a live tab, disk ts lags by at most ~10s (autosave).
+    // Claim when this tab must take ownership: fresh/wiped club, migration,
+    // offline gap larger than one autosave + slack, or same-tab reload
+    // (sessionStorage OWNER_KEY survives F5; a new tab starts without it).
+    //
+    // Short multi-tab open (no session owner, offline ≤15s): leave g.ts at the
+    // loaded disk value — do not setItem and do not advance ts here. The live
+    // timer can still apply the remaining gap (dt > 2 → catchUp). Advancing ts
+    // without catchUp permanently discarded short single-tab reload gaps.
     const CLAIM_OFFLINE_SEC = 15;
-    const needsClaim = !resumeExisting || upgraded || offline > CLAIM_OFFLINE_SEC;
-    // Always refresh in-memory ts so the live timer does not treat load age as a gap.
-    g.ts = Date.now();
+    let wasOwner = false;
+    try { wasOwner = sessionStorage.getItem(this.OWNER_KEY) === '1'; } catch (e) { /* private mode */ }
+    const needsClaim = !resumeExisting || upgraded || offline > CLAIM_OFFLINE_SEC || wasOwner;
     let claimed = false;
     if (needsClaim) {
+      g.ts = Date.now();
       try {
         localStorage.setItem(this.KEY, JSON.stringify({
           saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
         }));
         claimed = true;
+        this.markTabOwner();
       } catch (e) {
         this.setState({ saveState: 'save failed' });
       }
-    }
-    if (offline > 0 && claimed) {
-      const report = this.catchUp(g, offline);
-      if (offline > 60) this.push(g, this.awayMsg(offline, report), '#ffc94a');
-      // Offline: peak (goal 12) must not complete here — live-only.
-      this.noteGoals(g, { live: false });
-      try {
-        localStorage.setItem(this.KEY, JSON.stringify({
-          saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
-        }));
-      } catch (e) {
-        this.setState({ saveState: 'save failed' });
+      if (offline > 0 && claimed) {
+        const report = this.catchUp(g, offline);
+        if (offline > 60) this.push(g, this.awayMsg(offline, report), '#ffc94a');
+        // Offline: peak (goal 12) must not complete here — live-only.
+        this.noteGoals(g, { live: false });
+        try {
+          localStorage.setItem(this.KEY, JSON.stringify({
+            saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
+          }));
+        } catch (e) {
+          this.setState({ saveState: 'save failed' });
+        }
       }
     }
+    // else: short gap, not this tab's session — leave g.ts as loaded; no setItem.
 
     const measure = () => {
       const el = document.getElementById('stage');
@@ -689,7 +702,16 @@ class Game {
       clearInterval(this.saver);
       this.saver = null;
     }
+    this.clearTabOwner();
     this.setState({ tabStale: true, saveState: 'paused (other tab)' });
+  }
+
+  markTabOwner() {
+    try { sessionStorage.setItem(this.OWNER_KEY, '1'); } catch (e) { /* private mode */ }
+  }
+
+  clearTabOwner() {
+    try { sessionStorage.removeItem(this.OWNER_KEY); } catch (e) { /* private mode */ }
   }
 
   push(g, msg, color) {
@@ -911,6 +933,7 @@ class Game {
     if (kind === 'auto' && this.state.tabStale) return;
     try {
       localStorage.setItem(this.KEY, JSON.stringify({ saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g }));
+      this.markTabOwner();
       this.setState({ saveState: kind === 'auto' ? 'autosaved' : 'saved ✓' });
     } catch (e) { this.setState({ saveState: 'save failed' }); }
   }

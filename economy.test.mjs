@@ -52,6 +52,14 @@ globalThis.localStorage = {
   removeItem(k) { delete this._data[k]; },
   clear() { this._data = Object.create(null); },
 };
+// Per-tab ownership (game.OWNER_KEY) — same shape as localStorage; not shared across tabs in browsers.
+globalThis.sessionStorage = {
+  _data: Object.create(null),
+  getItem(k) { return this._data[k] ?? null; },
+  setItem(k, v) { this._data[k] = String(v); },
+  removeItem(k) { delete this._data[k]; },
+  clear() { this._data = Object.create(null); },
+};
 
 // ── Load Game class (never run page boot) ────────────────────────────────────
 // game.js ends with `const game = new Game(...); game.init();` which starts
@@ -105,6 +113,8 @@ function resourceNames() {
 }
 
 function newGame(startingCash) {
+  // Isolate tab-owner session flag between tests (simulates a fresh tab by default).
+  sessionStorage.clear();
   const game = new Game(root);
   // Suppress render() during tests (actions call forceUpdate → render).
   game.forceUpdate = () => {};
@@ -1579,8 +1589,10 @@ test('v4 migrate still credits work from structures or crew', () => {
 });
 
 test('init skips claim when offline small (does not clobber live sibling)', () => {
-  // Simulate a live tab's last autosave: recent ts, mature v5 club on disk.
+  // Simulate opening a second tab while a live sibling owns the save:
+  // recent disk ts, no session owner (new tab), mature v5 club on disk.
   const game = newGame(20);
+  sessionStorage.clear(); // new tab: no OWNER_KEY
   const b = { rail: 2, bar: 1, vip: 0, dj: 0, marquee: 0, flyers: 1, door: 0, dress: 0 };
   const diskTs = Date.now() - 5000; // 5s ago — within autosave lag, below 15s claim threshold
   const diskG = {
@@ -1604,9 +1616,10 @@ test('init skips claim when offline small (does not clobber live sibling)', () =
   const disk = JSON.parse(rawAfter);
   strictEqual(disk.g.ts, diskTs, 'disk ts unchanged (live sibling keeps ownership)');
   strictEqual(disk.g.cash, 777, 'disk cash unchanged');
-  // In-memory club still loads and runs from the snapshot.
+  // In-memory club loads the snapshot; ts stays at disk so the live timer can
+  // still apply the short gap (dt > 2 → catchUp) instead of discarding it at init.
   strictEqual(game.state.g.cash, 777);
-  ok(game.state.g.ts > diskTs, 'in-memory ts refreshed for live timer');
+  strictEqual(game.state.g.ts, diskTs, 'in-memory ts not advanced without claim (gap preserved for timer)');
 });
 
 test('init still claims on large offline gap', () => {
@@ -1628,6 +1641,77 @@ test('init still claims on large offline gap', () => {
   const stored = JSON.parse(localStorage.getItem('afterglow.save'));
   ok(stored.g.ts > hourAgo + 3_000_000, 'large offline still claims ts on disk');
   ok(game.state.g.cash > 100, 'large offline still applies catch-up once claimed');
+});
+
+// ── AAR-66 residual Codex (short reload catch-up) ─────────────────────────────
+console.log('\nAAR-66 residual Codex (short reload catch-up)');
+
+test('same-tab short reload (session owner) claims and catch-ups', () => {
+  // F5 / same-tab reload: sessionStorage OWNER_KEY survives; offline < 15s must
+  // still claim + catchUp (not permanently discard the gap by refreshing ts only).
+  const game = newGame(20);
+  sessionStorage.setItem(game.OWNER_KEY, '1');
+  const b = { rail: 2, bar: 1, vip: 0, dj: 0, marquee: 0, flyers: 1, door: 0, dress: 0 };
+  const diskTs = Date.now() - 8000; // 8s — short gap, below CLAIM_OFFLINE_SEC without owner
+  localStorage.setItem('afterglow.save', JSON.stringify({
+    saveVer: 5, ver: '0.6.0', build: 165, g: {
+      cash: 100, hype: 10, buzz: 5, patrons: 4, regulars: 0, clout: 0,
+      crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      b, u: {}, r: {},
+      goals: ['work', 'rail', 'word'], clicks: 5, rounds: 0,
+      elapsed: 120, night: 1, shiftIdx: 0, shiftT: 30, log: [], ts: diskTs
+    }
+  }));
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+
+  const stored = JSON.parse(localStorage.getItem('afterglow.save'));
+  ok(stored.g.ts > diskTs + 1000, 'session-owner short reload claims ts on disk');
+  ok(game.state.g.cash > 100, 'session-owner short reload applies catch-up');
+  strictEqual(sessionStorage.getItem(game.OWNER_KEY), '1', 'owner flag retained after claim');
+});
+
+test('short multi-tab open leaves gap for timer catch-up (no permanent discard)', () => {
+  // New tab, short offline: no setItem, ts left at disk value. Simulate the live
+  // timer path (dt > 2 → catchUp) to prove the gap is still recoverable.
+  const game = newGame(20);
+  sessionStorage.clear();
+  const b = { rail: 2, bar: 1, vip: 0, dj: 0, marquee: 0, flyers: 1, door: 0, dress: 0 };
+  const diskTs = Date.now() - 5000;
+  localStorage.setItem('afterglow.save', JSON.stringify({
+    saveVer: 5, ver: '0.6.0', build: 165, g: {
+      cash: 100, hype: 10, buzz: 5, patrons: 4, regulars: 0, clout: 0,
+      crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      b, u: {}, r: {},
+      goals: ['work', 'rail', 'word'], clicks: 5, rounds: 0,
+      elapsed: 120, night: 1, shiftIdx: 0, shiftT: 30, log: [], ts: diskTs
+    }
+  }));
+  const rawBefore = localStorage.getItem('afterglow.save');
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+
+  strictEqual(localStorage.getItem('afterglow.save'), rawBefore, 'disk untouched');
+  strictEqual(game.state.g.ts, diskTs, 'ts preserved for timer');
+  const cashBeforeTimer = game.state.g.cash;
+  // Live timer path for large gaps (game.js setInterval when dt > 2).
+  const gap = Math.min((Date.now() - game.state.g.ts) / 1000, 28800);
+  ok(gap > 2, `gap ${gap}s should exceed timer catchUp threshold`);
+  game.catchUp(game.state.g, gap);
+  game.state.g.ts = Date.now();
+  ok(game.state.g.cash > cashBeforeTimer, 'timer catchUp recovers short gap left by non-claiming init');
+});
+
+test('onForeignSave clears session owner so a later reload does not re-steal', () => {
+  const game = newGame(20);
+  sessionStorage.setItem(game.OWNER_KEY, '1');
+  game.saver = setInterval(() => {}, 99999);
+  game.onForeignSave();
+  if (game.saver) clearInterval(game.saver);
+  strictEqual(sessionStorage.getItem(game.OWNER_KEY), null, 'owner cleared on foreign write');
+  strictEqual(game.state.tabStale, true);
 });
 
 // ── Results ──────────────────────────────────────────────────────────────────
