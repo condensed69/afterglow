@@ -861,7 +861,8 @@ test('import runs jobs sum correction (sanitizeG)', () => {
       cash: 50, hype: 0, buzz: 0, patrons: 0, regulars: 0, clout: 0,
       crew: 3,
       jobs: { stage: 1, vipjob: 0, floor: 0, off: 0 }, // sum 1 < crew 3
-      b: {}, u: {}, r: {}, elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: Date.now()
+      b: {}, u: {}, r: {}, elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: Date.now(),
+      goals: [], clicks: 0, rounds: 0
     }
   };
   const okImport = game.importSaveFromText(JSON.stringify(payload));
@@ -900,7 +901,8 @@ test('missing maps and shift metadata are safely backfilled before import', () =
     saveVer: game.SAVE_VER,
     g: {
       cash: 99, hype: 1, buzz: 2, patrons: 3, regulars: 4, clout: 5,
-      crew: 1, jobs: { stage: 1, vipjob: 0, floor: 0, off: 0 }
+      crew: 1, jobs: { stage: 1, vipjob: 0, floor: 0, off: 0 },
+      goals: [], clicks: 0, rounds: 0
     }
   };
   strictEqual(game.importSaveFromText(JSON.stringify(payload)), true);
@@ -952,10 +954,11 @@ test('non-numeric saveVer fails closed', () => {
 
 console.log('\nSave migration map (PLAN §2.2)');
 
-test('SAVE_VER is 4', () => {
+test('SAVE_VER is 5', () => {
   const game = newGame();
-  strictEqual(game.SAVE_VER, 4);
+  strictEqual(game.SAVE_VER, 5);
   ok(typeof game.MIGRATIONS[3] === 'function', 'MIGRATIONS[3] must exist');
+  ok(typeof game.MIGRATIONS[4] === 'function', 'MIGRATIONS[4] must exist (Owner\'s List)');
 });
 
 test('migrateFrom(3) applies jobs/crew fixups and preserves club', () => {
@@ -1241,6 +1244,336 @@ test('importSaveFile routes FileReader text into importSaveFromText', () => {
   const msgs = game.state.g.log.map(e => e.msg);
   ok(msgs.some(m => m === 'Save restored.'), `expect neutral restore log, got: ${msgs.join(' | ')}`);
   ok(!msgs.some(m => /clipboard/i.test(m)), 'restore log must not mention clipboard after file load');
+});
+
+// ── Owner's List (PLAN-NEXT §B) ───────────────────────────────────────────────
+console.log("\nOwner's List (PLAN-NEXT §B)");
+
+test('fresh() has goals: [], clicks: 0, rounds: 0', () => {
+  const game = newGame(20);
+  const g = game.fresh();
+  ok(Array.isArray(g.goals), 'goals array');
+  strictEqual(g.goals.length, 0);
+  strictEqual(g.clicks, 0);
+  strictEqual(g.rounds, 0);
+});
+
+test('every GOALS entry has valid shape; check(fresh) false; progress ok or null', () => {
+  const game = newGame(20);
+  const g = game.fresh();
+  strictEqual(game.GOALS.length, 14, 'exactly 14 goals');
+  for (const goal of game.GOALS) {
+    ok(goal.id && typeof goal.id === 'string', 'id');
+    ok(goal.title && typeof goal.title === 'string', 'title');
+    ok(goal.why && typeof goal.why === 'string', 'why');
+    ok(goal.hint && typeof goal.hint === 'string', 'hint');
+    ok(goal.reward && typeof goal.reward === 'object', 'reward');
+    ok(typeof goal.reward.cash === 'number' && typeof goal.reward.clout === 'number', 'reward cash/clout');
+    ok(typeof goal.check === 'function', 'check fn');
+    strictEqual(goal.check(g), false, `check(fresh) must be false for ${goal.id}`);
+    if (goal.progress == null) {
+      strictEqual(goal.progress, null);
+    } else {
+      ok(typeof goal.progress === 'function', `progress fn for ${goal.id}`);
+      const p = goal.progress(g);
+      ok(p && typeof p.cur === 'number' && typeof p.max === 'number' && p.max > 0,
+        `progress shape for ${goal.id}`);
+    }
+  }
+});
+
+test('goal 1 completes after 5 workCrowd calls and pays exactly once', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  const cashBefore = g.cash;
+  const work = game.renderVals().workCrowd;
+  for (let i = 0; i < 5; i++) work();
+  ok(g.goals.includes('work'), 'work completed');
+  strictEqual(g.clicks, 5);
+  // Reward $15 paid once
+  const expectedMin = cashBefore + 15; // clicks also add cash; just assert reward once via noteGoals
+  // Re-run noteGoals — must not double-pay or re-add id
+  const cashAfter = g.cash;
+  const goalsLen = g.goals.length;
+  game.noteGoals(g);
+  game.noteGoals(g);
+  strictEqual(g.cash, cashAfter, 'no double-pay on repeated noteGoals');
+  strictEqual(g.goals.filter(id => id === 'work').length, 1, 'work id once');
+  strictEqual(g.goals.length, goalsLen);
+  ok(g.cash >= expectedMin, 'received work reward on top of click cash');
+});
+
+test('sequential gating: goal 2 cannot complete while goal 1 incomplete', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g.b.rail = 2;
+  g.clicks = 0;
+  g.goals = [];
+  game.noteGoals(g);
+  ok(!g.goals.includes('rail'), 'rail must not complete while work is active');
+  ok(!g.goals.includes('work'), 'work still incomplete');
+  strictEqual(game.activeGoal(g).id, 'work');
+  g.clicks = 5;
+  game.noteGoals(g);
+  ok(g.goals.includes('work'), 'work completes first');
+  // rail still satisfied — next noteGoals completes it
+  game.noteGoals(g);
+  ok(g.goals.includes('rail'), 'rail completes once work is done');
+});
+
+test('catchUp completion: state satisfying goal 4 completes via post-catchUp noteGoals', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  // Unlock through goal 3 so pulse is active
+  g.goals = ['work', 'rail', 'word'];
+  g.clicks = 5;
+  g.b.rail = 1;
+  g.b.flyers = 1;
+  g.patrons = 7.5;
+  g.buzz = 50;
+  // Simulate catchUp path: run catchUp then offline noteGoals (same as init/timer)
+  game.catchUp(g, 30);
+  // Ensure patrons can reach 8 either via catchUp or direct (buzz pull may vary)
+  if (g.patrons < 8) g.patrons = 8;
+  game.noteGoals(g, { live: false });
+  ok(g.goals.includes('pulse'), 'pulse completed after catchUp evaluation');
+  ok(g.log.some(e => /Owner's list: A floor with a pulse/.test(e.msg)), 'log line on complete');
+});
+
+test('catchUp mid-window threshold: pulse completes if patrons peak then decay', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  // pulse active; start above 8 patrons with no buzz so the floor drains offline.
+  g.goals = ['work', 'rail', 'word'];
+  g.clicks = 5;
+  g.b.rail = 1;
+  g.b.flyers = 1;
+  g.patrons = 9.5;
+  g.buzz = 0;
+  g.hype = 0;
+  g.cash = 100;
+  // Long away: decay pulls patrons well below 8 by the end (2%/s of sim time at 50% rate).
+  game.catchUp(g, 3600);
+  ok(g.patrons < 8, `end patrons below threshold (got ${g.patrons})`);
+  ok(g.goals.includes('pulse'), 'pulse credited when threshold was crossed mid-catchUp');
+  ok(g.log.some(e => /Owner's list: A floor with a pulse/.test(e.msg)), 'pulse log from mid-slice noteGoals');
+  // Post-only noteGoals would miss this; reward must already be paid.
+  const cashAfter = g.cash;
+  game.noteGoals(g, { live: false });
+  strictEqual(g.cash, cashAfter, 'no second pulse reward after catchUp');
+  strictEqual(g.goals.filter(id => id === 'pulse').length, 1, 'pulse id once');
+});
+
+test('migration 4→5: v4 save with rail+flyers pre-completes those goals, no reward cash', () => {
+  const game = newGame(10);
+  const cash = 100;
+  const g = {
+    cash, hype: 0, buzz: 0, patrons: 0, regulars: 0, clout: 0,
+    crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+    b: { rail: 2, flyers: 1 }, u: {}, r: {},
+    elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: Date.now()
+  };
+  // No goals/clicks/rounds — v4 shape
+  const okImport = game.importSaveFromText(JSON.stringify({ saveVer: 4, ver: '0.5.3', build: 159, g }));
+  strictEqual(okImport, true);
+  const loaded = game.state.g;
+  ok(Array.isArray(loaded.goals), 'goals present after migrate');
+  ok(typeof loaded.clicks === 'number', 'clicks present');
+  ok(typeof loaded.rounds === 'number', 'rounds present');
+  ok(loaded.goals.includes('work'), 'work pre-completed');
+  ok(loaded.goals.includes('rail'), 'rail pre-completed');
+  ok(loaded.goals.includes('word'), 'word pre-completed');
+  ok(!loaded.goals.includes('pulse'), 'pulse not falsely completed');
+  // Import stamps log with "Save restored"; cash must not include goal rewards (15+20+25)
+  strictEqual(loaded.cash, cash, 'no back-paid goal rewards on migrate');
+  const stored = JSON.parse(localStorage.getItem(game.KEY));
+  strictEqual(stored.saveVer, 5);
+});
+
+test('migration 4→5 mid-game: credits non-sequential goals without reward cascade', () => {
+  const game = newGame(10);
+  const cash = 500;
+  const clout = 4;
+  // Mid-game v4 club: past house (rounds unknown) but already has VIP job, regulars,
+  // research, roster, and an upgrade. house check fails (rounds=0); later goals true.
+  const g = {
+    cash, hype: 30, buzz: 10, patrons: 12, regulars: 5, clout,
+    crew: 3, jobs: { stage: 1, vipjob: 1, floor: 1, off: 0 },
+    b: { rail: 2, flyers: 1, bar: 1, vip: 1, dress: 1, dj: 2, marquee: 0, door: 0 },
+    u: { led: true }, r: { loop: true },
+    elapsed: 600, night: 4, shiftIdx: 0, shiftT: 10, log: [], ts: Date.now()
+  };
+  const okImport = game.importSaveFromText(JSON.stringify({ saveVer: 4, ver: '0.5.3', build: 159, g }));
+  strictEqual(okImport, true);
+  const loaded = game.state.g;
+  // Credit without sequential break — holes (house) ok; later satisfied ids still present.
+  for (const id of ['work', 'rail', 'word', 'pulse', 'contract', 'energy',
+    'backstage', 'regulars', 'study', 'roster', 'builtin']) {
+    ok(loaded.goals.includes(id), `mid-game migrate credits ${id}`);
+  }
+  ok(!loaded.goals.includes('house'), 'house not credited without rounds');
+  ok(!loaded.goals.includes('peak'), 'peak not credited (not Peak / not live)');
+  ok(!loaded.goals.includes('name'), 'name not credited (regulars < 25)');
+  strictEqual(loaded.cash, cash, 'no back-paid cash rewards');
+  strictEqual(loaded.clout, clout, 'no back-paid clout rewards');
+  // Live cascade must not pay already-credited goals when house is next.
+  strictEqual(game.activeGoal(loaded).id, 'house');
+  const cashBefore = loaded.cash;
+  const cloutBefore = loaded.clout;
+  loaded.rounds = 1;
+  for (let i = 0; i < 10; i++) game.noteGoals(loaded, { live: true });
+  ok(loaded.goals.includes('house'), 'house completes live once rounds exist');
+  // Only house reward ($40) — not backstage/regulars/study/roster cascade.
+  strictEqual(loaded.cash, cashBefore + 40, 'only house reward paid after migrate');
+  strictEqual(loaded.clout, cloutBefore, 'no cascade clout after migrate');
+});
+
+test('peak goal does not complete offline; completes live', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  // Unlock through roster so peak is active
+  g.goals = ['work', 'rail', 'word', 'pulse', 'contract', 'energy', 'house',
+    'backstage', 'regulars', 'study', 'roster'];
+  g.hype = 65;
+  g.shiftIdx = 1; // Peak Hours
+  g.cash = 1000;
+  game.catchUp(g, 5);
+  const cashAfterCatchUp = g.cash;
+  game.noteGoals(g, { live: false });
+  ok(!g.goals.includes('peak'), 'peak must not complete offline');
+  strictEqual(g.cash, cashAfterCatchUp, 'no peak reward offline (cash unchanged by noteGoals)');
+  // Live path (step / default noteGoals)
+  game.noteGoals(g, { live: true });
+  ok(g.goals.includes('peak'), 'peak completes live');
+  strictEqual(g.cash, cashAfterCatchUp + 200, 'peak reward $200 once live');
+  const cashAfter = g.cash;
+  game.noteGoals(g, { live: true });
+  strictEqual(g.cash, cashAfter, 'no double-pay peak');
+});
+
+test('completing all 14 leaves activeGoal null and never throws', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  // Satisfy every check in order without relying on live play
+  g.clicks = 5;
+  g.b.rail = 1;
+  g.b.flyers = 1;
+  g.patrons = 8;
+  g.crew = 3;
+  g.jobs.stage = 2;
+  g.jobs.vipjob = 1;
+  g.hype = 60;
+  g.rounds = 1;
+  g.b.vip = 1;
+  g.regulars = 25;
+  g.r.loop = true;
+  g.b.dress = 1;
+  g.shiftIdx = 1;
+  g.u.led = true;
+  g.goals = [];
+  for (let i = 0; i < 20; i++) game.noteGoals(g);
+  strictEqual(g.goals.length, 14, 'all 14 completed');
+  strictEqual(game.activeGoal(g), null);
+  const v = game.renderVals();
+  ok(v.ownersList && v.ownersList.done, 'resting 14/14 panel state');
+  strictEqual(v.ownersList.n, 14);
+  strictEqual(v.ownersList.total, 14);
+});
+
+test('import of a v4 payload still validates (payload checker unchanged)', () => {
+  const game = newGame(20);
+  const payload = {
+    saveVer: 4,
+    g: {
+      cash: 20, hype: 0, buzz: 0, patrons: 0, regulars: 0, clout: 0,
+      crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 }
+      // no goals/clicks/rounds — isValidSavePayload must still accept
+    }
+  };
+  ok(game.isValidSavePayload(payload), 'v4 payload without goals fields is valid');
+  // Must not require goals on the checker
+  ok(!('goals' in payload.g));
+});
+
+test('study/builtin ignore orphan keys; catalog research completes study', () => {
+  const game = newGame(20);
+  const g = game.fresh();
+  g.r = { franchise: true }; // preserved orphan from pre-prestige design
+  g.u = { ghostUpgrade: true };
+  const study = game.GOALS.find(x => x.id === 'study');
+  const builtin = game.GOALS.find(x => x.id === 'builtin');
+  strictEqual(study.check(g), false, 'orphan r.franchise must not complete study');
+  strictEqual(builtin.check(g), false, 'orphan u.* must not complete builtin');
+  g.r.loop = true;
+  strictEqual(study.check(g), true, 'catalog research completes study');
+  g.u.led = true;
+  strictEqual(builtin.check(g), true, 'catalog upgrade completes builtin');
+});
+
+test('init migrate + offline persists; second init does not double-count offline', () => {
+  localStorage.clear();
+  const b = { rail: 2, bar: 1, vip: 0, dj: 0, marquee: 0, flyers: 1, door: 0, dress: 0 };
+  const hourAgo = Date.now() - 3600_000;
+  localStorage.setItem('afterglow.save', JSON.stringify({
+    saveVer: 4,
+    ver: '0.5.3',
+    build: 159,
+    g: {
+      cash: 100, hype: 10, buzz: 5, patrons: 4, regulars: 0, clout: 0,
+      crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      b, u: {}, r: {},
+      elapsed: 100, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: hourAgo
+    }
+  }));
+  const game1 = new Game(root);
+  game1.forceUpdate = () => {};
+  game1.init();
+  if (game1.timer) clearInterval(game1.timer);
+  if (game1.saver) clearInterval(game1.saver);
+  const cashAfterFirst = game1.state.g.cash;
+  const stored = JSON.parse(localStorage.getItem(game1.KEY));
+  strictEqual(stored.saveVer, game1.SAVE_VER, 'init must persist SAVE_VER 5 immediately');
+  ok(Array.isArray(stored.g.goals), 'persisted goals after migrate');
+  ok(stored.g.ts > hourAgo + 3_000_000, 'ts refreshed so offline window cannot replay');
+  // Second init loads v5 with fresh ts — must not re-apply the hour of catchUp.
+  // Tiny sub-second offline between inits can tick fractional cash; bound it tightly.
+  const game2 = new Game(root);
+  game2.forceUpdate = () => {};
+  game2.init();
+  if (game2.timer) clearInterval(game2.timer);
+  if (game2.saver) clearInterval(game2.saver);
+  const delta = Math.abs(game2.state.g.cash - cashAfterFirst);
+  ok(delta < 1, `second init must not re-apply ~1h offline (Δcash=${delta}, first=${cashAfterFirst})`);
+  strictEqual(JSON.parse(localStorage.getItem(game2.KEY)).saveVer, game2.SAVE_VER);
+});
+
+test('v5 import missing goals fails closed; v4 without goals still migrates', () => {
+  const game = newGame(20);
+  game.state.g.cash = 20;
+  const mature = {
+    cash: 500, hype: 30, buzz: 10, patrons: 12, regulars: 5, clout: 4,
+    crew: 3, jobs: { stage: 1, vipjob: 1, floor: 1, off: 0 },
+    b: { rail: 2, flyers: 1, bar: 1, vip: 1, dress: 1, dj: 2, marquee: 0, door: 0 },
+    u: { led: true }, r: { loop: true },
+    elapsed: 600, night: 4, shiftIdx: 0, shiftT: 10, log: [], ts: Date.now()
+    // goals/clicks/rounds omitted
+  };
+  const before = game.state.g;
+  const fail = game.importSaveFromText(JSON.stringify({
+    saveVer: 5, ver: '0.6.0', build: 161, g: { ...mature }
+  }));
+  strictEqual(fail, false, 'v5 missing goals must fail closed');
+  strictEqual(game.state.saveState, 'import failed');
+  strictEqual(game.state.g, before, 'club reference unchanged');
+  strictEqual(game.state.g.cash, 20);
+
+  // v4 path still migrates without those fields.
+  const okV4 = game.importSaveFromText(JSON.stringify({
+    saveVer: 4, ver: '0.5.3', build: 159, g: { ...mature }
+  }));
+  strictEqual(okV4, true, 'v4 without goals still migrates');
+  ok(Array.isArray(game.state.g.goals), 'migration supplies goals');
+  strictEqual(game.state.g.cash, 500, 'no reward cascade on migrate');
 });
 
 // ── Results ──────────────────────────────────────────────────────────────────

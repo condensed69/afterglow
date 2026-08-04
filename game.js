@@ -11,8 +11,8 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.5.4', build: 162, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
-  SAVE_VER = 4;
+  VERSION = { num: '0.6.0', build: 163, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  SAVE_VER = 5;
   KEY = 'afterglow.save';
 
   // Dev-only tunables the Claude-artifact prop editor used to expose
@@ -36,10 +36,40 @@ class Game {
     // v3 → v4: jobs/crew assignment honesty (was an informal init() fixup).
     3(g) {
       this.sanitizeG(g);
+    },
+    // v4 → v5: Owner's List fields; backfill completed goals without paying rewards.
+    // Credit every satisfied check (no sequential break) so mid-game saves don't get
+    // live reward cascades for already-earned state. Holes are fine — activeGoal
+    // still returns the first missing id for live play.
+    4(g) {
+      g.goals = [];
+      g.clicks = 0;
+      g.rounds = 0;
+      const b = g.b || {};
+      // v4 never tracked clicks; clubs past the opener clearly finished the click tutorial.
+      if (g.crew > 0 || g.patrons > 0 || g.regulars > 0 ||
+          Object.values(b).some(n => n > 0)) {
+        g.clicks = 5;
+      }
+      for (const goal of this.GOALS) {
+        if (goal.check(g)) g.goals.push(goal.id);
+      }
     }
   };
 
   CHANGELOG = [
+    { v: '0.6.0', date: '2026-08-04', codename: 'Neon Zero', notes: [
+      'Owner\'s List: sequential 14-goal onboarding panel at the top of the systems column.',
+      'Goals pay cash/clout once on completion; night log records each finish.',
+      'New save fields goals / clicks / rounds (SAVE_VER 5); v4 saves migrate with credit, no back-paid rewards.',
+      'Migration credits every already-satisfied goal (no sequential break) so mid-game clubs are not re-paid live.',
+      'Peak-hour hero (goal 12) completes only on live step/actions — not offline catch-up.',
+      'Study/builtin goals check only catalog research/upgrades (orphan r.franchise does not complete study).',
+      'Init persists migrate + offline catch-up immediately so a reload cannot double-count elapsed time.',
+      'Current-format (v5) saves require sane goals/clicks/rounds; missing fields fail closed (v4 still migrates).',
+      'Goal checks after step, catch-up, and player actions so offline progress can complete goals.',
+      'Catch-up evaluates goals each offline slice so threshold goals (patrons/hype) complete if crossed mid-window then decay.'
+    ]},
     { v: '0.5.4', date: '2026-08-04', codename: 'Neon Zero', notes: [
       'Settings: Download save (.json) — same payload as clipboard, fixed filename afterglow-save.json.',
       'Settings: Load save from file… — FileReader into existing importSaveFromText (no parallel path).',
@@ -148,6 +178,124 @@ class Game {
     { id: 'off', name: 'Off Shift', desc: 'No wage drain' }
   ];
 
+  // Owner's List — sequential onboarding goals (PLAN-NEXT §B). Exactly one active at a time.
+  GOALS = [
+    {
+      id: 'work', title: 'Work the room',
+      why: 'Hands-on cash before the room pays you. Five solid passes seed the till.',
+      hint: 'Hit "Work the room" five times. Instant cash, no structures needed.',
+      reward: { cash: 15, clout: 0 },
+      check: g => (g.clicks || 0) >= 5,
+      progress: g => ({ cur: Math.min(g.clicks || 0, 5), max: 5 })
+    },
+    {
+      id: 'rail', title: 'Brass brings tips',
+      why: 'Patrons standing at a rail tip +$0.05/s each. Tips are your first real income.',
+      hint: 'Club tab → Tip Rail, $30. Click "Work the room" to afford it.',
+      reward: { cash: 20, clout: 0 },
+      check: g => (g.b && g.b.rail || 0) >= 1,
+      progress: null
+    },
+    {
+      id: 'word', title: 'Get the word out',
+      why: 'Buzz is how strangers find the door. Without it the floor stays empty.',
+      hint: 'Club tab → Flyer Crew, $95. Buzz ticks up on its own after that.',
+      reward: { cash: 25, clout: 0 },
+      check: g => (g.b && g.b.flyers || 0) >= 1,
+      progress: null
+    },
+    {
+      id: 'pulse', title: 'A floor with a pulse',
+      why: 'Buzz converts into bodies. Eight patrons means the room feels alive.',
+      hint: 'Let Flyer Crew (and walk-ins) fill the floor. Watch Patrons on the ledger.',
+      reward: { cash: 40, clout: 0 },
+      check: g => (g.patrons || 0) >= 8,
+      progress: g => ({ cur: Math.min(g.patrons || 0, 8), max: 8 })
+    },
+    {
+      id: 'contract', title: 'First contract',
+      why: 'A body on Main Stage is how Hype starts climbing without you clicking forever.',
+      hint: 'Crew tab → Hire. New hires open on Main Stage automatically.',
+      reward: { cash: 30, clout: 0 },
+      check: g => (g.crew || 0) >= 1,
+      progress: null
+    },
+    {
+      id: 'energy', title: 'Room energy',
+      why: 'Hype multiplies income, click value, and pull. 25 is the first real gear-up.',
+      hint: 'Keep someone on Main Stage. DJ Booth helps. Buy a round if you need a jolt.',
+      reward: { cash: 50, clout: 0 },
+      check: g => (g.hype || 0) >= 25,
+      progress: g => ({ cur: Math.min(g.hype || 0, 25), max: 25 })
+    },
+    {
+      id: 'house', title: 'On the house',
+      why: 'Cash → Hype conversion before Peak. A round buys momentum you cannot wait for.',
+      hint: 'Center row → "Buy a round" when you can afford it. Best before Peak Hours.',
+      reward: { cash: 40, clout: 0 },
+      check: g => (g.rounds || 0) >= 1,
+      progress: null
+    },
+    {
+      id: 'backstage', title: 'Backstage pass',
+      why: 'VIP job is crew cash. Wages are real — this is how payroll starts paying for itself.',
+      hint: 'Club → VIP Booth, then Crew → move one dancer to VIP Room.',
+      reward: { cash: 60, clout: 0 },
+      check: g => (g.b && g.b.vip || 0) >= 1 && (g.jobs && g.jobs.vipjob || 0) >= 1,
+      progress: null
+    },
+    {
+      id: 'regulars', title: 'They keep coming back',
+      why: 'Regulars mint Clout. Three faces the door knows is the start of a reputation.',
+      hint: 'Floor Work converts patrons into regulars. Assign someone when the room is busy.',
+      reward: { cash: 0, clout: 2 },
+      check: g => (g.regulars || 0) >= 3,
+      progress: g => ({ cur: Math.min(g.regulars || 0, 3), max: 3 })
+    },
+    {
+      id: 'study', title: 'Study the game',
+      why: 'Clout spent on research is permanent. Reputation Loop pays regulars forever.',
+      hint: 'Research tab → spend Clout on any project (Reputation Loop is the cheap open).',
+      reward: { cash: 100, clout: 0 },
+      // Only catalog research — orphan r.franchise must not complete study.
+      check: g => this.RESEARCH.some(d => !!(g.r && g.r[d.id])),
+      progress: null
+    },
+    {
+      id: 'roster', title: 'Grow the roster',
+      why: 'Dressing Rooms raise crew capacity. Three on payroll means a real rotation.',
+      hint: 'Club → Dressing Room, then Crew → hire until you have three.',
+      reward: { cash: 150, clout: 0 },
+      check: g => (g.b && g.b.dress || 0) >= 1 && (g.crew || 0) >= 3,
+      progress: g => ({ cur: Math.min(g.crew || 0, 3), max: 3 })
+    },
+    {
+      id: 'peak', title: 'Peak-hour hero',
+      why: 'Shift timing matters. Riding Peak with real Hype is when the till sings.',
+      hint: 'Push Hype to 60, then be in Peak Hours (header shift). Live only — not offline.',
+      reward: { cash: 200, clout: 0 },
+      check: g => (g.hype || 0) >= 60 && g.shiftIdx === 1,
+      progress: g => ({ cur: Math.min(g.hype || 0, 60), max: 60 })
+    },
+    {
+      id: 'builtin', title: 'Built to last',
+      why: 'Upgrades are one-time power spikes. Owning one means the club has a spine.',
+      hint: 'Upgrades tab — meet the structure requirement, then buy (LED Pole is the usual first).',
+      reward: { cash: 250, clout: 0 },
+      // Only catalog upgrades — ignore any orphan u.* keys from old saves.
+      check: g => this.UPGRADES.some(d => !!(g.u && g.u[d.id])),
+      progress: null
+    },
+    {
+      id: 'name', title: 'A name in this town',
+      why: 'Word is a franchise man has been asking about you.',
+      hint: 'Grow Regulars to 25. Floor Work, VIP, and long nights compound.',
+      reward: { cash: 0, clout: 5 },
+      check: g => (g.regulars || 0) >= 25,
+      progress: g => ({ cur: Math.min(g.regulars || 0, 25), max: 25 })
+    }
+  ];
+
   state = {
     stageH: 300, tab: 'club', showChangelog: false, showSettings: false, tick: 0, saveState: 'idle', resetArmed: false,
     // true when another tab wrote KEY — autosave is off until reload (PLAN §2.3).
@@ -216,7 +364,9 @@ class Game {
     return {
       cash: (this.props && this.props.startingCash) ?? 20, hype: 0, buzz: 0, patrons: 0, regulars: 0, clout: 0,
       crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
-      b, u, r, elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: Date.now()
+      b, u, r, elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: Date.now(),
+      // Owner's List (SAVE_VER 5) — not required by isValidSavePayload (v4 imports lack them).
+      goals: [], clicks: 0, rounds: 0
     };
   }
 
@@ -289,7 +439,10 @@ class Game {
   // would make rates(), simulation, or rendering unsafe. This runs on the
   // parsed candidate before state.g is replaced, so a bad import cannot poison
   // either the current session or localStorage.
-  completeImportedG(g) {
+  // opts.requireGoals: true for already-current SAVE_VER payloads (fail closed on
+  // missing/malformed goals/clicks/rounds). false after migration, which supplies them.
+  completeImportedG(g, opts = {}) {
+    const requireGoals = !!opts.requireGoals;
     const defaults = this.fresh();
     const numeric = ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'clout', 'crew',
       'elapsed', 'night', 'shiftIdx', 'shiftT', 'ts'];
@@ -323,6 +476,34 @@ class Game {
     if (!Array.isArray(g.log)) g.log = [];
     g.log = g.log.filter(x => x && typeof x === 'object' &&
       typeof x.t === 'string' && typeof x.msg === 'string').slice(0, 40);
+
+    // Owner's List fields (SAVE_VER 5). Not in isValidSavePayload (v4 lacks them).
+    const knownGoalIds = new Set(this.GOALS.map(x => x.id));
+    if (requireGoals) {
+      // Current-format payload: require sane goals / clicks / rounds (no soft-reset re-pay).
+      if (!Array.isArray(g.goals)) return false;
+      const seen = new Set();
+      for (const id of g.goals) {
+        if (typeof id !== 'string' || !knownGoalIds.has(id) || seen.has(id)) return false;
+        seen.add(id);
+      }
+      if (typeof g.clicks !== 'number' || !Number.isFinite(g.clicks) || g.clicks < 0) return false;
+      if (typeof g.rounds !== 'number' || !Number.isFinite(g.rounds) || g.rounds < 0) return false;
+    } else {
+      // Post-migration / incomplete: fill defaults; keep only known unique ids.
+      if (!Array.isArray(g.goals)) g.goals = defaults.goals.slice();
+      else {
+        const seen = new Set();
+        g.goals = g.goals.filter(id => {
+          if (typeof id !== 'string' || !knownGoalIds.has(id) || seen.has(id)) return false;
+          seen.add(id);
+          return true;
+        });
+      }
+      if (typeof g.clicks !== 'number' || !Number.isFinite(g.clicks) || g.clicks < 0) g.clicks = 0;
+      if (typeof g.rounds !== 'number' || !Number.isFinite(g.rounds) || g.rounds < 0) g.rounds = 0;
+    }
+
     this.sanitizeG(g);
     return true;
   }
@@ -337,13 +518,16 @@ class Game {
         return false;
       }
       const g = p.g;
+      let migrated = false;
       if (p.saveVer !== this.SAVE_VER) {
         if (!this.migrateFrom(g, p.saveVer)) {
           this.setState({ saveState: 'import failed' });
           return false;
         }
+        migrated = true;
       }
-      if (!this.completeImportedG(g)) {
+      // Current SAVE_VER requires goals/clicks/rounds; post-migration supplies them.
+      if (!this.completeImportedG(g, { requireGoals: !migrated })) {
         this.setState({ saveState: 'import failed' });
         return false;
       }
@@ -391,26 +575,42 @@ class Game {
       }
     } catch (e) { wiped = true; }
     // Recover safely from a previously persisted malformed clipboard import.
-    // Missing optional fields are completed; unsafe values reset the save.
-    if (g && !this.completeImportedG(g)) {
+    // Current SAVE_VER requires goals fields; post-migration fills them.
+    // Missing/malformed current-format goal state wipes rather than soft-reset re-pay.
+    if (g && !this.completeImportedG(g, { requireGoals: !upgraded })) {
       g = null;
       wiped = true;
     }
+    // Offline catch-up only for a successfully loaded save — not a brand-new / wiped club
+    // (fresh() stamps ts:now; a few ms later would otherwise apply a spurious offline slice).
+    const resumeExisting = !!g;
     if (!g) g = this.fresh();
     this.sanitizeG(g);
     g.log = [];
 
-    const offline = g.ts ? Math.min((Date.now() - g.ts) / 1000, 28800) : 0;
+    const offline = resumeExisting && g.ts ? Math.min((Date.now() - g.ts) / 1000, 28800) : 0;
     this.state.g = g;
     this.push(g, 'Doors open. ' + this.VERSION.codename + ' build ' + this.VERSION.build + '.', '#22d3ee');
     if (wiped) this.push(g, 'Save format changed — previous save reset.', '#ff2d78');
-    else if (upgraded) this.push(g, 'Save migrated from format v' + fromSaveVer + ' → v' + this.SAVE_VER + '.', '#ffc94a');
+    else if (upgraded) {
+      this.push(g, 'Save migrated from format v' + fromSaveVer + ' → v' + this.SAVE_VER + '.', '#ffc94a');
+      if (fromSaveVer < 5) this.push(g, "Owner's list updated.", '#ffc94a');
+    }
     if (prevVer && prevVer !== this.VERSION.num) this.push(g, 'Updated ' + prevVer + ' → ' + this.VERSION.num + '.', '#ffc94a');
     if (offline > 0) {
       const report = this.catchUp(g, offline);
       if (offline > 60) this.push(g, this.awayMsg(offline, report), '#ffc94a');
+      // Offline: peak (goal 12) must not complete here — live-only.
+      this.noteGoals(g, { live: false });
     }
     g.ts = Date.now();
+    // Persist immediately so migrate + offline progress cannot re-apply on reload
+    // before the 10s autosave (elapsed-time double-count guard).
+    try {
+      localStorage.setItem(this.KEY, JSON.stringify({
+        saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
+      }));
+    } catch (e) { /* quota / private mode — in-memory state still runs */ }
 
     const measure = () => {
       const el = document.getElementById('stage');
@@ -433,6 +633,8 @@ class Game {
         const gap = Math.min(dt, 28800);
         const report = this.catchUp(g, gap);
         if (dt > 60) this.push(g, this.awayMsg(gap, report), '#ffc94a');
+        // Large-gap catchUp is offline rate — peak stays live-only.
+        this.noteGoals(g, { live: false });
         g.ts = Date.now();
         this.setState(s => ({ tick: s.tick + 1 }));
       } else {
@@ -597,6 +799,10 @@ class Game {
         g.shiftIdx = (g.shiftIdx + 1) % 4;
         if (g.shiftIdx === 0) g.night++;
       }
+      // Per-slice goal check: threshold goals (patrons/hype) may peak mid-window
+      // then decay before catch-up ends — post-only noteGoals would miss them.
+      // live:false keeps peak-hour hero offline-ineligible.
+      this.noteGoals(g, { live: false });
     }
     return { earned, wagesPaid, struck };
   }
@@ -636,8 +842,38 @@ class Game {
         }
       }
     }
+    this.noteGoals(g, { live: true });
     g.ts = Date.now();
     this.setState(s => ({ tick: s.tick + 1 }));
+  }
+
+  // --- Owner's List (PLAN-NEXT §B) ---
+  activeGoal(g) {
+    if (!g) return null;
+    const done = Array.isArray(g.goals) ? g.goals : [];
+    return this.GOALS.find(goal => !done.includes(goal.id)) || null;
+  }
+
+  // Evaluate the single active goal. opts.live (default true): peak-hour hero only
+  // completes when live is true — offline catchUp / load must pass { live: false }.
+  noteGoals(g, opts = {}) {
+    if (!g) return;
+    const live = opts.live !== false;
+    if (!Array.isArray(g.goals)) g.goals = [];
+    if (typeof g.clicks !== 'number' || !Number.isFinite(g.clicks)) g.clicks = 0;
+    if (typeof g.rounds !== 'number' || !Number.isFinite(g.rounds)) g.rounds = 0;
+    const goal = this.activeGoal(g);
+    if (!goal || typeof goal.check !== 'function' || !goal.check(g)) return;
+    // Goal 12 (peak): live play only — not offline catch-up or load-time evaluation.
+    if (goal.id === 'peak' && !live) return;
+    const rew = goal.reward || {};
+    if (rew.cash) g.cash = (g.cash || 0) + rew.cash;
+    if (rew.clout) g.clout = (g.clout || 0) + rew.clout;
+    g.goals.push(goal.id);
+    const parts = [];
+    if (rew.cash) parts.push('$' + this.fmt(rew.cash));
+    if (rew.clout) parts.push(this.fmt(rew.clout) + ' Clout');
+    this.push(g, "Owner's list: " + goal.title + ' — ' + (parts.join(', ') || 'done') + '.', '#4ade80');
   }
 
   save(kind) {
@@ -661,6 +897,7 @@ class Game {
     g.cash -= price;
     g.b[def.id] = n + 1;
     this.push(g, 'Built ' + def.name + ' #' + (n + 1) + ' for $' + this.fmt(price) + '.', '#22d3ee');
+    this.noteGoals(g);
     this.forceUpdate();
   }
   buyUpgrade(def) {
@@ -672,6 +909,7 @@ class Game {
     g.cash -= def.cost;
     g.u[def.id] = true;
     this.push(g, 'Installed ' + def.name + '.', '#ffc94a');
+    this.noteGoals(g);
     this.forceUpdate();
   }
   buyResearch(def) {
@@ -680,6 +918,7 @@ class Game {
     g.clout -= def.cost;
     g.r[def.id] = true;
     this.push(g, 'Researched ' + def.name + '.', '#a855f7');
+    this.noteGoals(g);
     this.forceUpdate();
   }
   hireCrew() {
@@ -693,6 +932,7 @@ class Game {
     // New hires open on Main Stage so the room doesn't stay empty after a hire.
     g.jobs.stage++;
     this.push(g, 'Hired crew member #' + g.crew + ' for $' + this.fmt(price) + ' — on Main Stage.', '#ff2d78');
+    this.noteGoals(g);
     this.forceUpdate();
   }
   moveJob(id, d) {
@@ -708,6 +948,7 @@ class Game {
       g.jobs[id]--;
       g.jobs.off++;
     }
+    this.noteGoals(g);
     this.forceUpdate();
   }
 
@@ -936,7 +1177,13 @@ class Game {
       stageLineAct: g.jobs.stage > 0 ? null : () => this.setState({ tab: 'crew' }),
       energyPct: Math.round(g.hype / cap.hype * 100) + '%',
       clickValue: '$' + this.fmt(clickVal),
-      workCrowd: () => { g.cash += clickVal; g.buzz = Math.min(cap.buzz, g.buzz + 0.4); this.forceUpdate(); },
+      workCrowd: () => {
+        g.cash += clickVal;
+        g.buzz = Math.min(cap.buzz, g.buzz + 0.4);
+        g.clicks = (g.clicks || 0) + 1;
+        this.noteGoals(g);
+        this.forceUpdate();
+      },
       roundLabel: 'Buy a round $' + this.fmt(roundPrice),
       roundLocked: !roundOk,
       roundStyle: {
@@ -944,8 +1191,48 @@ class Game {
         borderRadius: '8px', color: roundOk ? '#e7d8f2' : '#4a3860', padding: '13px 16px',
         cursor: roundOk ? 'pointer' : 'not-allowed', fontSize: '12px', fontWeight: 700, minWidth: '190px'
       },
-      buyRound: () => { if (!roundOk) return; g.cash -= roundPrice; g.hype = Math.max(0, Math.min(cap.hype, g.hype + 14)); this.push(g, 'Bought the room a round. +' + this.fmt(roundGain) + ' Hype.', '#ffc94a'); this.forceUpdate(); },
-      debugLine: (this.props.showDebug ?? false) ? 'cash ' + r.cash.toFixed(3) + '/s · hype ' + r.hype.toFixed(3) + '/s · buzz ' + r.buzz.toFixed(3) + '/s · pull ' + r.pull.toFixed(2) : ''
+      buyRound: () => {
+        if (!roundOk) return;
+        g.cash -= roundPrice;
+        g.hype = Math.max(0, Math.min(cap.hype, g.hype + 14));
+        g.rounds = (g.rounds || 0) + 1;
+        this.push(g, 'Bought the room a round. +' + this.fmt(roundGain) + ' Hype.', '#ffc94a');
+        this.noteGoals(g);
+        this.forceUpdate();
+      },
+      debugLine: (this.props.showDebug ?? false) ? 'cash ' + r.cash.toFixed(3) + '/s · hype ' + r.hype.toFixed(3) + '/s · buzz ' + r.buzz.toFixed(3) + '/s · pull ' + r.pull.toFixed(2) : '',
+      ownersList: (() => {
+        const total = this.GOALS.length;
+        const done = Array.isArray(g.goals) ? g.goals.length : 0;
+        const goal = this.activeGoal(g);
+        if (!goal) {
+          return {
+            done: true, n: total, total,
+            title: 'Club runs itself',
+            why: 'Word is a franchise man has been asking about you.',
+            hint: 'Onboarding complete — keep the room humming.',
+            reward: '', progress: null, flash: false
+          };
+        }
+        const rew = goal.reward || {};
+        const rparts = [];
+        if (rew.cash) rparts.push('+$' + this.fmt(rew.cash));
+        if (rew.clout) rparts.push('+' + this.fmt(rew.clout) + ' Clout');
+        let progress = null;
+        if (typeof goal.progress === 'function') {
+          const p = goal.progress(g);
+          if (p && p.max > 0) progress = { cur: Math.max(0, p.cur), max: p.max, pct: Math.min(100, (p.cur / p.max) * 100) };
+        }
+        return {
+          done: false, n: done, total,
+          title: goal.title,
+          why: goal.why,
+          hint: goal.hint,
+          reward: rparts.join(' '),
+          progress,
+          flash: done > 0 && this.state.tick > 0
+        };
+      })()
     };
   }
 
@@ -1211,8 +1498,38 @@ class Game {
       </div>
     </section>
 
-    <aside style="border-left:1px solid #2a1738;background:#0a0611;display:grid;grid-template-rows:auto minmax(0,1fr);min-height:0">
+    <aside style="border-left:1px solid #2a1738;background:#0a0611;display:grid;grid-template-rows:auto auto minmax(0,1fr);min-height:0">
       <div style="display:flex;border-bottom:1px solid #2a1738;background:#0d0814">${tabRows}</div>
+
+      ${v.ownersList ? (() => {
+        const ol = v.ownersList;
+        const prog = ol.progress
+          ? `<div style="margin-top:7px">
+              <div style="display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6f5885;margin-bottom:3px">
+                <span>${this.fmt(ol.progress.cur)} / ${this.fmt(ol.progress.max)}</span>
+                <span>${Math.floor(ol.progress.pct)}%</span>
+              </div>
+              <div style="height:4px;background:#1c1129;border-radius:3px;overflow:hidden">
+                <div style="width:${ol.progress.pct}%;height:100%;background:#22d3ee;border-radius:3px;transition:width .18s linear"></div>
+              </div>
+            </div>`
+          : '';
+        return `<div style="border-bottom:1px solid #2a1738;background:#0d0814;padding:10px 12px">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:4px">
+            <div style="display:flex;align-items:center;gap:7px;min-width:0">
+              <span style="width:6px;height:6px;border-radius:50%;background:${ol.done ? '#4ade80' : '#ff2d78'};box-shadow:0 0 7px ${ol.done ? '#4ade80' : '#ff2d78'};flex-shrink:0;animation:pulseDot 2.2s infinite"></span>
+              <span style="font-size:12px;font-weight:700;color:#f2e8f7;line-height:1.25">${ol.title}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:7px;flex-shrink:0">
+              ${ol.reward ? `<span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#ffc94a;font-weight:600">${ol.reward}</span>` : ''}
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#7b5f90">${ol.n} / ${ol.total}</span>
+            </div>
+          </div>
+          <div style="font-size:10.5px;color:#6f5885;font-style:italic;line-height:1.4;margin-bottom:4px">${ol.why}</div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#22d3ee;line-height:1.4">${ol.hint}</div>
+          ${prog}
+        </div>`;
+      })() : ''}
 
       <div data-scroll="sys_${this.state.tab}" style="overflow-y:auto;padding:12px">
         <div style="font-size:10.5px;color:#6f5885;line-height:1.5;margin-bottom:11px">${v.tabHint}</div>
