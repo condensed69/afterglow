@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.6.0', build: 167, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.6.0', build: 168, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 5;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -81,6 +81,7 @@ class Game {
       'Tab ownership uses a per-page token + pagehide reload intent (not a copied boolean) so tab-duplicate does not steal a live sibling.',
       'Non-claiming init applies a preserved short offline gap via catchUp in memory (no setItem) so the live timer cannot full-rate or Peak-award pre-load time.',
       'Future/corrupt g.ts is clamped and claimed so the sim does not freeze until wall time catches up.',
+      'Autosave starts only after this tab owns the save; non-claiming second tabs no-op save(auto) so they cannot steal a live sibling after 10s.',
       'v4→v5 clicks backfill uses structures/crew only (not passive patrons/regulars) so walk-in saves keep goal 1.',
       'Current-format (v5) saves require sane goals/clicks/rounds; missing fields fail closed (v4 still migrates).',
       'Goal checks after step, catch-up, and player actions so offline progress can complete goals.',
@@ -322,6 +323,11 @@ class Game {
     this.tabToken = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
       ? crypto.randomUUID()
       : String(Date.now()) + '-' + Math.random().toString(36).slice(2, 10);
+    // In-memory ownership (sessionStorage can fail in private mode). Autosave
+    // and save('auto') require this; set by markTabOwner after a successful claim/write.
+    this._ownsSave = false;
+    this.saver = null;
+    this.timer = null;
     // Full innerHTML re-renders replace every button node. If that happens
     // between mousedown and mouseup the browser cancels the click, so pink
     // CTAs (and every other button) feel dead under a normal press. Defer
@@ -638,7 +644,8 @@ class Game {
     // Short multi-tab / non-owner open (offline ≤15s, no reload intent): do not
     // setItem (avoids stealing). Still apply the preserved gap via catchUp in
     // memory and advance g.ts so the live timer cannot full-rate step pre-load
-    // time or award live-only Peak for it. Disk stays untouched until autosave.
+    // time or award live-only Peak for it. Disk stays untouched until this tab
+    // explicitly acquires ownership (claim path, manual save, or import).
     const CLAIM_OFFLINE_SEC = 15;
     let wasOwner = false;
     try {
@@ -714,7 +721,10 @@ class Game {
         this.step(Math.min(dt, 28800));
       }
     }, 100);
-    this.saver = setInterval(() => this.save('auto'), 10000);
+    // Autosave only for the owning tab. A non-claiming second/duplicated tab
+    // must not start the 10s timer — the first auto write would setItem a stale
+    // snapshot, fire storage → onForeignSave on the live sibling, and pause it.
+    if (this.isTabOwner()) this.startAutosave();
     // storage only fires in *other* tabs — stop autosave so we don't clobber their write (PLAN §2.3).
     // Bind once: init() may re-run in tests; page boot calls it a single time.
     if (!this._storageBound) {
@@ -738,16 +748,28 @@ class Game {
     this.setState({ tabStale: true, saveState: 'paused (other tab)' });
   }
 
+  isTabOwner() {
+    return !!this._ownsSave;
+  }
+
   markTabOwner() {
+    this._ownsSave = true;
     try { sessionStorage.setItem(this.OWNER_KEY, this.tabToken); } catch (e) { /* private mode */ }
     this.ensureOwnerLifecycle();
   }
 
   clearTabOwner() {
+    this._ownsSave = false;
     try {
       sessionStorage.removeItem(this.OWNER_KEY);
       sessionStorage.removeItem(this.RELOAD_KEY);
     } catch (e) { /* private mode */ }
+  }
+
+  // Start the 10s autosave interval once. No-op if already running.
+  startAutosave() {
+    if (this.saver) return;
+    this.saver = setInterval(() => this.save('auto'), 10000);
   }
 
   // pagehide fires on F5 / navigation / close. Write reload intent only if this
@@ -983,9 +1005,15 @@ class Game {
     if (!g) return;
     // After a foreign-tab write, never autosave over their data (manual save still allowed).
     if (kind === 'auto' && this.state.tabStale) return;
+    // Non-owners must not autosave: a second/duplicated tab's first auto write
+    // would steal the live sibling via storage → onForeignSave.
+    if (kind === 'auto' && !this.isTabOwner()) return;
     try {
       localStorage.setItem(this.KEY, JSON.stringify({ saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g }));
       this.markTabOwner();
+      // Manual/explicit write from a non-owner acquires ownership — start autosave.
+      // (Auto path only reaches here when already owner; startAutosave is a no-op then.)
+      if (!this.state.tabStale) this.startAutosave();
       this.setState({ saveState: kind === 'auto' ? 'autosaved' : 'saved ✓' });
     } catch (e) { this.setState({ saveState: 'save failed' }); }
   }

@@ -1806,6 +1806,95 @@ test('future g.ts is claimed and normalized (sim does not freeze)', () => {
   ok(dt < 1, `dt after normalize is small (${dt}), not ~60s freeze`);
 });
 
+// ── AAR-70 residual Codex (gate autosave until owner) ─────────────────────────
+console.log('\nAAR-70 residual Codex (gate autosave until owner)');
+
+test('non-claiming init does not start autosave; save(auto) is a no-op', () => {
+  // Second/duplicated tab within 15s: no claim, no ownership — must not arm the
+  // 10s timer or write a stale snapshot that would pause a live sibling.
+  const game = newGame(20);
+  sessionStorage.clear();
+  const b = { rail: 2, bar: 1, vip: 0, dj: 0, marquee: 0, flyers: 1, door: 0, dress: 0 };
+  const diskTs = Date.now() - 5000;
+  localStorage.setItem('afterglow.save', JSON.stringify({
+    saveVer: 5, ver: '0.6.0', build: 167, g: {
+      cash: 777, hype: 10, buzz: 5, patrons: 4, regulars: 0, clout: 0,
+      crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      b, u: {}, r: {},
+      goals: ['work', 'rail', 'word'], clicks: 5, rounds: 0,
+      elapsed: 120, night: 1, shiftIdx: 0, shiftT: 30, log: [], ts: diskTs
+    }
+  }));
+  const rawBefore = localStorage.getItem('afterglow.save');
+
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+
+  strictEqual(game.saver, null, 'non-claiming init must not start autosave interval');
+  strictEqual(game.isTabOwner(), false, 'non-claiming tab is not owner');
+  // Defense in depth: even a forced save('auto') must not write.
+  game.state.g.cash = 1; // diverge from disk so a write would be visible
+  game.save('auto');
+  strictEqual(localStorage.getItem('afterglow.save'), rawBefore, 'save(auto) no-op while not owner');
+  if (game.saver) clearInterval(game.saver);
+});
+
+test('claiming init starts autosave; owner save(auto) writes', () => {
+  const game = newGame(20);
+  sessionStorage.clear();
+  // Large offline → needsClaim; successful claim marks owner and starts autosave.
+  const hourAgo = Date.now() - 3600_000;
+  localStorage.setItem('afterglow.save', JSON.stringify({
+    saveVer: 5, ver: '0.6.0', build: 167, g: {
+      cash: 100, hype: 10, buzz: 5, patrons: 4, regulars: 0, clout: 0,
+      crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      b: { rail: 2, bar: 1, vip: 0, dj: 0, marquee: 0, flyers: 1, door: 0, dress: 0 },
+      u: {}, r: {},
+      goals: ['work', 'rail', 'word'], clicks: 5, rounds: 0,
+      elapsed: 120, night: 1, shiftIdx: 0, shiftT: 30, log: [], ts: hourAgo
+    }
+  }));
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+
+  ok(game.isTabOwner(), 'claim path marks this tab as owner');
+  ok(game.saver != null, 'owner init starts autosave interval');
+  const cashBefore = game.state.g.cash;
+  game.state.g.cash = cashBefore + 50;
+  game.save('auto');
+  const stored = JSON.parse(localStorage.getItem('afterglow.save'));
+  strictEqual(stored.g.cash, cashBefore + 50, 'owner autosave writes localStorage');
+  if (game.saver) clearInterval(game.saver);
+});
+
+test('manual save from non-owner acquires ownership and starts autosave', () => {
+  const game = newGame(20);
+  sessionStorage.clear();
+  const diskTs = Date.now() - 5000;
+  localStorage.setItem('afterglow.save', JSON.stringify({
+    saveVer: 5, ver: '0.6.0', build: 167, g: {
+      cash: 200, hype: 10, buzz: 5, patrons: 4, regulars: 0, clout: 0,
+      crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      b: { rail: 2, bar: 1, vip: 0, dj: 0, marquee: 0, flyers: 1, door: 0, dress: 0 },
+      u: {}, r: {},
+      goals: ['work', 'rail', 'word'], clicks: 5, rounds: 0,
+      elapsed: 120, night: 1, shiftIdx: 0, shiftT: 30, log: [], ts: diskTs
+    }
+  }));
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  strictEqual(game.isTabOwner(), false);
+  strictEqual(game.saver, null);
+
+  game.state.g.cash = 333;
+  game.save('manual');
+  ok(game.isTabOwner(), 'manual save takes ownership (last-explicit-wins)');
+  ok(game.saver != null, 'manual save starts autosave after acquiring ownership');
+  const stored = JSON.parse(localStorage.getItem('afterglow.save'));
+  strictEqual(stored.g.cash, 333, 'manual save wrote disk');
+  if (game.saver) clearInterval(game.saver);
+});
+
 // ── Results ──────────────────────────────────────────────────────────────────
 
 console.log('\n───────────────────────────────────────');
