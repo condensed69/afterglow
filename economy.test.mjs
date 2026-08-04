@@ -1592,7 +1592,7 @@ test('init skips claim when offline small (does not clobber live sibling)', () =
   // Simulate opening a second tab while a live sibling owns the save:
   // recent disk ts, no session owner (new tab), mature v5 club on disk.
   const game = newGame(20);
-  sessionStorage.clear(); // new tab: no OWNER_KEY
+  sessionStorage.clear(); // new tab: no OWNER_KEY / RELOAD_KEY
   const b = { rail: 2, bar: 1, vip: 0, dj: 0, marquee: 0, flyers: 1, door: 0, dress: 0 };
   const diskTs = Date.now() - 5000; // 5s ago — within autosave lag, below 15s claim threshold
   const diskG = {
@@ -1616,10 +1616,10 @@ test('init skips claim when offline small (does not clobber live sibling)', () =
   const disk = JSON.parse(rawAfter);
   strictEqual(disk.g.ts, diskTs, 'disk ts unchanged (live sibling keeps ownership)');
   strictEqual(disk.g.cash, 777, 'disk cash unchanged');
-  // In-memory club loads the snapshot; ts stays at disk so the live timer can
-  // still apply the short gap (dt > 2 → catchUp) instead of discarding it at init.
-  strictEqual(game.state.g.cash, 777);
-  strictEqual(game.state.g.ts, diskTs, 'in-memory ts not advanced without claim (gap preserved for timer)');
+  // Non-claiming path applies offline catch-up in memory and advances ts so the
+  // live timer cannot full-rate the pre-load gap (AAR-68).
+  ok(game.state.g.cash >= 777, 'in-memory cash at least disk (offline catch-up may earn)');
+  ok(game.state.g.ts > diskTs, 'in-memory ts advanced after offline catch-up of preserved gap');
 });
 
 test('init still claims on large offline gap', () => {
@@ -1647,10 +1647,11 @@ test('init still claims on large offline gap', () => {
 console.log('\nAAR-66 residual Codex (short reload catch-up)');
 
 test('same-tab short reload (session owner) claims and catch-ups', () => {
-  // F5 / same-tab reload: sessionStorage OWNER_KEY survives; offline < 15s must
+  // F5 / same-tab reload: RELOAD_KEY written on pagehide; offline < 15s must
   // still claim + catchUp (not permanently discard the gap by refreshing ts only).
   const game = newGame(20);
-  sessionStorage.setItem(game.OWNER_KEY, '1');
+  sessionStorage.setItem(game.RELOAD_KEY, 'prev-tab-token');
+  sessionStorage.setItem(game.OWNER_KEY, 'prev-tab-token');
   const b = { rail: 2, bar: 1, vip: 0, dj: 0, marquee: 0, flyers: 1, door: 0, dress: 0 };
   const diskTs = Date.now() - 8000; // 8s — short gap, below CLAIM_OFFLINE_SEC without owner
   localStorage.setItem('afterglow.save', JSON.stringify({
@@ -1669,12 +1670,13 @@ test('same-tab short reload (session owner) claims and catch-ups', () => {
   const stored = JSON.parse(localStorage.getItem('afterglow.save'));
   ok(stored.g.ts > diskTs + 1000, 'session-owner short reload claims ts on disk');
   ok(game.state.g.cash > 100, 'session-owner short reload applies catch-up');
-  strictEqual(sessionStorage.getItem(game.OWNER_KEY), '1', 'owner flag retained after claim');
+  strictEqual(sessionStorage.getItem(game.OWNER_KEY), game.tabToken, 'owner token is this page context after claim');
+  strictEqual(sessionStorage.getItem(game.RELOAD_KEY), null, 'reload intent consumed');
 });
 
-test('short multi-tab open leaves gap for timer catch-up (no permanent discard)', () => {
-  // New tab, short offline: no setItem, ts left at disk value. Simulate the live
-  // timer path (dt > 2 → catchUp) to prove the gap is still recoverable.
+test('short multi-tab open applies offline catch-up in memory without setItem', () => {
+  // New tab, short offline: no setItem (disk untouched), but gap is applied via
+  // catchUp in memory at offline rate so the live timer cannot full-rate it.
   const game = newGame(20);
   sessionStorage.clear();
   const b = { rail: 2, bar: 1, vip: 0, dj: 0, marquee: 0, flyers: 1, door: 0, dress: 0 };
@@ -1693,25 +1695,115 @@ test('short multi-tab open leaves gap for timer catch-up (no permanent discard)'
   if (game.timer) clearInterval(game.timer);
   if (game.saver) clearInterval(game.saver);
 
-  strictEqual(localStorage.getItem('afterglow.save'), rawBefore, 'disk untouched');
-  strictEqual(game.state.g.ts, diskTs, 'ts preserved for timer');
-  const cashBeforeTimer = game.state.g.cash;
-  // Live timer path for large gaps (game.js setInterval when dt > 2).
-  const gap = Math.min((Date.now() - game.state.g.ts) / 1000, 28800);
-  ok(gap > 2, `gap ${gap}s should exceed timer catchUp threshold`);
-  game.catchUp(game.state.g, gap);
-  game.state.g.ts = Date.now();
-  ok(game.state.g.cash > cashBeforeTimer, 'timer catchUp recovers short gap left by non-claiming init');
+  strictEqual(localStorage.getItem('afterglow.save'), rawBefore, 'disk untouched (no steal)');
+  ok(game.state.g.ts > diskTs + 1000, 'in-memory ts advanced after offline catch-up');
+  ok(game.state.g.cash > 100, 'preserved short gap applied via offline catch-up in memory');
 });
 
 test('onForeignSave clears session owner so a later reload does not re-steal', () => {
   const game = newGame(20);
-  sessionStorage.setItem(game.OWNER_KEY, '1');
+  sessionStorage.setItem(game.OWNER_KEY, game.tabToken);
+  sessionStorage.setItem(game.RELOAD_KEY, game.tabToken);
   game.saver = setInterval(() => {}, 99999);
   game.onForeignSave();
   if (game.saver) clearInterval(game.saver);
   strictEqual(sessionStorage.getItem(game.OWNER_KEY), null, 'owner cleared on foreign write');
+  strictEqual(sessionStorage.getItem(game.RELOAD_KEY), null, 'reload intent cleared on foreign write');
   strictEqual(game.state.tabStale, true);
+});
+
+// ── AAR-68 residual Codex (tab token + short gap offline + future ts) ─────────
+console.log('\nAAR-68 residual Codex (tab token + short gap offline + future ts)');
+
+test('copied OWNER_KEY without RELOAD_KEY does not claim (tab-duplicate)', () => {
+  // Browser tab-duplicate copies sessionStorage including OWNER_KEY, but
+  // pagehide never ran so RELOAD_KEY is absent. Must not steal a live sibling.
+  const game = newGame(20);
+  sessionStorage.clear();
+  sessionStorage.setItem(game.OWNER_KEY, 'copied-from-sibling-token');
+  // No RELOAD_KEY — simulates duplicate of a still-live owner tab.
+  const b = { rail: 2, bar: 1, vip: 0, dj: 0, marquee: 0, flyers: 1, door: 0, dress: 0 };
+  const diskTs = Date.now() - 5000;
+  const diskG = {
+    cash: 500, hype: 10, buzz: 5, patrons: 4, regulars: 0, clout: 0,
+    crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+    b, u: {}, r: {},
+    goals: ['work', 'rail', 'word'], clicks: 5, rounds: 0,
+    elapsed: 120, night: 1, shiftIdx: 0, shiftT: 30, log: [], ts: diskTs
+  };
+  localStorage.setItem('afterglow.save', JSON.stringify({
+    saveVer: 5, ver: '0.6.0', build: 166, g: diskG
+  }));
+  const rawBefore = localStorage.getItem('afterglow.save');
+
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+
+  strictEqual(localStorage.getItem('afterglow.save'), rawBefore, 'duplicate must not setItem');
+  // Non-claim path still applies offline catch-up in memory.
+  ok(game.state.g.cash > 500, 'gap applied offline in memory');
+  ok(game.state.g.ts > diskTs, 'in-memory ts normalized');
+  // Must not mark this page as owner via the copied boolean path.
+  strictEqual(sessionStorage.getItem(game.OWNER_KEY), 'copied-from-sibling-token',
+    'stale copied token left alone (we never claimed)');
+});
+
+test('preserved sub-2s gap uses offline catchUp not live step (Peak stays live-only)', () => {
+  // 0.05–2s gap: old timer path would step() at full rate and could award Peak.
+  // Non-claiming init must catchUp at offline rate with live:false.
+  const game = newGame(20);
+  sessionStorage.clear();
+  const diskTs = Date.now() - 1000; // 1s — within live-step timer band
+  // Club already at Peak with hype ≥ 60; goals through peak-1 complete so Peak is active.
+  const prior = ['work', 'rail', 'word', 'pulse', 'contract', 'energy', 'house',
+    'backstage', 'regulars', 'study', 'roster'];
+  localStorage.setItem('afterglow.save', JSON.stringify({
+    saveVer: 5, ver: '0.6.0', build: 166, g: {
+      cash: 200, hype: 65, buzz: 10, patrons: 8, regulars: 5, clout: 2,
+      crew: 3, jobs: { stage: 1, vipjob: 1, floor: 1, off: 0 },
+      b: { rail: 2, bar: 1, vip: 1, dj: 2, marquee: 0, flyers: 1, door: 0, dress: 1 },
+      u: { led: true }, r: { tips: true },
+      goals: prior.slice(), clicks: 20, rounds: 2,
+      elapsed: 600, night: 2, shiftIdx: 1, shiftT: 10, log: [], ts: diskTs
+    }
+  }));
+  const rawBefore = localStorage.getItem('afterglow.save');
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+
+  strictEqual(localStorage.getItem('afterglow.save'), rawBefore, 'disk untouched');
+  ok(game.state.g.ts > diskTs, 'sub-2s gap consumed at init via offline path');
+  ok(!game.state.g.goals.includes('peak'), 'Peak not awarded for pre-load offline gap');
+});
+
+test('future g.ts is claimed and normalized (sim does not freeze)', () => {
+  const game = newGame(20);
+  sessionStorage.clear();
+  const futureTs = Date.now() + 60_000; // 1 minute ahead
+  const b = { rail: 2, bar: 1, vip: 0, dj: 0, marquee: 0, flyers: 1, door: 0, dress: 0 };
+  localStorage.setItem('afterglow.save', JSON.stringify({
+    saveVer: 5, ver: '0.6.0', build: 166, g: {
+      cash: 100, hype: 10, buzz: 5, patrons: 4, regulars: 0, clout: 0,
+      crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      b, u: {}, r: {},
+      goals: ['work', 'rail', 'word'], clicks: 5, rounds: 0,
+      elapsed: 120, night: 1, shiftIdx: 0, shiftT: 30, log: [], ts: futureTs
+    }
+  }));
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+
+  const stored = JSON.parse(localStorage.getItem('afterglow.save'));
+  ok(stored.g.ts <= Date.now() + 50, 'disk ts normalized to now (not future)');
+  ok(game.state.g.ts <= Date.now() + 50, 'in-memory ts normalized');
+  ok(game.state.g.ts > futureTs - 120_000, 'ts is near wall clock, not still future');
+  strictEqual(game.state.g.cash, 100, 'no catch-up credit for future ts');
+  // Live timer would not freeze: dt from normalized ts is ~0.
+  const dt = Math.max(0, (Date.now() - game.state.g.ts) / 1000);
+  ok(dt < 1, `dt after normalize is small (${dt}), not ~60s freeze`);
 });
 
 // ── Results ──────────────────────────────────────────────────────────────────

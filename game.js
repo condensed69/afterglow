@@ -11,12 +11,16 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.6.0', build: 166, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.6.0', build: 167, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 5;
   KEY = 'afterglow.save';
-  // Per-tab ownership marker in sessionStorage (survives F5 in the same tab; not shared
-  // across tabs). Distinguishes same-tab short reload from a second-tab open.
+  // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
+  // A plain boolean is copied when the browser duplicates a tab, so a duplicate would
+  // claim and pause the original. Token is unique per page context (this.tabToken).
   OWNER_KEY = 'afterglow.tabOwner';
+  // Set on pagehide only when this tab still owns — survives F5, not present when a live
+  // tab is duplicated (pagehide did not run). Consumed once on the next init as wasOwner.
+  RELOAD_KEY = 'afterglow.tabOwnerReload';
 
   // Dev-only tunables the Claude-artifact prop editor used to expose
   // (showDebug / simSpeed / startingCash). Fixed to their defaults now that
@@ -74,6 +78,9 @@ class Game {
       'Init claims the offline window (persist + refresh ts) before catch-up; on setItem failure skip catch-up and surface save failed — no silent double-count on reload.',
       'Init claim only when fresh/wiped, migrated, offline >15s, or this tab already owned the session — avoids stealing a live tab via storage on open.',
       'Same-tab short reload still claims + catch-up (session owner); multi-tab short open leaves disk and g.ts alone so the gap is not permanently discarded at init.',
+      'Tab ownership uses a per-page token + pagehide reload intent (not a copied boolean) so tab-duplicate does not steal a live sibling.',
+      'Non-claiming init applies a preserved short offline gap via catchUp in memory (no setItem) so the live timer cannot full-rate or Peak-award pre-load time.',
+      'Future/corrupt g.ts is clamped and claimed so the sim does not freeze until wall time catches up.',
       'v4→v5 clicks backfill uses structures/crew only (not passive patrons/regulars) so walk-in saves keep goal 1.',
       'Current-format (v5) saves require sane goals/clicks/rounds; missing fields fail closed (v4 still migrates).',
       'Goal checks after step, catch-up, and player actions so offline progress can complete goals.',
@@ -310,6 +317,11 @@ class Game {
     this.root = root;
     this.state.g = this.fresh();
     this.handlers = [];
+    // Unique per page context — not copied across tab duplicates the way a
+    // sessionStorage boolean is. Paired with OWNER_KEY / RELOAD_KEY for claim.
+    this.tabToken = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+      ? crypto.randomUUID()
+      : String(Date.now()) + '-' + Math.random().toString(36).slice(2, 10);
     // Full innerHTML re-renders replace every button node. If that happens
     // between mousedown and mouseup the browser cancels the click, so pink
     // CTAs (and every other button) feel dead under a normal press. Defer
@@ -590,7 +602,13 @@ class Game {
     this.sanitizeG(g);
     g.log = [];
 
-    const offline = resumeExisting && g.ts ? Math.min((Date.now() - g.ts) / 1000, 28800) : 0;
+    // Clamp: future ts (clock skew / corrupt save) must not yield a negative gap
+    // that freezes the live timer until wall time catches up.
+    const nowMs = Date.now();
+    const futureTs = !!(resumeExisting && g.ts && g.ts > nowMs);
+    const offline = (resumeExisting && g.ts && !futureTs)
+      ? Math.min(Math.max(0, (nowMs - g.ts) / 1000), 28800)
+      : 0;
     this.state.g = g;
     this.push(g, 'Doors open. ' + this.VERSION.codename + ' build ' + this.VERSION.build + '.', '#22d3ee');
     if (wiped) this.push(g, 'Save format changed — previous save reset.', '#ff2d78');
@@ -614,17 +632,26 @@ class Game {
     // sibling, stealing ownership and discarding up to one autosave interval of
     // progress. Under a live tab, disk ts lags by at most ~10s (autosave).
     // Claim when this tab must take ownership: fresh/wiped club, migration,
-    // offline gap larger than one autosave + slack, or same-tab reload
-    // (sessionStorage OWNER_KEY survives F5; a new tab starts without it).
+    // offline gap larger than one autosave + slack, same-tab reload (RELOAD_KEY
+    // set on pagehide), or future/corrupt ts that must be normalized.
     //
-    // Short multi-tab open (no session owner, offline ≤15s): leave g.ts at the
-    // loaded disk value — do not setItem and do not advance ts here. The live
-    // timer can still apply the remaining gap (dt > 2 → catchUp). Advancing ts
-    // without catchUp permanently discarded short single-tab reload gaps.
+    // Short multi-tab / non-owner open (offline ≤15s, no reload intent): do not
+    // setItem (avoids stealing). Still apply the preserved gap via catchUp in
+    // memory and advance g.ts so the live timer cannot full-rate step pre-load
+    // time or award live-only Peak for it. Disk stays untouched until autosave.
     const CLAIM_OFFLINE_SEC = 15;
     let wasOwner = false;
-    try { wasOwner = sessionStorage.getItem(this.OWNER_KEY) === '1'; } catch (e) { /* private mode */ }
-    const needsClaim = !resumeExisting || upgraded || offline > CLAIM_OFFLINE_SEC || wasOwner;
+    try {
+      // Same-tab F5: pagehide wrote RELOAD_KEY. Tab-duplicate of a live owner
+      // copies OWNER_KEY but not RELOAD_KEY (pagehide never ran) → wasOwner false.
+      if (sessionStorage.getItem(this.RELOAD_KEY)) {
+        wasOwner = true;
+        sessionStorage.removeItem(this.RELOAD_KEY);
+        // Drop the previous page instance's owner token; we re-mark after claim.
+        sessionStorage.removeItem(this.OWNER_KEY);
+      }
+    } catch (e) { /* private mode */ }
+    const needsClaim = !resumeExisting || upgraded || offline > CLAIM_OFFLINE_SEC || wasOwner || futureTs;
     let claimed = false;
     if (needsClaim) {
       g.ts = Date.now();
@@ -650,8 +677,13 @@ class Game {
           this.setState({ saveState: 'save failed' });
         }
       }
+    } else if (offline > 0) {
+      // Non-claiming path: offline catch-up in memory only (no setItem / no steal).
+      const report = this.catchUp(g, offline);
+      if (offline > 60) this.push(g, this.awayMsg(offline, report), '#ffc94a');
+      this.noteGoals(g, { live: false });
+      g.ts = Date.now();
     }
-    // else: short gap, not this tab's session — leave g.ts as loaded; no setItem.
 
     const measure = () => {
       const el = document.getElementById('stage');
@@ -707,11 +739,31 @@ class Game {
   }
 
   markTabOwner() {
-    try { sessionStorage.setItem(this.OWNER_KEY, '1'); } catch (e) { /* private mode */ }
+    try { sessionStorage.setItem(this.OWNER_KEY, this.tabToken); } catch (e) { /* private mode */ }
+    this.ensureOwnerLifecycle();
   }
 
   clearTabOwner() {
-    try { sessionStorage.removeItem(this.OWNER_KEY); } catch (e) { /* private mode */ }
+    try {
+      sessionStorage.removeItem(this.OWNER_KEY);
+      sessionStorage.removeItem(this.RELOAD_KEY);
+    } catch (e) { /* private mode */ }
+  }
+
+  // pagehide fires on F5 / navigation / close. Write reload intent only if this
+  // page context still owns — a live tab that is merely duplicated never runs
+  // pagehide, so the duplicate does not inherit wasOwner.
+  ensureOwnerLifecycle() {
+    if (this._ownerLifecycleBound) return;
+    this._ownerLifecycleBound = true;
+    if (typeof window === 'undefined' || !window.addEventListener) return;
+    window.addEventListener('pagehide', () => {
+      try {
+        if (sessionStorage.getItem(this.OWNER_KEY) === this.tabToken) {
+          sessionStorage.setItem(this.RELOAD_KEY, this.tabToken);
+        }
+      } catch (e) { /* private mode */ }
+    });
   }
 
   push(g, msg, color) {
