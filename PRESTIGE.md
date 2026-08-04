@@ -51,6 +51,7 @@ This is deliberately identical to Owner's List goal 14 (`name` — "A name in th
 - When `g.regulars >= 25`, a header control **"Franchise offer"** appears (same header strip as shift / version badge family — not buried in Settings).
 - Below gate, the control is absent (not disabled gray). No prestige teaser chrome before the gate.
 - Clicking opens the **confirmation modal** with the reset report **preview** (Legacy gain, what resets, what persists). Confirm commits; cancel closes with no state change.
+- **Stale tab (`tabStale`):** after another tab writes the save, this tab stays interactive but `save('auto')` no-ops. Prestige must not award Legacy only in memory. **Locked rule:** while `tabStale` is true, either (a) disable **Sign the deal** with copy that the player must reload the fresh save first, **or** (b) on confirm use the same **explicit/manual save path** that bypasses the stale auto-save guard (the path Settings → Save now already uses). Prefer (a) if simpler — no silent prestige that vanishes on reload banner accept. Cancel still closes with no state change.
 
 **Gate is evaluated live** from current `g.regulars` (fractional sim is fine; use `>= 25` the same way goal 14 does). Offline catch-up that crosses 25 does not auto-open the modal; it only makes the button appear on the next render.
 
@@ -94,7 +95,7 @@ On confirm of Franchise offer:
 3. Replace run state with `fresh()`-equivalent run fields.  
 4. Restore meta: `legacy = snapshot.legacy + gain`, `legacyTotal = snapshot.legacyTotal + gain`, `perks = snapshot.perks`, `prestiges = snapshot.prestiges + 1`.  
 5. Apply start-of-run perk effects (crew, buildings) on the new `g`.  
-6. Log the franchise line; autosave.
+6. Log the franchise line; persist via autosave **or** the explicit/manual save path when `tabStale` (see §2 stale-tab rule — never rely on a no-op auto-save after prestige).
 
 **Not a full wipe:** Settings → Wipe still clears everything including Legacy/perks (existing wipe semantics). Prestige is a soft reset, not wipe.
 
@@ -151,11 +152,11 @@ Data-driven table `PRESTIGE_PERKS`. All costs in **Legacy**. First implementatio
 
 | # | id | Name | Effect | Cost | Max rank | Notes |
 |---|-----|------|--------|-----:|---------:|-------|
-| 1 | `cash10` | House cut | +10% all cash income per rank | 1 | 5 | Multiplies final cash rate (same layer as stacking cash mults — see apply rules) |
+| 1 | `cash10` | House cut | +10% all cash income per rank | 1 | 5 | Multiplies **all** cash income: passive `rates()` cash **and** active Work-the-crowd clicks (see apply rules) |
 | 2 | `startCrew` | Seed roster | Start run with 1 crew on Main Stage | 2 | 1 | Applied after `fresh()`; `crew = 1`, `jobs.stage = 1` |
 | 3 | `startFlyers` | Street team | Start run with Flyer Crew ×1 built | 3 | 1 | `b.flyers = 1` after fresh; does not refund if player rebuilds |
 | 4 | `offline65` | Franchise playbook | Offline / catchUp rate 50% → 65% | 4 | 1 | Only `catchUp` dt factor; live `step` stays 100% |
-| 5 | `doorPlus` | Extra bouncer slot | +1 max Door Staff | 5 | 1 | `door` building `max` 6 → 7 when owned |
+| 5 | `doorPlus` | Extra bouncer slot | +1 max Door Staff | 5 | 1 | `door` building `max` 6 → 7 when owned; **card/desc max text must be dynamic** (no hardcoded "(max 6)") |
 | 6 | `clout25` | Name recognition | +25% Clout gain | 6 | 1 | Multiplies `rates().clout` |
 
 **Total Legacy to buy everything once (max ranks):**  
@@ -174,10 +175,12 @@ Single helper used everywhere — no scattered `g.perks?.x` copies.
 
 ### Apply rules (locked)
 
-1. **`cash10`** — in `rates()`, after existing cash multipliers are composed for income terms, multiply **all cash income components** (non-crew cash and VIP crew cash) by `(1 + 0.10 * perk(g, 'cash10'))`. Do **not** multiply wages. Net cash = boosted income − wages (same strike structure).  
+1. **`cash10` (House cut — all cash income, including clicks)** — multiplies **every** cash income source by `(1 + 0.10 * perk(g, 'cash10'))`:
+   - **Passive:** in `rates()`, after existing cash multipliers are composed for income terms, multiply **all cash income components** (non-crew cash and VIP crew cash). Do **not** multiply wages. Net cash = boosted income − wages (same strike structure).
+   - **Active:** `workCrowd` currently adds `clickVal` straight to `g.cash` (bypasses `rates()`). Implementation **must** apply the same House-cut factor to that click grant (e.g. `g.cash += clickVal * (1 + 0.10 * perk(g, 'cash10'))`, or factor through a shared `cashIncomeMult(g)` helper used by both `rates()` and `workCrowd`). The perk copy "+10% all cash income" is **not** passive-only; the prestige pacing bot also uses `workCrowd` while cash is low, so click mult is load-bearing for the §7 scenario.
 2. **`startCrew` / `startFlyers`** — only in prestige reset path and in `fresh()` when loading a meta-save that already has those perks (new club after prestige, and brand-new game with perks should not happen without prestige; `fresh()` still checks perks so a future "new run keep meta" path is consistent).  
 3. **`offline65`** — `catchUp` uses `dt = wall * (perk(g, 'offline65') ? 0.65 : 0.5)` instead of hardcoded `0.5`. Live `step` unchanged. Away report still honest on gross/wages.  
-4. **`doorPlus`** — in buy path and UI max for Door Staff: `max = (BUILDINGS door max) + perk(g, 'doorPlus')` → 6 or 7.  
+4. **`doorPlus`** — in buy path and UI max for Door Staff: `max = (BUILDINGS door max) + perk(g, 'doorPlus')` → 6 or 7. **Card description must not hardcode `"(max 6)"`** (current Door Staff blurb does). When implementing, derive displayed max from the same expression as the buy path (e.g. `"… (max " + doorMax(g) + ")"`) or drop the parenthetical and show remaining capacity only on the card body. Leaving static "max 6" while allowing a seventh hire is a bug.  
 5. **`clout25`** — `clout` rate × `(1 + 0.25 * perk(g, 'clout25'))` (rank is 0/1).  
 6. **Purchase action** — `buyPerk(id)`: if rank < max and `g.legacy >= cost` (cost is flat per rank for `cash10`, same 1 Legacy each rank), decrement legacy, increment `g.perks[id]`. No refunds.  
 7. **Shop availability** — Perks panel always visible once `g.prestiges >= 1` **or** `g.legacyTotal > 0` **or** any perk rank > 0. Before first prestige, no Perks UI (Legacy is 0 and unused).
@@ -187,12 +190,14 @@ Single helper used everywhere — no scattered `g.perks?.x` copies.
 | Area | Change |
 |------|--------|
 | `rates()` | cash mult, clout mult |
+| `workCrowd` / click grant | same `cash10` mult as `rates()` cash income |
 | `caps()` | none required for v1 (door is max on building, not caps) |
-| Door buy / card | honor +1 max |
+| Door buy / card | honor +1 max; **dynamic max text** (not hardcoded 6) |
 | `catchUp()` | 0.5 → 0.65 factor |
 | `fresh()` / prestige reset | apply start crew / flyers |
+| Franchise confirm | block or manual-save when `tabStale` |
 | `renderVals` / systems | Perks tab or Settings subsection + Franchise modal |
-| Tests | gain formula table, reset field matrix, perk apply, migration 5→6 |
+| Tests | gain formula table, reset field matrix, perk apply, migration 5→6, array `perks` rejected |
 
 ---
 
@@ -219,7 +224,10 @@ prestiges: 0      // times confirmed franchise deal
 5(g) {
   if (typeof g.legacy !== 'number' || !Number.isFinite(g.legacy)) g.legacy = 0;
   if (typeof g.legacyTotal !== 'number' || !Number.isFinite(g.legacyTotal)) g.legacyTotal = 0;
-  if (!g.perks || typeof g.perks !== 'object') g.perks = {};
+  // perks must be a plain object map. Arrays pass typeof === 'object' but
+  // JSON.stringify omits string-keyed properties on arrays, so ranks would
+  // vanish after reload while Legacy spend already stuck — reject/replace.
+  if (!g.perks || typeof g.perks !== 'object' || Array.isArray(g.perks)) g.perks = {};
   if (typeof g.prestiges !== 'number' || !Number.isFinite(g.prestiges)) g.prestiges = 0;
   // Clamp junk ranks from hand-edited saves
   for (const def of this.PRESTIGE_PERKS) {
@@ -232,7 +240,7 @@ prestiges: 0      // times confirmed franchise deal
 
 - Old saves migrate with **zero** prestige state.  
 - `fresh()` initializes the four fields directly.  
-- `sanitizeG` / numeric wipe lists include `legacy`, `legacyTotal`, `prestiges`; `perks` sanitized as above.
+- `sanitizeG` / numeric wipe lists include `legacy`, `legacyTotal`, `prestiges`; `perks` sanitized as above (**always** re-check `Array.isArray(g.perks)` in sanitize too, not only migration — hand-edited imports after migrate can reintroduce `[]`).
 
 ### File + clipboard import
 
@@ -250,9 +258,9 @@ When prestige is implemented, extend `pacing.mjs` (dependency-free, same DOM pre
 
 ### Scenario: `prestige-run`
 
-1. **Run 1:** reference bot (same buy/assign/active policy as §C) plays until `regulars >= 25` **and** night is at least 10 (or until wall-time cap if the gate is slow — record both).  
-2. Record wall-time of first **LED** upgrade (`u.led`) as `t1`.  
-3. Perform prestige reset with formula gain; spend **exactly 1 Legacy** on `cash10` rank 1 (leave remaining Legacy unspent).  
+1. **Run 1:** reference bot (same buy/assign/active policy as §C) plays until `regulars >= 25` **and** night is at least 10, **or** until the wall-time cap — whichever comes first. Record wall-time of first **LED** upgrade (`u.led`) as `t1` when it occurs.  
+2. **Gate check (locked):** if at the wall-time cap `regulars < 25`, **fail the scenario immediately** (exit non-zero, print reason). Do **not** prestige, do **not** buy perks, do **not** run Run 2. A production reset must reject below-gate state; bypassing the gate would invalidate the Run 2 comparison.  
+3. Only if gate is met: perform prestige reset with formula gain; spend **exactly 1 Legacy** on `cash10` rank 1 (leave remaining Legacy unspent).  
 4. **Run 2:** same bot from post-prestige start state.  
 5. Record wall-time of first LED as `t2`.  
 6. **Assert:** `t2 < t1` (run 2 reaches first upgrade faster with +10% cash). Exit non-zero on failure.
@@ -263,10 +271,13 @@ Print a second table block:
 
 ```text
 Prestige scenario
+  run1 gate regulars: … (need >= 25)
   run1 first LED:  …s
   run2 first LED (+10% cash perk): …s
   delta: …s (must be < 0 wall for run2 − run1)
 ```
+
+On gate miss: print `FAIL: prestige gate not reached (regulars=… < 25 at wall cap)` and skip run2 lines.
 
 ### Tuning policy
 
@@ -319,7 +330,7 @@ If a later plan wants multi-club, it supersedes this section deliberately — no
 
 **Actions:**
 
-- Primary: **Sign the deal** (confirm)  
+- Primary: **Sign the deal** (confirm) — **disabled** while `tabStale` (or confirm forces the explicit/manual save path; see §2). When disabled, show a short line: "Another tab has a newer save — reload before signing."  
 - Secondary: **Not yet** (cancel)
 
 No third button. No "don't show again."
@@ -371,11 +382,13 @@ Use this as the acceptance spine when coding prestige (not part of this doc-only
 - [ ] Log line with real gain  
 - [ ] Ledger Legacy row when meta unlocked  
 - [ ] Perks shop + spend  
-- [ ] Apply rules in `rates` / `catchUp` / door max / fresh  
+- [ ] Apply rules in `rates` / `workCrowd` / `catchUp` / door max (dynamic text) / fresh  
+- [ ] Franchise confirm blocked or manual-saved when `tabStale`  
 - [ ] SAVE_VER 6 + `MIGRATIONS[5]` + `fresh()` defaults  
+- [ ] `perks: []` (array) rejected → `{}` in migrate **and** sanitize  
 - [ ] File/clipboard import migrates v5→v6  
-- [ ] `economy.test.mjs`: formula table samples, reset persist/wipe split, migration zeros, cash perk mult, offline 65%  
-- [ ] `pacing.mjs` prestige-run scenario green  
+- [ ] `economy.test.mjs`: formula table samples, reset persist/wipe split, migration zeros, cash perk mult on rates **and** click, offline 65%, array perks normalize  
+- [ ] `pacing.mjs` prestige-run scenario green; **fails closed** if gate not reached at wall cap  
 - [ ] VERSION + build + CHANGELOG together; SAVE_VER 6  
 - [ ] No second location, no prestige goals, no leaderboards  
 
@@ -386,3 +399,4 @@ Use this as the acceptance spine when coding prestige (not part of this doc-only
 | Date | Note |
 |------|------|
 | 2026-08-04 | Initial lock from PLAN-NEXT §D (AAR-51). Formula table resolves plan "~7" ambiguity via exact `floor(sqrt(reg)+night/7)`. |
+| 2026-08-04 | AAR-56 / PR #13 Codex P2: House cut includes click cash; prestige scenario fails if gate missed; door max text dynamic; reject array `perks`; block/manual-save prestige when `tabStale`. |
