@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.6.0', build: 161, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.6.1', build: 162, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 5;
   KEY = 'afterglow.save';
 
@@ -58,6 +58,11 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.6.1', date: '2026-08-04', codename: 'Neon Zero', notes: [
+      'Balance pass — pacing targets in PLAN-NEXT §C; numbers only, no mechanic changes.',
+      'Reference bot simulator pacing.mjs: milestone bands for rail, crew, patrons, LED, research, all upgrades.',
+      'Retuned building/upgrade/research costs, click value, goal rewards, hire price, and rates for active-play pacing.'
+    ]},
     { v: '0.6.0', date: '2026-08-04', codename: 'Neon Zero', notes: [
       'Owner\'s List: sequential 14-goal onboarding panel at the top of the systems column.',
       'Goals pay cash/clout once on completion; night log records each finish.',
@@ -135,36 +140,37 @@ class Game {
   ];
 
   BUILDINGS = [
-    { id: 'rail', name: 'Tip Rail', cost: 30, growth: 1.15, desc: 'Brass rail along the stage. Up to 6 patrons per rail tip +$0.05/s.' },
-    { id: 'bar', name: 'Back Bar', cost: 75, growth: 1.17, desc: 'Drinks pay the rent. +$0.30/s and +5 floor capacity.' },
-    { id: 'dj', name: 'DJ Booth', cost: 140, growth: 1.19, desc: 'Keeps the room moving. +0.09 Hype/s.' },
-    { id: 'marquee', name: 'Marquee Sign', cost: 220, growth: 1.22, desc: '+0.10 Buzz/s and +35 Buzz capacity.' },
-    { id: 'flyers', name: 'Flyer Crew', cost: 95, growth: 1.16, desc: 'Windshields all over downtown. +0.06 Buzz/s.' },
-    { id: 'vip', name: 'VIP Booth', cost: 400, growth: 1.24, desc: 'Private bookings. +$0.9/s and +18% regular conversion.' },
-    { id: 'door', name: 'Door Staff', cost: 180, growth: 1.20, max: 6, desc: 'Fewer incidents. Cuts Hype decay by 12% each. (max 6)' },
-    { id: 'dress', name: 'Dressing Room', cost: 320, growth: 1.28, desc: '+2 crew capacity.' }
+    // Costs/growth retuned for PLAN-NEXT §C pacing bands (numbers only).
+    { id: 'rail', name: 'Tip Rail', cost: 140, growth: 1.16, desc: 'Brass rail along the stage. Up to 6 patrons per rail tip +$0.06/s.' },
+    { id: 'bar', name: 'Back Bar', cost: 150, growth: 1.18, desc: 'Drinks pay the rent. +$0.42/s and +5 floor capacity.' },
+    { id: 'dj', name: 'DJ Booth', cost: 180, growth: 1.17, desc: 'Keeps the room moving. +0.10 Hype/s.' },
+    { id: 'marquee', name: 'Marquee Sign', cost: 380, growth: 1.22, desc: '+0.07 Buzz/s and +35 Buzz capacity.' },
+    { id: 'flyers', name: 'Flyer Crew', cost: 210, growth: 1.16, desc: 'Windshields all over downtown. +0.025 Buzz/s.' },
+    { id: 'vip', name: 'VIP Booth', cost: 600, growth: 1.24, desc: 'Private bookings. +$1.2/s and +18% regular conversion.' },
+    { id: 'door', name: 'Door Staff', cost: 300, growth: 1.20, max: 6, desc: 'Fewer incidents. Cuts Hype decay by 12% each. (max 6)' },
+    { id: 'dress', name: 'Dressing Room', cost: 500, growth: 1.28, desc: '+2 crew capacity.' }
   ];
 
   UPGRADES = [
-    { id: 'led', name: 'LED Pole Lighting', cost: 500, req: { dj: 2 }, desc: 'Hype generation x1.30.' },
-    { id: 'twodrink', name: 'Two-Drink Minimum', cost: 900, req: { bar: 4 }, desc: 'All cash income x1.35.' },
-    { id: 'coat', name: 'Coat Check', cost: 650, req: { door: 2 }, desc: '+20 floor capacity.' },
-    { id: 'photog', name: 'House Photographer', cost: 1400, req: { marquee: 2 }, desc: 'Buzz generation x1.5.' },
-    { id: 'bottle', name: 'Bottle Service', cost: 3200, req: { vip: 3 }, desc: 'VIP cash x2.2.' },
-    { id: 'residency', name: 'Weekly Residency', cost: 5000, req: { dress: 2 }, desc: 'Crew output x1.4.' }
+    { id: 'led', name: 'LED Pole Lighting', cost: 420, req: { dj: 2 }, desc: 'Hype generation x1.30.' },
+    { id: 'twodrink', name: 'Two-Drink Minimum', cost: 1100, req: { bar: 4 }, desc: 'All cash income x1.35.' },
+    { id: 'coat', name: 'Coat Check', cost: 850, req: { door: 2 }, desc: '+20 floor capacity.' },
+    { id: 'photog', name: 'House Photographer', cost: 1700, req: { marquee: 2 }, desc: 'Buzz generation x1.5.' },
+    { id: 'bottle', name: 'Bottle Service', cost: 3800, req: { vip: 3 }, desc: 'VIP cash x2.2.' },
+    { id: 'residency', name: 'Weekly Residency', cost: 5800, req: { dress: 2 }, desc: 'Crew output x1.4.' }
   ];
 
   RESEARCH = [
-    { id: 'loop', name: 'Reputation Loop', cost: 4, desc: 'Regulars each add $0.04/s on their own.' },
-    { id: 'latemenu', name: 'Late Kitchen', cost: 8, desc: 'After Hours multiplier 0.45 → 0.95.' },
-    { id: 'promo', name: 'Promoter Network', cost: 14, desc: 'Buzz converts to patrons 60% faster.' },
-    { id: 'payroll', name: 'Payroll Software', cost: 22, desc: 'Crew wages drop 40%.' }
+    { id: 'loop', name: 'Reputation Loop', cost: 6, desc: 'Regulars each add $0.04/s on their own.' },
+    { id: 'latemenu', name: 'Late Kitchen', cost: 12, desc: 'After Hours multiplier 0.45 → 0.95.' },
+    { id: 'promo', name: 'Promoter Network', cost: 20, desc: 'Buzz converts to patrons 60% faster.' },
+    { id: 'payroll', name: 'Payroll Software', cost: 32, desc: 'Crew wages drop 40%.' }
   ];
 
   JOBS = [
-    { id: 'stage', name: 'Main Stage', desc: '+0.22 Hype/s each' },
-    { id: 'vipjob', name: 'VIP Room', desc: '+$1.10/s each' },
-    { id: 'floor', name: 'Floor Work', desc: '+0.05 Buzz/s, +regulars' },
+    { id: 'stage', name: 'Main Stage', desc: '+0.24 Hype/s each' },
+    { id: 'vipjob', name: 'VIP Room', desc: '+$1.35/s each' },
+    { id: 'floor', name: 'Floor Work', desc: '+0.035 Buzz/s, +regulars' },
     { id: 'off', name: 'Off Shift', desc: 'No wage drain' }
   ];
 
@@ -174,23 +180,23 @@ class Game {
       id: 'work', title: 'Work the room',
       why: 'Hands-on cash before the room pays you. Five solid passes seed the till.',
       hint: 'Hit "Work the room" five times. Instant cash, no structures needed.',
-      reward: { cash: 15, clout: 0 },
+      reward: { cash: 8, clout: 0 },
       check: g => (g.clicks || 0) >= 5,
       progress: g => ({ cur: Math.min(g.clicks || 0, 5), max: 5 })
     },
     {
       id: 'rail', title: 'Brass brings tips',
       why: 'Patrons standing at a rail tip +$0.05/s each. Tips are your first real income.',
-      hint: 'Club tab → Tip Rail, $30. Click "Work the room" to afford it.',
-      reward: { cash: 20, clout: 0 },
+      hint: 'Club tab → Tip Rail. Click "Work the room" to afford it.',
+      reward: { cash: 12, clout: 0 },
       check: g => (g.b && g.b.rail || 0) >= 1,
       progress: null
     },
     {
       id: 'word', title: 'Get the word out',
       why: 'Buzz is how strangers find the door. Without it the floor stays empty.',
-      hint: 'Club tab → Flyer Crew, $95. Buzz ticks up on its own after that.',
-      reward: { cash: 25, clout: 0 },
+      hint: 'Club tab → Flyer Crew. Buzz ticks up on its own after that.',
+      reward: { cash: 15, clout: 0 },
       check: g => (g.b && g.b.flyers || 0) >= 1,
       progress: null
     },
@@ -198,7 +204,7 @@ class Game {
       id: 'pulse', title: 'A floor with a pulse',
       why: 'Buzz converts into bodies. Eight patrons means the room feels alive.',
       hint: 'Let Flyer Crew (and walk-ins) fill the floor. Watch Patrons on the ledger.',
-      reward: { cash: 40, clout: 0 },
+      reward: { cash: 20, clout: 0 },
       check: g => (g.patrons || 0) >= 8,
       progress: g => ({ cur: Math.min(g.patrons || 0, 8), max: 8 })
     },
@@ -206,7 +212,7 @@ class Game {
       id: 'contract', title: 'First contract',
       why: 'A body on Main Stage is how Hype starts climbing without you clicking forever.',
       hint: 'Crew tab → Hire. New hires open on Main Stage automatically.',
-      reward: { cash: 30, clout: 0 },
+      reward: { cash: 18, clout: 0 },
       check: g => (g.crew || 0) >= 1,
       progress: null
     },
@@ -214,7 +220,7 @@ class Game {
       id: 'energy', title: 'Room energy',
       why: 'Hype multiplies income, click value, and pull. 25 is the first real gear-up.',
       hint: 'Keep someone on Main Stage. DJ Booth helps. Buy a round if you need a jolt.',
-      reward: { cash: 50, clout: 0 },
+      reward: { cash: 25, clout: 0 },
       check: g => (g.hype || 0) >= 25,
       progress: g => ({ cur: Math.min(g.hype || 0, 25), max: 25 })
     },
@@ -222,7 +228,7 @@ class Game {
       id: 'house', title: 'On the house',
       why: 'Cash → Hype conversion before Peak. A round buys momentum you cannot wait for.',
       hint: 'Center row → "Buy a round" when you can afford it. Best before Peak Hours.',
-      reward: { cash: 40, clout: 0 },
+      reward: { cash: 20, clout: 0 },
       check: g => (g.rounds || 0) >= 1,
       progress: null
     },
@@ -230,7 +236,7 @@ class Game {
       id: 'backstage', title: 'Backstage pass',
       why: 'VIP job is crew cash. Wages are real — this is how payroll starts paying for itself.',
       hint: 'Club → VIP Booth, then Crew → move one dancer to VIP Room.',
-      reward: { cash: 60, clout: 0 },
+      reward: { cash: 35, clout: 0 },
       check: g => (g.b && g.b.vip || 0) >= 1 && (g.jobs && g.jobs.vipjob || 0) >= 1,
       progress: null
     },
@@ -246,7 +252,7 @@ class Game {
       id: 'study', title: 'Study the game',
       why: 'Clout spent on research is permanent. Reputation Loop pays regulars forever.',
       hint: 'Research tab → spend Clout on any project (Reputation Loop is the cheap open).',
-      reward: { cash: 100, clout: 0 },
+      reward: { cash: 50, clout: 0 },
       check: g => g.r && Object.values(g.r).some(Boolean),
       progress: null
     },
@@ -254,7 +260,7 @@ class Game {
       id: 'roster', title: 'Grow the roster',
       why: 'Dressing Rooms raise crew capacity. Three on payroll means a real rotation.',
       hint: 'Club → Dressing Room, then Crew → hire until you have three.',
-      reward: { cash: 150, clout: 0 },
+      reward: { cash: 80, clout: 0 },
       check: g => (g.b && g.b.dress || 0) >= 1 && (g.crew || 0) >= 3,
       progress: g => ({ cur: Math.min(g.crew || 0, 3), max: 3 })
     },
@@ -262,7 +268,7 @@ class Game {
       id: 'peak', title: 'Peak-hour hero',
       why: 'Shift timing matters. Riding Peak with real Hype is when the till sings.',
       hint: 'Push Hype to 60, then be in Peak Hours (header shift). Live only — not offline.',
-      reward: { cash: 200, clout: 0 },
+      reward: { cash: 100, clout: 0 },
       check: g => (g.hype || 0) >= 60 && g.shiftIdx === 1,
       progress: g => ({ cur: Math.min(g.hype || 0, 60), max: 60 })
     },
@@ -270,7 +276,7 @@ class Game {
       id: 'builtin', title: 'Built to last',
       why: 'Upgrades are one-time power spikes. Owning one means the club has a spine.',
       hint: 'Upgrades tab — meet the structure requirement, then buy (LED Pole is the usual first).',
-      reward: { cash: 250, clout: 0 },
+      reward: { cash: 120, clout: 0 },
       check: g => g.u && Object.values(g.u).some(Boolean),
       progress: null
     },
@@ -655,14 +661,14 @@ class Game {
     const railCap = g.b.rail * 6;
     // Non-crew cash: base door + tip rail + bar + VIP rooms + regulars loop.
     // Patron tips only via rail (PLAN §1.6); flat 0.08 covers the door.
-    let nonCrewCash = (0.08 + Math.min(g.patrons, railCap) * 0.05 + g.b.bar * 0.30) * cashMult;
-    nonCrewCash += g.b.vip * 0.9 * bottle * cashMult;
+    let nonCrewCash = (0.08 + Math.min(g.patrons, railCap) * 0.06 + g.b.bar * 0.45) * cashMult;
+    nonCrewCash += g.b.vip * 1.25 * bottle * cashMult;
     if (g.r.loop) nonCrewCash += g.regulars * 0.04 * cashMult;
 
-    let wage = (g.crew - g.jobs.off) * 0.22 * (g.r.payroll ? 0.6 : 1);
-    let vipCrewCash = g.jobs.vipjob * 1.10 * crewMult * bottle * cashMult;
-    let stageHype = g.jobs.stage * 0.22 * crewMult;
-    let floorBuzz = g.jobs.floor * 0.05 * crewMult;
+    let wage = (g.crew - g.jobs.off) * 0.20 * (g.r.payroll ? 0.6 : 1);
+    let vipCrewCash = g.jobs.vipjob * 1.35 * crewMult * bottle * cashMult;
+    let stageHype = g.jobs.stage * 0.24 * crewMult;
+    let floorBuzz = g.jobs.floor * 0.035 * crewMult;
 
     // Strike: crew only work when the club's non-crew revenue covers payroll.
     // Do not use cash > 0 as the recovery condition: strike ticks earn a small
@@ -678,21 +684,24 @@ class Game {
 
     const cash = nonCrewCash + vipCrewCash - wage;
 
-    const hypeGain = (g.b.dj * 0.09 + stageHype) * (g.u.led ? 1.3 : 1);
+    const hypeGain = (g.b.dj * 0.10 + stageHype) * (g.u.led ? 1.3 : 1);
     const decay = g.hype * 0.014 * Math.max(0.25, 1 - g.b.door * 0.12);
     const hype = hypeGain - decay;
 
-    const buzz = (g.b.marquee * 0.10 + g.b.flyers * 0.06 + floorBuzz) * (g.u.photog ? 1.5 : 1);
+    const buzz = (g.b.marquee * 0.07 + g.b.flyers * 0.025 + floorBuzz) * (g.u.photog ? 1.5 : 1);
     const promoMult = g.r.promo ? 1.6 : 1;
-    const basis = (g.buzz > 0 ? Math.min(g.buzz, 0.8) : 0) * promoMult;
+    // Buzz→patron conversion paced for §C (numbers only; walk-in 0.02 stays fixed).
+    // Cap keeps active-play click buzz from flooding the floor before ~6 min.
+    const basis = (g.buzz > 0 ? Math.min(g.buzz, 0.065) : 0) * promoMult;
     // Walk-in trickle: flat +0.02 patrons/s, unscaled by Hype (PLAN §1.4).
     const pull = basis * (1 + g.hype / 200) + 0.02;
     const space = Math.max(0, cap.patrons - g.patrons);
     const admitted = Math.min(pull, space);
     const buzzSpent = basis > 0 && pull > 0 ? basis * (admitted / pull) : 0;
-    const patrons = admitted - g.patrons * 0.02;
-    const regulars = g.patrons * 0.0007 * (1 + g.b.vip * 0.18) * sm;
-    const clout = g.regulars * 0.0016;
+    const patrons = admitted - g.patrons * 0.008;
+    // Regulars / Clout paced for first-research ~25 min under the §C reference bot.
+    const regulars = g.patrons * 0.00045 * (1 + g.b.vip * 0.18) * sm;
+    const clout = g.regulars * 0.0011;
     return { cash, hype, buzz, patrons, regulars, clout, wage, cap, shift, sm, pull, buzzSpent, strike };
   }
 
@@ -870,7 +879,7 @@ class Game {
     const g = this.state.g;
     const cap = this.caps(g).crew;
     if (g.crew >= cap) return;
-    const price = Math.floor(250 * Math.pow(1.38, g.crew));
+    const price = Math.floor(280 * Math.pow(1.38, g.crew));
     if (g.cash < price) return;
     g.cash -= price;
     g.crew++;
@@ -1011,7 +1020,7 @@ class Game {
       });
     } else if (this.state.tab === 'crew') {
       tabHint = 'Hire dancers, then assign them to Main Stage (Hype), VIP, or Floor. Wages tick every second — park extras Off Shift when the room is dead.';
-      const price = Math.floor(250 * Math.pow(1.38, g.crew));
+      const price = Math.floor(280 * Math.pow(1.38, g.crew));
       const room = g.crew < cap.crew, ok = room && g.cash >= price;
       cards = [{ name: 'Hire Crew', desc: 'Dancers, bartenders, hosts. New hires start on Main Stage — reassign below. Capacity comes from Dressing Rooms.',
         owned: g.crew + ' / ' + cap.crew, btn: room ? 'Hire $' + this.fmt(price) : 'At capacity',
@@ -1053,8 +1062,9 @@ class Game {
       };
     });
 
-    const clickVal = 4 + g.b.rail * 1.5 + g.hype * 0.12;
-    const roundPrice = Math.floor(40 + g.patrons * 6);
+    // Click / round numbers retuned for PLAN-NEXT §C pacing (active-play early curve).
+    const clickVal = 1.15 + g.b.rail * 0.65 + g.hype * 0.07;
+    const roundPrice = Math.floor(50 + g.patrons * 7);
     const hypeRoom = Math.max(0, cap.hype - g.hype);
     const roundGain = Math.min(14, hypeRoom);
     const roundOk = g.cash >= roundPrice && roundGain > 0;
@@ -1088,7 +1098,7 @@ class Game {
       clickValue: '$' + this.fmt(clickVal),
       workCrowd: () => {
         g.cash += clickVal;
-        g.buzz = Math.min(cap.buzz, g.buzz + 0.4);
+        g.buzz = Math.min(cap.buzz, g.buzz + 0.12);
         g.clicks = (g.clicks || 0) + 1;
         this.noteGoals(g);
         this.forceUpdate();

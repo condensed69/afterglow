@@ -588,7 +588,7 @@ test('rail + walk-in patrons earn cash with zero buzz', () => {
   g.jobs = { stage: 0, vipjob: 0, floor: 0, off: 0 };
   const cashBefore = g.cash;
   const r = game.rates(g);
-  // rail tips: min(patrons, rail*6) * 0.05 = 3 * 0.05 = 0.15/s (plus flat base)
+  // rail tips: min(patrons, rail*6) * 0.06 = 3 * 0.06 = 0.18/s (plus flat base)
   ok(r.cash > 0, `rail-first with patrons must earn cash (cash rate=${r.cash})`);
   for (let i = 0; i < 100; i++) game.step(0.1);
   ok(g.cash > cashBefore, `cash must grow via rail tips with zero buzz (${cashBefore} → ${g.cash})`);
@@ -1133,8 +1133,8 @@ test('goal 1 completes after 5 workCrowd calls and pays exactly once', () => {
   for (let i = 0; i < 5; i++) work();
   ok(g.goals.includes('work'), 'work completed');
   strictEqual(g.clicks, 5);
-  // Reward $15 paid once
-  const expectedMin = cashBefore + 15; // clicks also add cash; just assert reward once via noteGoals
+  // Reward $8 paid once (0.6.1 balance)
+  const expectedMin = cashBefore + 8; // clicks also add cash; just assert reward once via noteGoals
   // Re-run noteGoals — must not double-pay or re-add id
   const cashAfter = g.cash;
   const goalsLen = g.goals.length;
@@ -1203,7 +1203,7 @@ test('migration 4→5: v4 save with rail+flyers pre-completes those goals, no re
   ok(loaded.goals.includes('rail'), 'rail pre-completed');
   ok(loaded.goals.includes('word'), 'word pre-completed');
   ok(!loaded.goals.includes('pulse'), 'pulse not falsely completed');
-  // Import stamps log with "Save restored"; cash must not include goal rewards (15+20+25)
+  // Import stamps log with "Save restored"; cash must not include goal rewards
   strictEqual(loaded.cash, cash, 'no back-paid goal rewards on migrate');
   const stored = JSON.parse(localStorage.getItem(game.KEY));
   strictEqual(stored.saveVer, 5);
@@ -1242,8 +1242,8 @@ test('migration 4→5 mid-game: credits non-sequential goals without reward casc
   loaded.rounds = 1;
   for (let i = 0; i < 10; i++) game.noteGoals(loaded, { live: true });
   ok(loaded.goals.includes('house'), 'house completes live once rounds exist');
-  // Only house reward ($40) — not backstage/regulars/study/roster cascade.
-  strictEqual(loaded.cash, cashBefore + 40, 'only house reward paid after migrate');
+  // Only house reward ($20 post-0.6.1) — not backstage/regulars/study/roster cascade.
+  strictEqual(loaded.cash, cashBefore + 20, 'only house reward paid after migrate');
   strictEqual(loaded.clout, cloutBefore, 'no cascade clout after migrate');
 });
 
@@ -1264,7 +1264,7 @@ test('peak goal does not complete offline; completes live', () => {
   // Live path (step / default noteGoals)
   game.noteGoals(g, { live: true });
   ok(g.goals.includes('peak'), 'peak completes live');
-  strictEqual(g.cash, cashAfterCatchUp + 200, 'peak reward $200 once live');
+  strictEqual(g.cash, cashAfterCatchUp + 100, 'peak reward $100 once live');
   const cashAfter = g.cash;
   game.noteGoals(g, { live: true });
   strictEqual(g.cash, cashAfter, 'no double-pay peak');
