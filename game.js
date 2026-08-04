@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.5.3', build: 161, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.5.4', build: 162, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 4;
   KEY = 'afterglow.save';
 
@@ -40,13 +40,15 @@ class Game {
   };
 
   CHANGELOG = [
-    { v: '0.5.3', date: '2026-08-04', codename: 'Neon Zero', notes: [
-      'Clipboard restore now completes and validates every simulation field before replacing the live club.',
-      'Crew stay on strike while non-crew revenue cannot cover payroll, preventing alternating unpaid production ticks.',
+    { v: '0.5.4', date: '2026-08-04', codename: 'Neon Zero', notes: [
       'Settings: Download save (.json) — same payload as clipboard, fixed filename afterglow-save.json.',
       'Settings: Load save from file… — FileReader into existing importSaveFromText (no parallel path).',
       'Files and clipboard are interchangeable; settings order: Save · Download · Load file · clipboard · Wipe.',
       'Import night-log is source-neutral ("Save restored.") — file and clipboard share importSaveFromText.'
+    ]},
+    { v: '0.5.3', date: '2026-08-04', codename: 'Neon Zero', notes: [
+      'Clipboard restore now completes and validates every simulation field before replacing the live club.',
+      'Crew stay on strike while non-crew revenue cannot cover payroll, preventing alternating unpaid production ticks.'
     ]},
     { v: '0.5.2', date: '2026-08-03', codename: 'Neon Zero', notes: [
       'Reorganization only — no behavior change.',
