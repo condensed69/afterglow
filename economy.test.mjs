@@ -1237,6 +1237,10 @@ test('importSaveFile routes FileReader text into importSaveFromText', () => {
   strictEqual(game.state.saveState, 'imported');
   strictEqual(game.state.g.cash, 321);
   strictEqual(game.state.g.b.flyers, 2);
+  // File path must not claim clipboard in the night log (shared importSaveFromText).
+  const msgs = game.state.g.log.map(e => e.msg);
+  ok(msgs.some(m => m === 'Save restored.'), `expect neutral restore log, got: ${msgs.join(' | ')}`);
+  ok(!msgs.some(m => /clipboard/i.test(m)), 'restore log must not mention clipboard after file load');
 });
 
 // ── Results ──────────────────────────────────────────────────────────────────

@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.5.3', build: 160, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.5.3', build: 161, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 4;
   KEY = 'afterglow.save';
 
@@ -45,7 +45,8 @@ class Game {
       'Crew stay on strike while non-crew revenue cannot cover payroll, preventing alternating unpaid production ticks.',
       'Settings: Download save (.json) — same payload as clipboard, fixed filename afterglow-save.json.',
       'Settings: Load save from file… — FileReader into existing importSaveFromText (no parallel path).',
-      'Files and clipboard are interchangeable; settings order: Save · Download · Load file · clipboard · Wipe.'
+      'Files and clipboard are interchangeable; settings order: Save · Download · Load file · clipboard · Wipe.',
+      'Import night-log is source-neutral ("Save restored.") — file and clipboard share importSaveFromText.'
     ]},
     { v: '0.5.2', date: '2026-08-03', codename: 'Neon Zero', notes: [
       'Reorganization only — no behavior change.',
@@ -348,7 +349,8 @@ class Game {
       g.ts = Date.now();
       this._onStrike = false;
       this.state.g = g;
-      this.push(g, 'Save restored from clipboard.', '#22d3ee');
+      // Source-neutral: file and clipboard both use this path (PLAN-NEXT §A).
+      this.push(g, 'Save restored.', '#22d3ee');
       try {
         localStorage.setItem(this.KEY, JSON.stringify({
           saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
