@@ -11,9 +11,32 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.6.1', build: 167, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.6.1', build: 168, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 5;
   KEY = 'afterglow.save';
+  // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
+  // A plain boolean is copied when the browser duplicates a tab, so a duplicate would
+  // claim and pause the original. Token is unique per page context (this.tabToken).
+  OWNER_KEY = 'afterglow.tabOwner';
+  // Set on pagehide only when this tab still owns — survives F5, not present when a live
+  // tab is duplicated (pagehide did not run). Consumed once on the next init as wasOwner.
+  RELOAD_KEY = 'afterglow.tabOwnerReload';
+  // Cross-tab lease in localStorage: { token, at }. Owner refreshes while live.
+  // Age-only claim (offline >15s) requires no live foreign lease — disk age alone is not
+  // proof the owner is gone (background-throttled tabs may lag autosave).
+  LEASE_KEY = 'afterglow.tabOwnerLease';
+  // Claimant writes this before an age-only claim so a live owner can refresh its lease
+  // via the storage event (handshake). Shape: { token, at }.
+  PROBE_KEY = 'afterglow.tabOwnerProbe';
+  // Foreign lease younger than this = live peer. Must exceed CLAIM_OFFLINE_SEC (15s) so a
+  // throttled owner that still ticks can hold past disk lag; under 60s matches common
+  // background timer floors.
+  LEASE_TTL_MS = 45000;
+  // Min wall time between lease writes from the live timer (saves/mark still write immediately).
+  LEASE_REFRESH_MS = 2000;
+  // After writing PROBE_KEY, wait this long before age-claim so a live owner can refresh
+  // LEASE_KEY via the storage event. Immediate lease re-read races the async owner path.
+  PROBE_WAIT_MS = 250;
 
   // Dev-only tunables the Claude-artifact prop editor used to expose
   // (showDebug / simSpeed / startingCash). Fixed to their defaults now that
@@ -69,7 +92,12 @@ class Game {
       'Live step() evaluates goals each sim slice before shift rollover so Peak-hour hero can complete mid-tick.',
       'Import persists before replacing the live club: setItem failure surfaces import failed, leaves the prior club, and does not clear tabStale or restart autosave.',
       'Import rebuilds buildings/upgrades/research/jobs from known catalog IDs only — unknown keys cannot reach Structures or other Object.values paths.',
-      'pacing.mjs First upgrade (LED) milestone requires g.u.led specifically (not any upgrade).'
+      'pacing.mjs First upgrade (LED) milestone requires g.u.led specifically (not any upgrade).',
+      'Tab ownership: per-page token + lease/probe handshake; autosave starts only after claim.',
+      'save(auto) and save(manual)/Save now no-op while tabStale or non-owner — never clobber a live sibling.',
+      'Non-owner tabs are read-only (sim + controls pause) until reload takeover or successful import.',
+      'Age-only claim probes first so a live owner can refresh its lease before a second tab steals.',
+      'Successful import acquires ownership and starts autosave only after setItem succeeds.'
     ]},
     { v: '0.6.0', date: '2026-08-04', codename: 'Neon Zero', notes: [
       'Owner\'s List: sequential 14-goal onboarding panel at the top of the systems column.',
@@ -329,6 +357,16 @@ class Game {
     this.root = root;
     this.state.g = this.fresh();
     this.handlers = [];
+    // Unique per page context — not copied across tab duplicates the way a
+    // sessionStorage boolean is. Paired with OWNER_KEY / RELOAD_KEY for claim.
+    this.tabToken = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+      ? crypto.randomUUID()
+      : String(Date.now()) + '-' + Math.random().toString(36).slice(2, 10);
+    // In-memory ownership (sessionStorage can fail in private mode). Autosave
+    // and save('auto') require this; set by markTabOwner after a successful claim/write.
+    this._ownsSave = false;
+    this.saver = null;
+    this.timer = null;
     // Full innerHTML re-renders replace every button node. If that happens
     // between mousedown and mouseup the browser cancels the click, so pink
     // CTAs (and every other button) feel dead under a normal press. Defer
@@ -602,13 +640,19 @@ class Game {
         return false;
       }
       // Disk write succeeded — only now replace live state and take ownership.
+      if (this._probeTimer) {
+        clearTimeout(this._probeTimer);
+        this._probeTimer = null;
+      }
       this._onStrike = false;
       this.state.g = g;
-      // Explicit restore takes ownership: clear foreign-tab pause and resume autosave.
-      if (!this.saver) {
-        this.saver = setInterval(() => this.save('auto'), 10000);
-      }
-      this.setState({ saveState: 'imported', tabStale: false });
+      // Successful persist is an explicit ownership take (import path):
+      // a non-claiming second tab must start autosave and mark owner so later
+      // progress is not lost after pausing siblings via the storage event.
+      this.state.tabStale = false;
+      this.markTabOwner();
+      this.startAutosave();
+      this.setState({ tabStale: false, saveState: 'imported' });
       return true;
     } catch (e) {
       this.setState({ saveState: 'import failed' });
@@ -654,7 +698,13 @@ class Game {
     this.sanitizeG(g);
     g.log = [];
 
-    const offline = resumeExisting && g.ts ? Math.min((Date.now() - g.ts) / 1000, 28800) : 0;
+    // Clamp: future ts (clock skew / corrupt save) must not yield a negative gap
+    // that freezes the live timer until wall time catches up.
+    const nowMs = Date.now();
+    const futureTs = !!(resumeExisting && g.ts && g.ts > nowMs);
+    const offline = (resumeExisting && g.ts && !futureTs)
+      ? Math.min(Math.max(0, (nowMs - g.ts) / 1000), 28800)
+      : 0;
     this.state.g = g;
     this.push(g, 'Doors open. ' + this.VERSION.codename + ' build ' + this.VERSION.build + '.', '#22d3ee');
     if (wiped) this.push(g, 'Save format changed — previous save reset.', '#ff2d78');
@@ -672,28 +722,87 @@ class Game {
     // re-reads the prior blob once (no silent progress that cannot be written).
     // If claim succeeds and the post-catchUp write fails, disk already has the
     // claimed ts so reload cannot re-apply the gap (offline may be lost once).
-    g.ts = Date.now();
-    let claimed = false;
+    //
+    // Do NOT claim unconditionally: a second tab that setItem's the last on-disk
+    // snapshot with a refreshed ts fires storage → onForeignSave on a live
+    // sibling, stealing ownership and discarding up to one autosave interval of
+    // progress. Under a live tab, disk ts lags by at most ~10s (autosave).
+    // Claim when this tab must take ownership: fresh/wiped club, migration,
+    // same-tab reload (RELOAD_KEY set on pagehide), future/corrupt ts, or a
+    // large offline gap with no live foreign lease (age alone is not proof).
+    //
+    // Short multi-tab / non-owner open (offline ≤15s, no reload intent): do not
+    // setItem (avoids stealing). Still apply the preserved gap via catchUp in
+    // memory and advance g.ts so the live timer cannot full-rate step pre-load
+    // time or award live-only Peak for it. Disk stays untouched until this tab
+    // explicitly acquires ownership (claim path, reload takeover, or import).
+    const CLAIM_OFFLINE_SEC = 15;
+    let wasOwner = false;
     try {
-      localStorage.setItem(this.KEY, JSON.stringify({
-        saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
-      }));
-      claimed = true;
-    } catch (e) {
-      this.setState({ saveState: 'save failed' });
+      // Same-tab F5: pagehide wrote RELOAD_KEY. Tab-duplicate of a live owner
+      // copies OWNER_KEY but not RELOAD_KEY (pagehide never ran) → wasOwner false.
+      if (sessionStorage.getItem(this.RELOAD_KEY)) {
+        wasOwner = true;
+        sessionStorage.removeItem(this.RELOAD_KEY);
+        // Drop the previous page instance's owner token; we re-mark after claim.
+        sessionStorage.removeItem(this.OWNER_KEY);
+      }
+    } catch (e) { /* private mode */ }
+    // Hard claims always proceed. Age-only claim is gated by cross-tab lease:
+    // a background-throttled owner may lag autosave past 15s while still live.
+    // When age-claim would run, write PROBE_KEY and wait PROBE_WAIT_MS before
+    // deciding — an immediate lease re-read races the owner's async storage handler.
+    const hardClaim = !resumeExisting || upgraded || wasOwner || futureTs;
+    const ageClaimCandidate = resumeExisting && !hardClaim && offline > CLAIM_OFFLINE_SEC;
+    let ageClaimDeferred = false;
+    if (ageClaimCandidate) {
+      // Handshake: announce probe so a live owner refreshes LEASE_KEY via storage.
+      try {
+        localStorage.setItem(this.PROBE_KEY, JSON.stringify({
+          token: this.tabToken, at: Date.now()
+        }));
+      } catch (e) { /* private / quota */ }
+      if (this.hasLiveForeignLease()) {
+        // Already a live peer — do not claim.
+      } else {
+        // Lease absent/stale: owner may still respond to the probe. Defer claim.
+        ageClaimDeferred = true;
+      }
     }
-    if (offline > 0 && claimed) {
-      const report = this.catchUp(g, offline);
-      if (offline > 60) this.push(g, this.awayMsg(offline, report), '#ffc94a');
-      // Offline: peak (goal 12) must not complete here — live-only.
-      this.noteGoals(g, { live: false });
+    const needsClaim = hardClaim;
+    let claimed = false;
+    if (needsClaim) {
+      g.ts = Date.now();
       try {
         localStorage.setItem(this.KEY, JSON.stringify({
           saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
         }));
+        claimed = true;
+        this.markTabOwner();
       } catch (e) {
         this.setState({ saveState: 'save failed' });
       }
+      if (offline > 0 && claimed) {
+        const report = this.catchUp(g, offline);
+        if (offline > 60) this.push(g, this.awayMsg(offline, report), '#ffc94a');
+        // Offline: peak (goal 12) must not complete here — live-only.
+        this.noteGoals(g, { live: false });
+        try {
+          localStorage.setItem(this.KEY, JSON.stringify({
+            saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
+          }));
+          this.refreshLease();
+        } catch (e) {
+          this.setState({ saveState: 'save failed' });
+        }
+      }
+    } else if (offline > 0) {
+      // Non-claiming path: offline catch-up in memory only (no setItem / no steal).
+      // Includes: short multi-tab open, ageClaim blocked by live lease, and deferred probe.
+      const report = this.catchUp(g, offline);
+      if (offline > 60) this.push(g, this.awayMsg(offline, report), '#ffc94a');
+      this.noteGoals(g, { live: false });
+      g.ts = Date.now();
     }
 
     const measure = () => {
@@ -707,6 +816,10 @@ class Game {
     }
     this.timer = setInterval(() => {
       const g = this.state.g; if (!g) return;
+      // Non-owner / foreign-tab pause: do not advance the sim (progress would be lost).
+      if (this.state.tabStale || !this.isTabOwner()) return;
+      // Keep cross-tab lease fresh so age-only claimers see a live peer.
+      this.refreshLeaseThrottled();
       const now = Date.now();
       const dt = Math.max(0, (now - (g.ts || now)) / 1000);
       // Skip sub-50ms ticks; leave g.ts untouched so elapsed time accrues to the next tick.
@@ -725,27 +838,178 @@ class Game {
         this.step(Math.min(dt, 28800));
       }
     }, 100);
-    this.saver = setInterval(() => this.save('auto'), 10000);
+    // Autosave only for the owning tab. A non-claiming second/duplicated tab
+    // must not start the 10s timer — the first auto write would setItem a stale
+    // snapshot, fire storage → onForeignSave on the live sibling, and pause it.
+    // Non-owners are also read-only (tabStale) until reload takeover or import.
+    if (ageClaimDeferred) {
+      this.state.tabStale = true;
+      this.state.saveState = 'checking ownership…';
+      if (this._probeTimer) clearTimeout(this._probeTimer);
+      this._probeTimer = setTimeout(() => this.finishAgeClaim(), this.PROBE_WAIT_MS);
+    } else if (this.isTabOwner()) {
+      this.startAutosave();
+    } else if (!needsClaim) {
+      // Short multi-tab open or live foreign lease: visibly read-only.
+      // Do not overwrite saveState when a hard claim attempted and setItem failed.
+      this.state.tabStale = true;
+      this.state.saveState = 'paused (other tab)';
+    }
+    // needsClaim && !owner: claim setItem failed — keep 'save failed', no fake peer-pause.
     // storage only fires in *other* tabs — stop autosave so we don't clobber their write (PLAN §2.3).
     // Bind once: init() may re-run in tests; page boot calls it a single time.
     if (!this._storageBound) {
       this._storageBound = true;
       window.addEventListener('storage', (e) => {
-        if (e.key !== this.KEY) return;
-        this.onForeignSave();
+        if (e.key === this.KEY) {
+          this.onForeignSave();
+          return;
+        }
+        // Lease handshake: a peer probing to age-claim — refresh so they see us live.
+        if (e.key === this.PROBE_KEY && e.newValue && this.isTabOwner()) {
+          this.refreshLease();
+        }
       });
     }
     this.forceUpdate();
   }
 
-  // Another tab wrote/removed KEY. Freeze autosave; banner offers reload to adopt their save.
+  // After PROBE_WAIT_MS: claim only if no live foreign lease appeared (owner refreshed).
+  // Offline catch-up already ran in memory on the deferred path; this persists it.
+  finishAgeClaim() {
+    this._probeTimer = null;
+    if (this.isTabOwner()) return;
+    if (this.hasLiveForeignLease()) {
+      this.state.tabStale = true;
+      this.setState({ tabStale: true, saveState: 'paused (other tab)' });
+      return;
+    }
+    const g = this.state.g;
+    if (!g) return;
+    try {
+      g.ts = Date.now();
+      localStorage.setItem(this.KEY, JSON.stringify({
+        saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
+      }));
+      this.markTabOwner();
+      this.state.tabStale = false;
+      this.startAutosave();
+      this.setState({ tabStale: false, saveState: 'claimed' });
+    } catch (e) {
+      this.state.tabStale = true;
+      this.setState({ tabStale: true, saveState: 'save failed' });
+    }
+  }
+
+  // Another tab wrote/removed KEY. Freeze autosave + sim; banner offers reload to adopt their save.
   onForeignSave() {
-    if (this.state.tabStale) return;
+    if (this._probeTimer) {
+      clearTimeout(this._probeTimer);
+      this._probeTimer = null;
+    }
+    if (this.state.tabStale && !this.isTabOwner()) {
+      // Already non-owner paused; still ensure autosave is off and owner cleared.
+      if (this.saver) { clearInterval(this.saver); this.saver = null; }
+      this.clearTabOwner();
+      this.setState({ tabStale: true, saveState: 'paused (other tab)' });
+      return;
+    }
     if (this.saver) {
       clearInterval(this.saver);
       this.saver = null;
     }
+    this.clearTabOwner();
     this.setState({ tabStale: true, saveState: 'paused (other tab)' });
+  }
+
+  isTabOwner() {
+    return !!this._ownsSave;
+  }
+
+  markTabOwner() {
+    this._ownsSave = true;
+    try { sessionStorage.setItem(this.OWNER_KEY, this.tabToken); } catch (e) { /* private mode */ }
+    this.refreshLease();
+    this.ensureOwnerLifecycle();
+  }
+
+  clearTabOwner() {
+    this._ownsSave = false;
+    try {
+      sessionStorage.removeItem(this.OWNER_KEY);
+      sessionStorage.removeItem(this.RELOAD_KEY);
+    } catch (e) { /* private mode */ }
+    // Drop our lease so age-claimers can take over; leave a foreign lease alone.
+    try {
+      const raw = localStorage.getItem(this.LEASE_KEY);
+      if (raw) {
+        const lease = JSON.parse(raw);
+        if (lease && lease.token === this.tabToken) localStorage.removeItem(this.LEASE_KEY);
+      }
+    } catch (e) { /* private / corrupt */ }
+  }
+
+  // Publish / refresh this tab's cross-tab lease. Call when ownership is taken
+  // or reaffirmed (save, timer). Age-only claimers treat a fresh foreign lease
+  // as proof a live peer still owns the save.
+  refreshLease() {
+    if (!this._ownsSave) return;
+    try {
+      localStorage.setItem(this.LEASE_KEY, JSON.stringify({
+        token: this.tabToken, at: Date.now()
+      }));
+      this._leaseAt = Date.now();
+    } catch (e) { /* private / quota */ }
+  }
+
+  refreshLeaseThrottled() {
+    if (!this._ownsSave) return;
+    if (this._leaseAt && (Date.now() - this._leaseAt) < this.LEASE_REFRESH_MS) return;
+    this.refreshLease();
+  }
+
+  // True when another tab's lease is still within LEASE_TTL_MS (live peer).
+  hasLiveForeignLease() {
+    try {
+      const raw = localStorage.getItem(this.LEASE_KEY);
+      if (!raw) return false;
+      const lease = JSON.parse(raw);
+      if (!lease || typeof lease.token !== 'string' || typeof lease.at !== 'number') return false;
+      if (lease.token === this.tabToken) return false;
+      if (!Number.isFinite(lease.at)) return false;
+      return (Date.now() - lease.at) < this.LEASE_TTL_MS;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Start the 10s autosave interval once. No-op if already running.
+  startAutosave() {
+    if (this.saver) return;
+    this.saver = setInterval(() => this.save('auto'), 10000);
+  }
+
+  // pagehide fires on F5 / navigation / close / BFCache freeze. Write reload
+  // intent only if this page context still owns — a live tab that is merely
+  // duplicated never runs pagehide, so the duplicate does not inherit wasOwner.
+  // pageshow clears RELOAD_KEY on resume (incl. BFCache) so a restored live
+  // page does not leave a stealable marker for a later tab-duplicate.
+  ensureOwnerLifecycle() {
+    if (this._ownerLifecycleBound) return;
+    this._ownerLifecycleBound = true;
+    if (typeof window === 'undefined' || !window.addEventListener) return;
+    window.addEventListener('pagehide', () => {
+      try {
+        if (sessionStorage.getItem(this.OWNER_KEY) === this.tabToken) {
+          sessionStorage.setItem(this.RELOAD_KEY, this.tabToken);
+        }
+      } catch (e) { /* private mode */ }
+    });
+    window.addEventListener('pageshow', () => {
+      // Normal load: init already consumed RELOAD_KEY. BFCache restore: init does
+      // not re-run, so clear the pagehide marker left when we entered the cache.
+      try { sessionStorage.removeItem(this.RELOAD_KEY); } catch (e) { /* private mode */ }
+    });
   }
 
   push(g, msg, color) {
@@ -968,16 +1232,24 @@ class Game {
   save(kind) {
     const g = this.state.g;
     if (!g) return;
-    // After a foreign-tab write, never autosave over their data (manual save still allowed).
-    if (kind === 'auto' && this.state.tabStale) return;
+    // Non-owner / foreign-tab pause: never write (auto or manual). Settings
+    // "Save now" must not persist a paused tab's stale state.g, call
+    // markTabOwner(), clear tabStale, and discard a live sibling's progress.
+    // Takeover is reload (takeOverTab) or successful import only.
+    if (this.state.tabStale || !this.isTabOwner()) return;
     try {
       localStorage.setItem(this.KEY, JSON.stringify({ saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g }));
-      this.setState({ saveState: kind === 'auto' ? 'autosaved' : 'saved ✓' });
+      this.markTabOwner();
+      this.state.tabStale = false;
+      this.startAutosave();
+      this.setState({ tabStale: false, saveState: kind === 'auto' ? 'autosaved' : 'saved ✓' });
     } catch (e) { this.setState({ saveState: 'save failed' }); }
   }
 
   // --- actions (buy*, hire, moveJob) ---
+  // Non-owner / foreign-tab pause: actions are no-ops so progress cannot be "played" without persistence.
   buyBuilding(def) {
+    if (this.state.tabStale) return;
     const g = this.state.g;
     const n = g.b[def.id];
     if (def.max != null && n >= def.max) return;
@@ -990,6 +1262,7 @@ class Game {
     this.forceUpdate();
   }
   buyUpgrade(def) {
+    if (this.state.tabStale) return;
     const g = this.state.g;
     if (g.u[def.id] || g.cash < def.cost) return;
     // Enforce building req in the action (UI already gates; do not trust UI alone).
@@ -1002,6 +1275,7 @@ class Game {
     this.forceUpdate();
   }
   buyResearch(def) {
+    if (this.state.tabStale) return;
     const g = this.state.g;
     if (g.r[def.id] || g.clout < def.cost) return;
     g.clout -= def.cost;
@@ -1011,6 +1285,7 @@ class Game {
     this.forceUpdate();
   }
   hireCrew() {
+    if (this.state.tabStale) return;
     const g = this.state.g;
     const cap = this.caps(g).crew;
     if (g.crew >= cap) return;
@@ -1025,6 +1300,7 @@ class Game {
     this.forceUpdate();
   }
   moveJob(id, d) {
+    if (this.state.tabStale) return;
     const g = this.state.g;
     // Off Shift is the residual pool (display-only); never assign to it directly.
     if (id === 'off') return;
@@ -1279,6 +1555,7 @@ class Game {
       energyPct: Math.round(g.hype / cap.hype * 100) + '%',
       clickValue: '$' + this.fmt(clickVal),
       workCrowd: () => {
+        if (this.state.tabStale) return;
         g.cash += clickVal;
         g.buzz = Math.min(cap.buzz, g.buzz + 0.12);
         g.clicks = (g.clicks || 0) + 1;
@@ -1286,14 +1563,14 @@ class Game {
         this.forceUpdate();
       },
       roundLabel: 'Buy a round $' + this.fmt(roundPrice),
-      roundLocked: !roundOk,
+      roundLocked: !roundOk || this.state.tabStale,
       roundStyle: {
-        background: roundOk ? '#170e22' : '#120c1c', border: '1px solid ' + (roundOk ? '#3a2350' : '#1f1430'),
-        borderRadius: '8px', color: roundOk ? '#e7d8f2' : '#4a3860', padding: '13px 16px',
-        cursor: roundOk ? 'pointer' : 'not-allowed', fontSize: '12px', fontWeight: 700, minWidth: '190px'
+        background: roundOk && !this.state.tabStale ? '#170e22' : '#120c1c', border: '1px solid ' + (roundOk && !this.state.tabStale ? '#3a2350' : '#1f1430'),
+        borderRadius: '8px', color: roundOk && !this.state.tabStale ? '#e7d8f2' : '#4a3860', padding: '13px 16px',
+        cursor: roundOk && !this.state.tabStale ? 'pointer' : 'not-allowed', fontSize: '12px', fontWeight: 700, minWidth: '190px'
       },
       buyRound: () => {
-        if (!roundOk) return;
+        if (this.state.tabStale || !roundOk) return;
         g.cash -= roundPrice;
         g.hype = Math.max(0, Math.min(cap.hype, g.hype + 14));
         g.rounds = (g.rounds || 0) + 1;
@@ -1643,7 +1920,9 @@ class Game {
   </main>
 
   <div>
-    ${v.tabStale ? `<button data-h="${this.bind(v.takeOverTab)}" class="cta" style="display:block;width:100%;border:0;border-top:1px solid #6b1130;background:linear-gradient(180deg,#3a0f1e,#22060f);color:#ffc94a;font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:.3px;padding:9px 14px;cursor:pointer;text-align:center">Save changed in another tab — click to reload and take over</button>` : ''}
+    ${v.tabStale ? (v.saveState === 'checking ownership…'
+      ? `<div style="display:block;width:100%;border:0;border-top:1px solid #3a2350;background:linear-gradient(180deg,#1a1028,#120c1c);color:#c4a8e0;font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:.3px;padding:9px 14px;text-align:center">Checking for another open tab…</div>`
+      : `<button data-h="${this.bind(v.takeOverTab)}" class="cta" style="display:block;width:100%;border:0;border-top:1px solid #6b1130;background:linear-gradient(180deg,#3a0f1e,#22060f);color:#ffc94a;font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:.3px;padding:9px 14px;cursor:pointer;text-align:center">Another tab owns this save — click to reload and take over</button>`) : ''}
     <footer style="display:flex;align-items:center;gap:16px;height:28px;padding:0 14px;border-top:1px solid #2a1738;background:#0b0712;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#5c4470">
       <span style="color:#ffc94a">${v.verFull}</span>
       <span>save v${v.saveVer}</span>
