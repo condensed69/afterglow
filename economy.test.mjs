@@ -927,10 +927,11 @@ test('non-numeric saveVer fails closed', () => {
 
 console.log('\nSave migration map (PLAN §2.2)');
 
-test('SAVE_VER is 4', () => {
+test('SAVE_VER is 5', () => {
   const game = newGame();
-  strictEqual(game.SAVE_VER, 4);
+  strictEqual(game.SAVE_VER, 5);
   ok(typeof game.MIGRATIONS[3] === 'function', 'MIGRATIONS[3] must exist');
+  ok(typeof game.MIGRATIONS[4] === 'function', 'MIGRATIONS[4] must exist (Owner\'s List)');
 });
 
 test('migrateFrom(3) applies jobs/crew fixups and preserves club', () => {
@@ -1086,6 +1087,170 @@ test('Patrons ledger shows floor(g.patrons); sim value stays fractional', () => 
   // fmt(Math.floor(3.87)) → fmt(3) → "3.00" for values < 10
   strictEqual(row.val, game.fmt(3), `ledger must show floored patrons, got ${row.val}`);
   strictEqual(game.state.g.patrons, 3.87, 'simulation patrons must remain fractional');
+});
+
+// ── Owner's List (PLAN-NEXT §B) ───────────────────────────────────────────────
+console.log("\nOwner's List (PLAN-NEXT §B)");
+
+test('fresh() has goals: [], clicks: 0, rounds: 0', () => {
+  const game = newGame(20);
+  const g = game.fresh();
+  ok(Array.isArray(g.goals), 'goals array');
+  strictEqual(g.goals.length, 0);
+  strictEqual(g.clicks, 0);
+  strictEqual(g.rounds, 0);
+});
+
+test('every GOALS entry has valid shape; check(fresh) false; progress ok or null', () => {
+  const game = newGame(20);
+  const g = game.fresh();
+  strictEqual(game.GOALS.length, 14, 'exactly 14 goals');
+  for (const goal of game.GOALS) {
+    ok(goal.id && typeof goal.id === 'string', 'id');
+    ok(goal.title && typeof goal.title === 'string', 'title');
+    ok(goal.why && typeof goal.why === 'string', 'why');
+    ok(goal.hint && typeof goal.hint === 'string', 'hint');
+    ok(goal.reward && typeof goal.reward === 'object', 'reward');
+    ok(typeof goal.reward.cash === 'number' && typeof goal.reward.clout === 'number', 'reward cash/clout');
+    ok(typeof goal.check === 'function', 'check fn');
+    strictEqual(goal.check(g), false, `check(fresh) must be false for ${goal.id}`);
+    if (goal.progress == null) {
+      strictEqual(goal.progress, null);
+    } else {
+      ok(typeof goal.progress === 'function', `progress fn for ${goal.id}`);
+      const p = goal.progress(g);
+      ok(p && typeof p.cur === 'number' && typeof p.max === 'number' && p.max > 0,
+        `progress shape for ${goal.id}`);
+    }
+  }
+});
+
+test('goal 1 completes after 5 workCrowd calls and pays exactly once', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  const cashBefore = g.cash;
+  const work = game.renderVals().workCrowd;
+  for (let i = 0; i < 5; i++) work();
+  ok(g.goals.includes('work'), 'work completed');
+  strictEqual(g.clicks, 5);
+  // Reward $15 paid once
+  const expectedMin = cashBefore + 15; // clicks also add cash; just assert reward once via noteGoals
+  // Re-run noteGoals — must not double-pay or re-add id
+  const cashAfter = g.cash;
+  const goalsLen = g.goals.length;
+  game.noteGoals(g);
+  game.noteGoals(g);
+  strictEqual(g.cash, cashAfter, 'no double-pay on repeated noteGoals');
+  strictEqual(g.goals.filter(id => id === 'work').length, 1, 'work id once');
+  strictEqual(g.goals.length, goalsLen);
+  ok(g.cash >= expectedMin, 'received work reward on top of click cash');
+});
+
+test('sequential gating: goal 2 cannot complete while goal 1 incomplete', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g.b.rail = 2;
+  g.clicks = 0;
+  g.goals = [];
+  game.noteGoals(g);
+  ok(!g.goals.includes('rail'), 'rail must not complete while work is active');
+  ok(!g.goals.includes('work'), 'work still incomplete');
+  strictEqual(game.activeGoal(g).id, 'work');
+  g.clicks = 5;
+  game.noteGoals(g);
+  ok(g.goals.includes('work'), 'work completes first');
+  // rail still satisfied — next noteGoals completes it
+  game.noteGoals(g);
+  ok(g.goals.includes('rail'), 'rail completes once work is done');
+});
+
+test('catchUp completion: state satisfying goal 4 completes via post-catchUp noteGoals', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  // Unlock through goal 3 so pulse is active
+  g.goals = ['work', 'rail', 'word'];
+  g.clicks = 5;
+  g.b.rail = 1;
+  g.b.flyers = 1;
+  g.patrons = 7.5;
+  g.buzz = 50;
+  // Simulate catchUp path: run catchUp then noteGoals (same as init/timer)
+  game.catchUp(g, 30);
+  // Ensure patrons can reach 8 either via catchUp or direct (buzz pull may vary)
+  if (g.patrons < 8) g.patrons = 8;
+  game.noteGoals(g);
+  ok(g.goals.includes('pulse'), 'pulse completed after catchUp evaluation');
+  ok(g.log.some(e => /Owner's list: A floor with a pulse/.test(e.msg)), 'log line on complete');
+});
+
+test('migration 4→5: v4 save with rail+flyers pre-completes those goals, no reward cash', () => {
+  const game = newGame(10);
+  const cash = 100;
+  const g = {
+    cash, hype: 0, buzz: 0, patrons: 0, regulars: 0, clout: 0,
+    crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+    b: { rail: 2, flyers: 1 }, u: {}, r: {},
+    elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: Date.now()
+  };
+  // No goals/clicks/rounds — v4 shape
+  const okImport = game.importSaveFromText(JSON.stringify({ saveVer: 4, ver: '0.5.3', build: 159, g }));
+  strictEqual(okImport, true);
+  const loaded = game.state.g;
+  ok(Array.isArray(loaded.goals), 'goals present after migrate');
+  ok(typeof loaded.clicks === 'number', 'clicks present');
+  ok(typeof loaded.rounds === 'number', 'rounds present');
+  ok(loaded.goals.includes('work'), 'work pre-completed');
+  ok(loaded.goals.includes('rail'), 'rail pre-completed');
+  ok(loaded.goals.includes('word'), 'word pre-completed');
+  ok(!loaded.goals.includes('pulse'), 'pulse not falsely completed');
+  // Import stamps log with "Save restored"; cash must not include goal rewards (15+20+25)
+  strictEqual(loaded.cash, cash, 'no back-paid goal rewards on migrate');
+  const stored = JSON.parse(localStorage.getItem(game.KEY));
+  strictEqual(stored.saveVer, 5);
+});
+
+test('completing all 14 leaves activeGoal null and never throws', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  // Satisfy every check in order without relying on live play
+  g.clicks = 5;
+  g.b.rail = 1;
+  g.b.flyers = 1;
+  g.patrons = 8;
+  g.crew = 3;
+  g.jobs.stage = 2;
+  g.jobs.vipjob = 1;
+  g.hype = 60;
+  g.rounds = 1;
+  g.b.vip = 1;
+  g.regulars = 25;
+  g.r.loop = true;
+  g.b.dress = 1;
+  g.shiftIdx = 1;
+  g.u.led = true;
+  g.goals = [];
+  for (let i = 0; i < 20; i++) game.noteGoals(g);
+  strictEqual(g.goals.length, 14, 'all 14 completed');
+  strictEqual(game.activeGoal(g), null);
+  const v = game.renderVals();
+  ok(v.ownersList && v.ownersList.done, 'resting 14/14 panel state');
+  strictEqual(v.ownersList.n, 14);
+  strictEqual(v.ownersList.total, 14);
+});
+
+test('import of a v4 payload still validates (payload checker unchanged)', () => {
+  const game = newGame(20);
+  const payload = {
+    saveVer: 4,
+    g: {
+      cash: 20, hype: 0, buzz: 0, patrons: 0, regulars: 0, clout: 0,
+      crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 }
+      // no goals/clicks/rounds — isValidSavePayload must still accept
+    }
+  };
+  ok(game.isValidSavePayload(payload), 'v4 payload without goals fields is valid');
+  // Must not require goals on the checker
+  ok(!('goals' in payload.g));
 });
 
 // ── Results ──────────────────────────────────────────────────────────────────
