@@ -78,6 +78,13 @@ class Game {
       'Goal checks after step, catch-up, and player actions so offline progress can complete goals.',
       'Catch-up evaluates goals each offline slice so threshold goals (patrons/hype) complete if crossed mid-window then decay.'
     ]},
+    { v: '0.5.6', date: '2026-08-04', codename: 'Neon Zero', notes: [
+      'Night-log import keeps raw validated text and hex-only colors; HTML escape happens only at render so export→import round-trips stay idempotent.'
+    ]},
+    { v: '0.5.5', date: '2026-08-04', codename: 'Neon Zero', notes: [
+      'Import sanitizes night-log text (HTML escaped) and log colors (hex only) before render — closes XSS via crafted save files.',
+      'Successful file/clipboard restore clears tabStale and restarts autosave so explicit import takes ownership after a foreign-tab pause.'
+    ]},
     { v: '0.5.4', date: '2026-08-04', codename: 'Neon Zero', notes: [
       'Settings: Download save (.json) — same payload as clipboard, fixed filename afterglow-save.json.',
       'Settings: Load save from file… — FileReader into existing importSaveFromText (no parallel path).',
@@ -394,6 +401,24 @@ class Game {
     this.render();
   }
 
+  // Escape text before interpolating into root.innerHTML (night log, etc.).
+  escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  // Hex colors only for inline log style — blocks css/js injection via color.
+  safeLogColor(c) {
+    if (typeof c !== 'string') return '#b9a5c9';
+    const s = c.trim();
+    if (/^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?([0-9a-fA-F]{2})?$/.test(s)) return s;
+    return '#b9a5c9';
+  }
+
   // Jobs/crew fixups shared by load, migrations, and clipboard import (PLAN §2.1 / §2.2).
   sanitizeG(g) {
     if (!g || typeof g !== 'object') return g;
@@ -483,8 +508,14 @@ class Game {
       if (!Number.isFinite(g.jobs[k]) || g.jobs[k] < 0) return false;
     }
     if (!Array.isArray(g.log)) g.log = [];
+    // Keep raw validated t/msg (length-capped) so export→import is idempotent.
+    // Escape only at the render() innerHTML boundary; restrict color to hex.
     g.log = g.log.filter(x => x && typeof x === 'object' &&
-      typeof x.t === 'string' && typeof x.msg === 'string').slice(0, 40);
+      typeof x.t === 'string' && typeof x.msg === 'string').slice(0, 40).map(x => ({
+      t: x.t.slice(0, 32),
+      msg: x.msg.slice(0, 500),
+      color: this.safeLogColor(x.color)
+    }));
 
     // Owner's List fields (SAVE_VER 5). Not in isValidSavePayload (v4 lacks them).
     const knownGoalIds = new Set(this.GOALS.map(x => x.id));
@@ -551,7 +582,11 @@ class Game {
           saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
         }));
       } catch (e) { /* state already replaced; footer still shows imported */ }
-      this.setState({ saveState: 'imported' });
+      // Explicit restore takes ownership: clear foreign-tab pause and resume autosave.
+      if (!this.saver) {
+        this.saver = setInterval(() => this.save('auto'), 10000);
+      }
+      this.setState({ saveState: 'imported', tabStale: false });
       return true;
     } catch (e) {
       this.setState({ saveState: 'import failed' });
@@ -676,7 +711,7 @@ class Game {
   push(g, msg, color) {
     const d = new Date();
     const t = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
-    g.log.unshift({ t, msg, color: color || '#b9a5c9' });
+    g.log.unshift({ t, msg, color: this.safeLogColor(color || '#b9a5c9') });
     if (g.log.length > 40) g.log.pop();
   }
 
@@ -1171,7 +1206,12 @@ class Game {
     return {
       ...base,
       resources, stats, tabs, cards, tabHint, jobs, crewOpen: this.state.tab === 'crew' && g.crew > 0,
-      log: g.log.map(l => ({ t: l.t, msg: l.msg, style: { color: l.color } })),
+      // Escape t/msg at the HTML boundary only (g.log stays raw for save round-trips).
+      log: g.log.map(l => ({
+        t: this.escapeHtml(l.t),
+        msg: this.escapeHtml(l.msg),
+        style: { color: this.safeLogColor(l.color) }
+      })),
       shiftName: r.shift.name, nightNo: g.night, shiftMultLabel: 'x' + r.sm.toFixed(2),
       shiftBar: this.bar(g.shiftT / r.shift.len * 100, r.shift.tint),
       perfStyle: {
