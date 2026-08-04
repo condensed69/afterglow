@@ -1,501 +1,495 @@
-> **Status: SUPERSEDED (2026-08-03)** — This document specifies the 0.3.x canvas prototype. The 0.4 rewrite (club-management idle, CSS/DOM performer) replaced those systems; treat this file as historical reference. A rewrite against current systems is scheduled after the 0.5.x logic series.
+# DESIGN.md — Afterglow Club Idle
 
-# Strip Club Idle - Design System Specification
+**Game:** Afterglow Club Idle (repo: stripper-dance)  
+**Spec target:** post workstreams A–C — file save, Owner's List, balance + `pacing.mjs` (`game.js` v0.6.1, SAVE_VER 5)  
+**Source of truth for numbers:** `game.js` (`caps()`, `rates()`, constant tables) — re-diff this file when those change  
+**Related:** `PRESTIGE.md` (future prestige), `PLAN.md` (logic-fix predecessor, shipped), `AGENTS.md` (repo gates). Workstream sequencing for save I/O → Owner's List → balance → prestige → this rewrite lived in a local orchestrator plan (not published in the repo tree).  
+**Ancestry:** this branch stacks A (file save) → B (Owner's List) → C (`pacing.mjs` + balance) → D (`PRESTIGE.md`) so every claim below is present in-tree.
 
-**Version:** 0.3.0  
-**Last Updated:** 2026-08-02  
-**Status:** Active - Stage 0 Implementation
-
----
-
-## 1. Design Vision & Philosophy
-
-### 1.1 Project Identity
-"Strip Club Idle" is a Kittens Game-style incremental game with a premium dark cyber-luxury aesthetic. The design must feel like a $150k agency build — not a template. Every pixel serves the fantasy of running a high-end establishment.
-
-### 1.2 Design Read
-> **Reading this as:** idle/incremental game web app for desktop + mobile, with a premium dark cyber-luxury aesthetic, leaning toward custom Canvas 2D rendering + high-end design system with custom typography, particle atmospherics, and fluid micro-interactions.
-
-### 1.3 Core Dials (Locked)
-| Dial | Value | Rationale |
-|------|-------|-----------|
-| **DESIGN_VARIANCE** | 8 | Asymmetric, premium, breaks grid intentionally |
-| **MOTION_INTENSITY** | 7 | Fluid physics, particle systems, magnetic buttons |
-| **VISUAL_DENSITY** | 4 | Breathing room, not cockpit — content breathes |
-
-### 1.4 Vibe & Layout Archetypes
-- **Vibe:** Ethereal Glass (Dark Tech) — Deep OLED black, radial mesh gradients, vantablack cards with heavy backdrop-blur
-- **Layout:** Asymmetrical Bento + Z-Axis Cascade — Left canvas dominates, right panels float at staggered depths
+This document replaces the 0.3.x canvas prototype design system. It describes what the shipped neon-noir club-management idle **actually does**, not aspirational UI kits.
 
 ---
 
-## 2. Typography System
+## 1. Pillars & fantasy
 
-### 2.1 Font Stack (Self-Hosted via @font-face)
-```css
-/* Display / Headlines */
---font-display: 'Geist Display', 'Geist', system-ui, sans-serif;
+**Fantasy.** You own a small neon nightclub. You hire dancers, buy brass and lights, fill the floor with buzz, turn strangers into regulars, and spend reputation (Clout) on permanent research. The room has a pulse — shifts roll, Peak pays more, After Hours dies unless you cook late.
 
-/* UI / Body */
---font-ui: 'Geist', system-ui, sans-serif;
+**Pitch (three sentences).** Afterglow is a dependency-free browser idle where cash, hype, and bodies on the floor compound while you are away. You click to seed the till, build structures that mint passive income, and assign crew so Main Stage, VIP, and Floor each pull their weight. The Owner's List teaches the loop in order; a franchise man is waiting when you have a name in this town.
 
-/* Numbers / Data */
---font-mono: 'Geist Mono', 'JetBrains Mono', monospace;
-```
+**Pillars**
 
-### 2.2 Type Scale
-| Role | Font | Size (Mobile) | Size (Desktop) | Weight | Tracking |
-|------|------|---------------|----------------|--------|----------|
-| Logo/Brand | Geist Display | text-2xl | text-3xl | 700 | -0.02em |
-| Resource Value | Geist Mono | text-2xl | text-3xl | 600 | tabular-nums |
-| Resource Label | Geist | text-xs | text-sm | 500 | 0.1em (uppercase) |
-| Button Primary | Geist | text-sm | text-base | 600 | 0 |
-| Button Secondary | Geist | text-xs | text-sm | 500 | 0.05em |
-| Panel Title | Geist | text-lg | text-xl | 600 | -0.01em |
-| Body/Small | Geist | text-sm | text-base | 400 | 0 |
-| Version Tracker | Geist Mono | text-[10px] | text-[10px] | 400 | 0 |
-
-### 2.3 Anti-Patterns (Banned)
-- ❌ Inter, Roboto, Arial, Open Sans, Helvetica
-- ❌ Serif fonts (unless explicitly justified by brand)
-- ❌ Mixed font families in same hierarchy level
+| Pillar | Meaning in play |
+|--------|-----------------|
+| Neon-noir owner fantasy | OLED blacks, magenta/cyan/gold accents, Monoton wordmark, dry second-person night-log voice |
+| Idle with active pressure | Offline at 50% for up to 8h; live play still rewards clicks, rounds, and Peak timing |
+| Honest systems | Tip rails only tip, Off Shift is residual, strike when buildings cannot cover wages, saves fail closed |
+| CSS/DOM stage | Performer is HTML + CSS keyframes bound to Hype — not canvas particles or outfit stages |
 
 ---
 
-## 3. Color Palette (LOCKED - Single Accent Family)
+## 2. Resources & the loop
 
-### 3.1 Semantic Tokens
-```css
-:root {
-  /* Base Surfaces */
-  --color-base: #030305;           /* Near-black OLED */
-  --color-surface: #0a080e;        /* Deep purple-black */
-  --color-surface-elevated: #14101a; /* Card backgrounds */
-  --color-surface-hover: #1a1420;  /* Hover state */
-  
-  /* Borders */
-  --color-border: rgba(255,255,255,0.08);      /* 8% white hairline */
-  --color-border-highlight: rgba(255,255,255,0.15); /* Inner highlight */
-  --color-border-strong: rgba(255,255,255,0.25);   /* Focus/active */
-  
-  /* Accents (ONE FAMILY) */
-  --color-accent-primary: #ff1a8c;    /* Hot magenta - primary actions, Money */
-  --color-accent-secondary: #00ffe0;  /* Electric cyan - Hype, Attention */
-  --color-accent-tertiary: #ffd700;   /* Gold - Tips, premium unlocks */
-  
-  /* Text */
-  --color-text-primary: #fafafa;
-  --color-text-secondary: #a8a0b0;
-  --color-text-muted: #5a5060;
-  --color-text-inverse: #0a080e;      /* On accent backgrounds */
-  
-  /* Status */
-  --color-success: #22ff88;
-  --color-warning: #ffaa00;
-  --color-danger: #ff3355;
-  
-  /* Gradients */
-  --gradient-mesh-1: radial-gradient(ellipse 80% 50% at 20% 0%, rgba(255,26,140,0.15) 0%, transparent 70%);
-  --gradient-mesh-2: radial-gradient(ellipse 60% 80% at 80% 100%, rgba(0,255,224,0.1) 0%, transparent 60%);
-  --gradient-mesh-3: radial-gradient(ellipse 100% 100% at 50% 50%, rgba(255,215,0,0.05) 0%, transparent 50%);
-  --gradient-accent: linear-gradient(135deg, #ff1a8c 0%, #ff6b3a 100%);
-  --gradient-cyan: linear-gradient(135deg, #00ffe0 0%, #00b4d8 100%);
-  --gradient-gold: linear-gradient(135deg, #ffd700 0%, #ffaa00 100%);
-}
-```
+Six ledger resources. Simulation may keep fractions; the Patrons row displays `Math.floor`.
 
-### 3.2 Palette Rules
-- **One accent family only** — No purple AI gradients, no random neon
-- **Consistency lock** — Accent colors used ONLY for their semantic purpose
-- **No pure #000 or #fff** — Off-black/off-white for depth
-- **Dark mode only** — Light mode not supported (intentional aesthetic choice)
+| Resource | Role | Why it exists |
+|----------|------|----------------|
+| **Cash** | Universal spend (structures, upgrades, crew, rounds) | The till. Net of non-crew income + VIP crew cash − wages |
+| **Hype** | Soft-capped room energy | Multiplies cash (`1 + hype/140`), click value, and patron pull; decays unless fed |
+| **Buzz** | Soft-capped awareness | Converts into patron pull; spent as patrons are admitted |
+| **Patrons** | Soft-capped bodies on the floor | Fill tip rails; convert slowly into Regulars; drain a little over time |
+| **Regulars** | Uncapped reputation stock | Mint Clout; with research, pay passive cash; gate prestige later |
+| **Clout** | Research currency | Accrues from Regulars; spent permanently on the Research tab |
+
+**Core loop**
+
+1. Seed cash with **Work the room** (and early goal rewards).  
+2. Buy **Tip Rail** / **Flyer Crew** so tips and buzz run without you.  
+3. **Hire** → assign **Main Stage** (hype) / **VIP** (cash) / **Floor** (buzz + regulars).  
+4. Grow **Hype** into Peak; convert cash → hype with **Buy a round** when needed.  
+5. Mint **Regulars** → **Clout** → research; buy upgrades when structure reqs land.  
+6. Leave the tab open or closed — **catchUp** runs the same 50% path offline and on long gaps.
 
 ---
 
-## 4. Component Architecture: Double-Bezel (Doppelrand)
+## 3. Shift cycle
 
-### 4.1 Universal Card Structure
-```html
-<!-- OUTER SHELL -->
-<div class="card-shell">
-  <!-- INNER CORE -->
-  <div class="card-core">
-    <!-- Content -->
-  </div>
-</div>
-```
+Four phases in `SHIFTS`. Wall-clock `shiftT` advances fully in live and offline; only resource accrual is half-rate offline.
 
-```css
-.card-shell {
-  /* Outer: subtle container */
-  padding: 0.375rem;           /* p-1.5 */
-  border-radius: 2rem;         /* rounded-2xl */
-  background: rgba(0,0,0,0.3); /* bg-black/30 */
-  border: 1px solid var(--color-border);
-  box-shadow: 
-    0 0 0 1px var(--color-border) inset,
-    0 4px 24px rgba(0,0,0,0.4);
-}
+| Index | Name | Mult | Length (s) | Tint |
+|------:|------|-----:|-----------:|------|
+| 0 | Early Doors | 0.70 | 40 | `#22d3ee` |
+| 1 | Peak Hours | 1.60 | 55 | `#ff2d78` |
+| 2 | Last Call | 1.15 | 35 | `#ffc94a` |
+| 3 | After Hours | 0.45 | 30 | `#a855f7` |
 
-.card-core {
-  /* Inner: actual content surface */
-  border-radius: 1.625rem;     /* calc(2rem - 0.375rem) */
-  background: rgba(20,16,26,0.8); /* bg-surface-elevated/80 */
-  backdrop-filter: blur(24px); /* backdrop-blur-xl */
-  box-shadow: 
-    inset 0 1px 1px rgba(255,255,255,0.15),
-    inset 0 -1px 1px rgba(0,0,0,0.3);
-  /* Content padding applied here */
-}
-```
-
-### 4.2 Button Architecture (Button-in-Button)
-```html
-<button class="btn-primary">
-  <span class="btn-label">Upgrade</span>
-  <span class="btn-icon-wrapper">
-    <svg class="btn-icon">...</svg>
-  </span>
-</button>
-```
-
-```css
-.btn-primary {
-  border-radius: 9999px;       /* rounded-full */
-  padding: 0.75rem 1.5rem;     /* py-3 px-6 */
-  font-weight: 600;
-  background: var(--gradient-accent);
-  color: var(--color-text-inverse);
-  border: none;
-  transition: all 400ms cubic-bezier(0.32,0.72,0,1);
-}
-
-.btn-icon-wrapper {
-  width: 2rem; height: 2rem;   /* w-8 h-8 */
-  border-radius: 9999px;
-  background: rgba(0,0,0,0.2);
-  display: flex; align-items: center; justify-content: center;
-  transition: transform 300ms cubic-bezier(0.32,0.72,0,1);
-}
-
-.btn-primary:hover .btn-icon-wrapper {
-  transform: translateX(0.25rem) translateY(-1px) scale(1.05);
-}
-
-.btn-primary:active {
-  transform: scale(0.98);
-}
-```
-
-### 4.3 Shape Consistency Lock
-| Element | Border Radius |
-|---------|---------------|
-| Card Shell | 2rem (32px) |
-| Card Core | 1.625rem (26px) |
-| Buttons | 9999px (full pill) |
-| Icon Wrappers | 9999px |
-| Inputs | 0.75rem (12px) |
-| Tooltips | 0.75rem |
+- Cycle: `shiftIdx = (shiftIdx + 1) % 4`; when index wraps to 0, `night++`.  
+- **Late Kitchen** research (`r.latemenu`): while After Hours, effective mult becomes **0.95** instead of 0.45.  
+- Cash multipliers include shift mult (`sm`) for non-crew cash, VIP crew cash, and regular conversion.  
+- Live `step()` can log chatty shift/night lines when remaining dt ≤ 0.5s; `catchUp()` is silent on rollover.
 
 ---
 
-## 5. Canvas / Dancer Visual Specification
+## 4. Economy reference
 
-### 5.1 Atmospheric Background Layers (Back to Front)
-1. **Base:** `--color-base` solid
-2. **Mesh 1:** Magenta radial (top-left, 15% opacity)
-3. **Mesh 2:** Cyan radial (bottom-right, 10% opacity)  
-4. **Mesh 3:** Gold radial (center, 5% opacity, subtle)
-4. **Noise Overlay:** 3% opacity film grain (fixed, pointer-events-none)
-5. **Particle Layer:** Dynamic particles (see 5.3)
+Transcribed from `caps()` / `rates()` post balance pass (v0.6.1). Balance numbers are intentional, not placeholders, once C has landed.
 
-### 5.2 Pole & Stage
-- **Pole:** Metallic gradient (chrome → dark chrome), 4px reflective highlight line, subtle magenta glow at top (8px blur)
-- **Stage Floor:** Reflective surface — mirrors dancer at 30% opacity, gradient fade to transparent
-- **Stage Edge:** Thin gold line (1px) with outer glow
+### 4.1 Caps — `caps(g)`
 
-### 5.3 Particle System
-```javascript
-// Particle config
-const PARTICLE_CONFIG = {
-  maxParticles: 150,
-  spawnRate: 2 per frame (at max spin),
-  colors: [
-    'rgba(255,26,140,0.6)',   // Magenta
-    'rgba(0,255,224,0.5)',    // Cyan
-    'rgba(255,215,0,0.5)'     // Gold
-  ],
-  physics: {
-    gravity: 0.02,
-    drag: 0.985,
-    spinInfluence: 0.3        // Particles pulled by dancer rotation
-  },
-  sizes: { min: 1, max: 4 },
-  lifetimes: { min: 60, max: 180 } // frames
-};
+| Cap | Formula |
+|-----|---------|
+| patrons | `10 + bar×5 + (coat ? 20 : 0) + vip×4` |
+| buzz | `50 + marquee×35` |
+| hype | `100 + dj×25` |
+| crew | `2 + dress×2` |
+
+### 4.2 Shared multipliers (inside `rates`)
+
+```
+sm        = shift.mult; if After Hours && latemenu → 0.95
+hypeMult  = 1 + hype / 140
+crewMult  = residency ? 1.4 : 1
+cashMult  = (twodrink ? 1.35 : 1) * hypeMult * sm
+bottle    = bottle service ? 2.2 : 1
 ```
 
-### 5.4 Dancer Rendering Pipeline
-1. **Silhouette Pass:** Base body shape (bezier curves, no strokes)
-2. **Lighting Pass:** 3-point lighting applied via gradient fills
-   - Key: Magenta (45° top-left, 60% intensity)
-   - Fill: Cyan (opposite, 30% intensity)  
-   - Rim: Gold (back, 40% intensity, 2px edge)
-3. **Detail Pass:** Hair strands, facial features, outfit
-4. **FX Pass:** Motion blur trails (when spin > 2.5), speed lines, particle bursts
+### 4.3 Cash
 
-### 5.5 Outfit Stages (Visual Spec)
-| Stage | Name | Visual |
-|-------|------|--------|
-| 0 | Bikini | Magenta mesh, gold straps, semi-transparent |
-| 1 | Micro Skirt | Cyan holographic fabric, animated scanlines |
-| 2 | Pasties | Gold geometric shapes, pulsing glow, oil sheen effect |
+**Non-crew cash** (before wages):
 
-### 5.6 Upgrade Visual Feedback
-- **Implants:** Subtle emissive glow on chest (magenta, 2px)
-- **Boots:** Patent leather material (high specular, animated reflection)
+```
+railCap     = rail × 6
+nonCrewCash = (0.08 + min(patrons, railCap) × 0.06 + bar × 0.45) × cashMult
+            + vip × 1.25 × bottle × cashMult
+            + (loop ? regulars × 0.04 × cashMult : 0)
+```
+
+- Flat **0.08** is the door trickle (uncapped patrons do **not** pay outside the rail).  
+- Rail tips: up to **6 patrons per rail** at **+$0.06/s** each, then × `cashMult`.
+
+**Crew cash & wages**
+
+```
+wage        = (crew − jobs.off) × 0.20 × (payroll ? 0.6 : 1)
+vipCrewCash = jobs.vipjob × 1.35 × crewMult × bottle × cashMult
+```
+
+**Strike rule** (session-logged once on onset):
+
+```
+if nonCrewCash < wage:
+  zero vipCrewCash, stageHype, floorBuzz, wage
+  strike = true
+```
+
+Recovery is **not** “cash > 0”. Buildings must cover payroll via non-crew revenue so strike ticks cannot alternate with production via the door trickle.
+
+```
+cash = nonCrewCash + vipCrewCash − wage   // net $/s
+```
+
+### 4.4 Hype
+
+```
+stageHype = jobs.stage × 0.24 × crewMult   // zeroed on strike
+hypeGain  = (dj × 0.10 + stageHype) × (led ? 1.3 : 1)
+decay     = hype × 0.014 × max(0.25, 1 − door × 0.12)
+hype      = hypeGain − decay               // then clamped to [0, cap.hype] in step/catchUp
+```
+
+Door Staff: each cuts decay 12%, floored so decay factor never below 0.25. Max 6 doors (`BUILDINGS.door.max`).
+
+### 4.5 Buzz, pull, patrons
+
+```
+floorBuzz = jobs.floor × 0.035 × crewMult   // zeroed on strike
+buzz      = (marquee × 0.07 + flyers × 0.025 + floorBuzz) × (photog ? 1.5 : 1)
+
+promoMult = promo ? 1.6 : 1
+basis     = (buzz > 0 ? min(buzz, 0.065) : 0) × promoMult
+pull      = basis × (1 + hype / 200) + 0.02    // walk-in 0.02 fixed, unscaled by hype
+space     = max(0, cap.patrons − patrons)
+admitted  = min(pull, space)
+buzzSpent = basis > 0 && pull > 0 ? basis × (admitted / pull) : 0
+patrons   = admitted − patrons × 0.008
+```
+
+Net buzz change in sim: `+buzz − buzzSpent` per second, clamped to cap.
+
+### 4.6 Regulars & Clout
+
+```
+regulars = patrons × 0.00045 × (1 + vip × 0.18) × sm
+clout    = regulars × 0.0011
+```
+
+### 4.7 Offline / large-gap — `catchUp(g, seconds)`
+
+| Rule | Value |
+|------|------:|
+| Cap wall time | 28800 s (8 h) |
+| Resource dt | `wall × 0.5` (50% rate) |
+| Wall chunk | `min(remaining, shift left, OFFLINE_STEP=1.0)` |
+| Shift/night | advance on wall time (full length) |
+| Report | gross earned = Σ `(cash + wage) × dt`; wages paid; `struck` if any strike tick |
+
+Live timer (`init` interval 100 ms):
+
+- `dt < 0.05` → skip (do not advance `ts`)  
+- `dt > 2` → `catchUp` at 50% (same path as load offline; per-slice `noteGoals({ live: false })` inside), then a post-`catchUp` `noteGoals({ live: false })`  
+- else → `step(dt)` full rate — **per-slice** `noteGoals({ live: true })` **before** shift rollover inside the sim loop (not only after the whole `step`)
+
+Load-time offline uses the same `catchUp` + away log when offline > 60 s, but only after the pre-catch-up timestamp **claim** succeeds (see §9.6).
 
 ---
 
-## 6. Motion Choreography
+## 5. Structures / upgrades / research
 
-### 6.1 Global Easing
-```css
---ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
---ease-out: cubic-bezier(0.16, 1, 0.3, 1);
---ease-sharp: cubic-bezier(0.4, 0, 0.2, 1);
-```
+Costs and growth from post-C tables. Building price: `floor(cost × growth^owned)`.
 
-### 6.2 Animation Inventory
-| Trigger | Animation | Duration | Easing |
-|---------|-----------|----------|--------|
-| Page Load (staggered) | translateY(8px) blur(4px) opacity:0 → 0,0,1 | 800ms | --ease-spring |
-| Button Hover | scale(1.02) + glow | 200ms | --ease-out |
-| Button Press | scale(0.98) | 100ms | --ease-sharp |
-| Panel Open | height + opacity + translateY(-4px) | 400ms | --ease-spring |
-| Resource Tick | number counter + pulse glow | 600ms | --ease-out |
-| Spin Change | spring physics (stiffness:120, damping:18) | continuous | spring |
-| Particle Burst | radial explosion + fade | 400ms | --ease-out |
+### 5.1 Buildings (`BUILDINGS`)
 
-### 6.3 Reduced Motion
-```css
-@media (prefers-reduced-motion: reduce) {
-  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
-  .particle { display: none; }
-  /* Functional animation (spin, resource ticks) preserved */
-}
-```
+| id | Name | Cost | Growth | Max | Effect (code / desc) |
+|----|------|-----:|-------:|----:|----------------------|
+| rail | Tip Rail | 140 | 1.16 | — | 6 tip slots × $0.06/s before mult |
+| bar | Back Bar | 150 | 1.18 | — | +$0.45/s; +5 patron cap |
+| dj | DJ Booth | 180 | 1.17 | — | +0.10 Hype/s; +25 hype cap |
+| marquee | Marquee Sign | 380 | 1.22 | — | +0.07 Buzz/s; +35 buzz cap |
+| flyers | Flyer Crew | 210 | 1.16 | — | +0.025 Buzz/s |
+| vip | VIP Booth | 600 | 1.24 | — | +$1.25/s room; +18% regular conversion; +4 patron cap |
+| door | Door Staff | 300 | 1.20 | **6** | −12% hype decay each (floor 0.25) |
+| dress | Dressing Room | 500 | 1.28 | — | +2 crew capacity |
 
----
+### 5.2 Upgrades (`UPGRADES`) — one-shot, cash, building req enforced in `buyUpgrade`
 
-## 7. Layout Specification
+| id | Name | Cost | Req | Effect |
+|----|------|-----:|-----|--------|
+| led | LED Pole Lighting | 420 | dj ×2 | Hype gen ×1.30 |
+| twodrink | Two-Drink Minimum | 1100 | bar ×4 | All cash ×1.35 |
+| coat | Coat Check | 850 | door ×2 | +20 floor cap |
+| photog | House Photographer | 1700 | marquee ×2 | Buzz gen ×1.5 |
+| bottle | Bottle Service | 3800 | vip ×3 | VIP cash ×2.2 (room + VIP crew) |
+| residency | Weekly Residency | 5800 | dress ×2 | Crew output ×1.4 |
 
-### 7.1 Desktop (≥1024px) - Asymmetrical Bento
-```
-┌─────────────────────────────────────────────────────────────┐
-│  [Logo]                                    [v0.3.0-a1f2b3c] │  ← HUD Bar (64px)
-├──────────────────────────────┬──────────────────────────────┤
-│                              │  ┌────────────────────────┐  │
-│      CANVAS (65% width)      │  │  UPGRADES PANEL        │  │  ← Z-depth: 10
-│   (Pole Dancer + Particles)  │  │  [Floating Glass Card] │  │
-│                              │  └────────────────────────┘  │
-│                              │  ┌────────────────────────┐  │
-│                              │  │  GIRLS / STAGES PANEL  │  │  ← Z-depth: 20
-│                              │  │  [Floating Glass Card] │  │
-│                              │  └────────────────────────┘  │
-│                              │  ┌────────────────────────┐  │
-│                              │  │  AUDIO / SETTINGS      │  │  ← Z-depth: 30
-│                              │  │  [Floating Glass Card] │  │
-│                              │  └────────────────────────┘  │
-└──────────────────────────────┴──────────────────────────────┘
-```
+### 5.3 Research (`RESEARCH`) — one-shot, Clout
 
-### 7.2 Tablet (768-1023px) - Compressed Bento
-- Canvas: 60% width
-- Panels: Stacked right, reduced padding
-- HUD: Compact
+| id | Name | Cost | Effect |
+|----|------|-----:|--------|
+| loop | Reputation Loop | 6 | Regulars +$0.04/s each (× cashMult) |
+| latemenu | Late Kitchen | 12 | After Hours mult 0.45 → 0.95 |
+| promo | Promoter Network | 20 | Buzz→patron basis ×1.6 (“60% faster” in copy) |
+| payroll | Payroll Software | 32 | Wages ×0.6 (40% cut) |
 
-### 7.3 Mobile (<768px) - Single Column Stack
-```
-┌─────────────────────────────┐
-│ [Logo]              [v0.3.0]│  ← Compact HUD (48px)
-├─────────────────────────────┤
-│                             │
-│      CANVAS (100% width,    │
-│      50vh height)           │
-│   Touch drag to spin        │
-│                             │
-├─────────────────────────────┤
-│  ▓▓▓ DRAG HANDLE ▓▓▓        │  ← Bottom Drawer
-├─────────────────────────────┤
-│  [Upgrades] [Girls] [Audio] │  ← Tab bar
-│  [Panel Content Scrolls]    │
-└─────────────────────────────┘
-```
-
-### 7.4 Spacing Scale
-| Token | Value | Usage |
-|-------|-------|-------|
-| --space-xs | 0.25rem (4px) | Icon gaps |
-| --space-sm | 0.5rem (8px) | Button inner, card content gap |
-| --space-md | 1rem (16px) | Standard gap, card padding |
-| --space-lg | 1.5rem (24px) | Section gaps |
-| --space-xl | 2rem (32px) | Major section padding |
-| --space-2xl | 3rem (48px) | Page-level padding |
-| --space-3xl | 4rem (64px) | Hero/major breathing room |
+Franchise Binder research was removed in 0.5.0 pending prestige design; orphan `r.franchise` in old saves is ignored.
 
 ---
 
-## 8. Version Tracker Specification
+## 6. Crew & jobs
 
-### 8.1 Display Format
-```
-v{major}.{minor}.{patch}-{shortHash} • {YYYY-MM-DD}
-```
-Example: `v0.3.0-a1f2b3c • 2026-08-02`
-
-### 8.2 Injection Points (Build-Time)
-```html
-<!-- BUILD_META_START -->
-<meta name="build-version" content="0.3.0">
-<meta name="build-hash" content="a1f2b3c">
-<meta name="build-date" content="2026-08-02">
-<meta name="build-commit" content="d2ae312a4acfc62d769adae0d67c10ec5c79a49f">
-<!-- BUILD_META_END -->
-```
-
-### 8.3 Runtime Behavior
-- Reads meta tags on load
-- Click → copies full version string to clipboard
-- Hover → tooltip with full commit hash + branch
-- Style: `font: 10px Geist Mono`, `color: var(--color-text-muted)`, `cursor: help`
-
----
-
-## 9. Audio Visualization
-
-### 9.1 Bass Waveform (Canvas Overlay)
-- Circular waveform around pole base (radius: 60px)
-- 64 frequency bins, mirrored
-- Magenta primary, cyan secondary
-- Reacts to `bassGain.gain.value` in real-time
-
-### 9.2 Frequency Bars (Background)
-- 32 vertical bars behind canvas (fixed position)
-- Height mapped to frequency data
-- Gradient: base (magenta) → top (cyan)
-- Opacity: 15%, blur: 2px
-
----
-
-## 10. Game Systems Preservation (Functional Contract)
-
-### 10.1 Resources (4)
-| ID | Label | Color | Format |
-|----|-------|-------|--------|
-| money | $ | Gold (#ffd700) | Integer + 2 decimals |
-| tipsRes | Tips | Magenta (#ff1a8c) | Integer |
-| hype | Hype | Cyan (#00ffe0) | Integer |
-| attn | Attention | Cyan (#00ffe0) | Integer |
-
-### 10.2 Upgrades (8)
-| ID | Label | Base Cost | Scaling | Max |
-|----|-------|-----------|---------|-----|
-| tipJar | Tip Jar | $25 | ×1.65 | ∞ |
-| vip | VIP Room | $120 | ×1.8 | ∞ |
-| dj | DJ Booth | $80 | ×1.7 | ∞ |
-| ads | Flyer Ads | $60 | ×1.6 | ∞ |
-| girl | Hire Girl | $250 | ×2.2 | 3 |
-| stage | Next Outfit | $180 | ×2.0 | 3 |
-| implants | Tit Implants | $400 | — | 1 |
-| boots | Stripper Boots | $150 | — | 1 |
-
-### 10.3 Girls (3)
-| Index | Name | Skin | Hair | Outfit Accent |
-|-------|------|------|------|---------------|
-| 0 | Amber | #ffddbb | #3b2314 | #ff1a8c |
-| 1 | Jade | #e8c4a8 | #1a0a05 | #00ffe0 |
-| 2 | Lola | #f5d0c5 | #5c3a1e | #ffd700 |
-
-### 10.4 Stages (3)
-| Index | Name | Unlocks |
-|-------|------|---------|
-| 0 | Bikini | — |
-| 1 | Micro Skirt | — |
-| 2 | Topless | Pasties, Oil |
-
-### 10.5 Core Loop
-- **Drag/Spin:** Pointer drag on canvas → `targetSpeed` (0.6-4.5)
-- **Manual Tip:** Click canvas (non-drag) → instant resources + cha-ching SFX
-- **Auto Tick:** Every 150ms → passive resource generation
-- **Audio:** Bass loop (48Hz triangle) + hi-hat (320ms interval)
-
----
-
-## 11. Performance Budget
-
-| Metric | Target |
-|--------|--------|
-| Canvas FPS | 60fps sustained |
-| Particle Count | ≤150 active |
-| Frame Budget | ≤16.67ms (incl. GC) |
-| Initial Load | <2s (3G) |
-| Bundle Size | <100KB (gzipped) |
-| Memory | <50MB heap |
-
-### 11.1 Optimization Strategies
-- Object pooling for particles
-- Dirty rect rendering (only redraw changed regions)
-- `requestAnimationFrame` with timestamp delta
-- `will-change: transform` on animated canvas only
-- Reduced motion = particles disabled, functional preserved
-
----
-
-## 12. Accessibility
-
-- **Contrast:** All text ≥4.5:1 (WCAG AA), large text ≥3:1
-- **Focus:** Visible focus rings (2px, var(--color-border-strong), offset 2px)
-- **Reduced Motion:** Honored globally
-- **Touch Targets:** ≥48×48px on mobile
-- **Color Blind:** Accent colors distinguishable by hue + saturation (not just hue)
-- **Screen Readers:** ARIA labels on all buttons, live regions for resource changes
-
----
-
-## 13. File Structure (Single-File Delivery)
+### 6.1 Hire
 
 ```
-index.html
-├── <head>
-│   ├── Meta + Build Meta Injection
-│   ├── @font-face (Geist, Geist Mono)
-│   ├── CSS Custom Properties (Design Tokens)
-│   └── <style> — All component styles
-├── <body>
-│   ├── HUD Bar (Logo + Version Tracker)
-│   ├── Canvas Wrapper (Canvas + Audio Viz)
-│   ├── Right Panel Stack (Desktop) / Bottom Drawer (Mobile)
-│   └── <script>
-│       ├── Game State Module
-│       ├── Renderer Module (Canvas)
-│       ├── Particle System Module
-│       ├── Audio Module
-│       ├── UI Module (DOM)
-│       ├── Input Module
-│       └── Init / Loop
+price = floor(280 × 1.38^crew)
 ```
 
+- Blocked at `crew >= caps().crew`.  
+- New hire: `crew++`, **`jobs.stage++`** (always opens on Main Stage).
+
+### 6.2 Jobs (`JOBS`)
+
+| id | Name | Production | UI |
+|----|------|------------|-----|
+| stage | Main Stage | +0.24 Hype/s each × crewMult (before LED) | +/− steppers |
+| vipjob | VIP Room | +$1.35/s each × crewMult × bottle × cashMult | +/− |
+| floor | Floor Work | +0.035 Buzz/s × crewMult; feeds regulars via patrons | +/− |
+| off | Off Shift | No wage; no production | **display-only** residual count |
+
+`moveJob(id, d)`: never assigns to `off` directly. `+` takes from `off`; `−` returns to `off`. `sanitizeG` rebalances job sums to `crew` (prefer stripping off → floor → vip → stage on overflow).
+
+### 6.3 Wages & strike
+
+- Wage base **$0.20/s** per non-off crew; Payroll Software → ×0.6.  
+- Strike when `nonCrewCash < wage` (see §4.3). Crew cash/hype/buzz output and wages zero until non-crew revenue covers payroll.  
+- Night log: one **“Crew unpaid — on strike.”** line on onset (`noteStrike`).
+
 ---
 
-## 14. Changelog (Design System)
+## 7. Owner's List
 
-| Version | Date | Changes |
-|---------|------|---------|
-| 0.3.0 | 2026-08-02 | Complete design system overhaul: tokens, typography, components, canvas spec, version tracker |
-| 0.2.0 | 2026-08-02 | Added implants/boots upgrades, multi-girl, multi-stage |
-| 0.1.0 | 2026-08-02 | Initial idle mechanics, basic canvas dancer |
+Sequential onboarding (`GOALS`, SAVE_VER 5). Exactly one active goal: first id not in `g.goals`. Panel sits in the systems column under the tab bar, always visible.
+
+### 7.1 Shape
+
+```
+{ id, title, why, hint, reward: { cash, clout }, check(g), progress(g)|null }
+```
+
+Persisted: `g.goals[]` (completed ids), `g.clicks`, `g.rounds`. Not required by `isValidSavePayload` (v4 imports lack them).
+
+### 7.2 Engine
+
+- `activeGoal(g)` → first incomplete, or `null` (resting copy: “Club runs itself”, 14/14).  
+- `noteGoals(g, { live })` evaluates **only** the active goal; on complete: pay reward once, push id, log `Owner's list: <title> — <reward>`.  
+- Call sites:
+  - **Live `step`:** after each sim slice **before** shift rollover (`live: true`). A tick that starts in Peak Hours and ends in Last Call can still complete **peak** mid-loop; post-loop-only evaluation would miss it.
+  - **Offline `catchUp`:** each offline slice (`live: false`); also once after load / large-gap `catchUp` (`live: false`).
+  - **Actions:** after `buyBuilding`, `buyUpgrade`, `buyResearch`, `hireCrew`, `moveJob`, `workCrowd`, `buyRound` (default `live: true`).
+- Goal **`peak`**: completes only when `live !== false` — never offline.
+
+### 7.3 Arc (post-C rewards)
+
+| # | id | Title | Check | Reward |
+|--:|----|-------|-------|--------|
+| 1 | work | Work the room | clicks ≥ 5 | $8 |
+| 2 | rail | Brass brings tips | rail ≥ 1 | $12 |
+| 3 | word | Get the word out | flyers ≥ 1 | $15 |
+| 4 | pulse | A floor with a pulse | patrons ≥ 8 | $20 |
+| 5 | contract | First contract | crew ≥ 1 | $18 |
+| 6 | energy | Room energy | hype ≥ 25 | $25 |
+| 7 | house | On the house | rounds ≥ 1 | $20 |
+| 8 | backstage | Backstage pass | vip ≥ 1 ∧ vipjob ≥ 1 | $35 |
+| 9 | regulars | They keep coming back | regulars ≥ 3 | 2 Clout |
+| 10 | study | Study the game | any **catalog** research (`RESEARCH` ids only; orphan `r.franchise` does not count) | $50 |
+| 11 | roster | Grow the roster | dress ≥ 1 ∧ crew ≥ 3 | $80 |
+| 12 | peak | Peak-hour hero | hype ≥ 60 ∧ shiftIdx === 1 | $100 (live only) |
+| 13 | builtin | Built to last | any **catalog** upgrade (`UPGRADES` ids only) | $120 |
+| 14 | name | A name in this town | regulars ≥ 25 | 5 Clout |
+
+Goal 14 teaser becomes the prestige gate in `PRESTIGE.md` (`regulars >= 25`).
+
+### 7.4 Migration 4 → 5
+
+`MIGRATIONS[4]`: init `goals/clicks/rounds`; if club already past opener, set `clicks = 5`; credit **every** satisfied `check` without paying rewards (holes allowed — `activeGoal` still returns the first missing id). Load log: “Owner's list updated.”
 
 ---
 
-**End of DESIGN.md** — This document is the single source of truth for all visual and interaction decisions. Any deviation requires updating this file first.
+## 8. Player actions
+
+### 8.1 Work the room
+
+```
+clickVal = 1.15 + rail × 0.65 + hype × 0.07
+cash    += clickVal
+buzz     = min(cap.buzz, buzz + 0.12)
+clicks  += 1
+```
+
+No cooldown. Primary pink CTA under the stage.
+
+### 8.2 Buy a round
+
+```
+roundPrice = floor(50 + patrons × 7)   // roundPrice(g) — single source for UI + pacing bot
+roundGain  = min(14, cap.hype − hype)  // display / log only
+// action:
+if cash >= roundPrice && hypeRoom > 0:
+  cash −= roundPrice
+  hype  = clamp(hype + 14, 0, cap.hype)   // always attempts +14, then clamp
+  rounds += 1
+```
+
+Best used before Peak to stack mult.
+
+---
+
+## 9. Save system
+
+| Field | Value |
+|-------|--------|
+| localStorage key | `afterglow.save` |
+| SAVE_VER | **5** |
+| Envelope | `{ saveVer, ver, build, g }` |
+| Autosave | every 10 s (`save('auto')`) |
+| Manual | Settings → Save now |
+
+### 9.1 `g` shape (v5)
+
+```
+cash, hype, buzz, patrons, regulars, clout,
+crew, jobs: { stage, vipjob, floor, off },
+b: { …building counts }, u: { …upgrade bools }, r: { …research bools },
+elapsed, night, shiftIdx, shiftT, log[], ts,
+goals[], clicks, rounds
+```
+
+### 9.2 Paths
+
+| Path | Behavior |
+|------|----------|
+| **Download save (.json)** | Blob download `afterglow-save.json`; same JSON as clipboard; `saveState: 'downloaded'` |
+| **Load save from file…** | hidden file input → `FileReader.readAsText` → **`importSaveFromText` only** |
+| **Copy / Restore clipboard** | same payload; restore fails closed |
+| **Wipe** | double-click confirm; `fresh()` |
+
+Files and clipboard are interchangeable by design.
+
+### 9.3 Import pipeline (`importSaveFromText`)
+
+Safety-critical order is **log → persist → replace** (not replace-first). A quota/storage failure must not leave the player on an imported club that never hit disk.
+
+1. `JSON.parse`  
+2. `isValidSavePayload` (saveVer finite; cash/hype/buzz/patrons/regulars/clout/crew numbers; jobs object)  
+3. If `saveVer !== SAVE_VER`: `migrateFrom` chain; missing step → fail  
+4. `completeImportedG` (fill defaults, reject unsafe values)  
+5. Stamp `ts = now` on the **candidate** `g` (not yet live)  
+6. Push restore log line onto the candidate (`push(g, 'Save restored.', …)`) so disk and memory share the same night-log entry  
+7. `localStorage.setItem` with the candidate payload — **must succeed**  
+8. Only then: replace `state.g`, clear `_onStrike`, clear `tabStale`, restart autosave if stopped, `saveState: 'imported'`  
+
+If `setItem` throws (or any earlier step fails) → `saveState: 'import failed'`, live club / tabStale / autosave ownership **unchanged**.
+
+### 9.4 Migration chain
+
+| From → To | Step |
+|-----------|------|
+| 3 → 4 | `sanitizeG` (jobs/crew honesty) |
+| 4 → 5 | Owner's List fields + credit without rewards |
+
+Future saveVer or missing step → wipe on load (localStorage path) or import failed (clipboard/file).
+
+### 9.5 Multi-tab guard
+
+`storage` event on `KEY` in another tab → stop autosave, `tabStale: true`, banner: reload to adopt foreign save. Manual save still allowed; autosave will not clobber.
+
+### 9.6 Offline on load
+
+Safety-critical order is **claim → conditional catch-up → post-catch-up write** (`game.js` `init`). Catch-up-then-persist left the prior blob (old `ts`) on disk when `setItem` failed, so every reload re-applied the same offline window (elapsed-time double-count). Documented sequence:
+
+1. Only for a successfully loaded existing save (not `fresh()` / wipe): compute  
+   `offline = min((now − g.ts) / 1000, 28800)` (8h cap).  
+2. Attach live `state.g`, push doors-open / migrate / version log lines as needed.  
+3. **Claim the offline window on disk before catch-up:** set `g.ts = now`, then `localStorage.setItem` with the current payload.  
+4. If the claim `setItem` **fails** → set `saveState: 'save failed'`, **skip catch-up** entirely. Memory may still run, but a reload re-reads the prior blob once (no silent progress that cannot be written).  
+5. If claim **succeeds** and `offline > 0`: run `catchUp(g, offline)`; if `offline > 60` push the away message; `noteGoals({ live: false })` once after load catch-up.  
+6. After successful catch-up, attempt a **post-catch-up** `setItem` of the progressed `g`. If that write fails → `saveState: 'save failed'`. Disk already holds the claimed `ts`, so a reload cannot re-apply the gap (offline progress may be lost once).
+
+Brand-new / wiped clubs stamp `ts` via `fresh()` and skip offline entirely (`resumeExisting` is false).
+
+---
+
+## 10. UI map
+
+### 10.1 Shell
+
+Three-row grid: **header (62px) · main · footer (28px)**.  
+Main: three columns **`262px | minmax(420px,1fr) | 352px`** — Ledger · Stage · Systems.
+
+| Region | Contents |
+|--------|----------|
+| Header | Afterglow wordmark, version badge (opens changelog), shift name + bar + night/mult, settings ☰ |
+| Ledger | Cash/Hype/Buzz/Patrons/Regulars/Clout with rates + notes; Floor stats (crew, on stage, structures, night time) |
+| Stage | CSS stage set, performer, Main Stage line, Room energy %, Work the room + Buy a round, Night log |
+| Systems | Tabs Club / Crew / Upgrades / Research; **Owner's List** under tabs; scrollable cards + crew assignments |
+| Footer | full version string, save format, saveState, tick count; multi-tab takeover banner above when stale |
+| Modals | Changelog history; Settings (save I/O + wipe) |
+
+Typography (loaded in `index.html`): **Monoton** (wordmark), **Space Grotesk** (UI), **IBM Plex Mono** (numbers). Palette is magenta `#ff2d78`, cyan `#22d3ee`, gold `#ffc94a` on near-black `#07050c`.
+
+### 10.2 CSS/DOM performer
+
+Not canvas. Markup from `dancerHTML(g, cap)` inside `#performer-stage`:
+
+| Class | Part |
+|-------|------|
+| `.pole` | Cyan metallic pole |
+| `.pbody` | Root motion group |
+| `.ptorso` / `.pneck` / `.phead` / `.phair` | Body |
+| `.parm.pole` / `.parm.free` | Arms |
+| `.phip` | Hips |
+| `.pleg.l` / `.pleg.r` | Legs |
+
+**Bindings from `renderVals` → `perfStyle`**
+
+```
+--bpm    = max(0.55, 2.3 − (hype/cap.hype)×1.6) + 's'   // faster as room heats
+--energy = round(hype/cap.hype × 100) + '%'
+opacity  = stage crew > 0 ? 1 : 0.55
+filter   = stage crew > 0 ? none : grayscale(.6)
+scale    = f(stageH) clamped
+```
+
+**Empty stage:** only `.performer.empty` + pole (no gray idle body). Badge text:
+
+- no crew → “hire crew to open the stage”  
+- crew but none on stage → “assign crew · Crew tab” / “nobody on stage”  
+- badge click → Crew tab  
+
+**Crowd class:** `patrons >= 3` adds `.crowd` (stronger glow).  
+
+**Render hygiene:** `#performer-stage` DOM is preserved across full re-renders when possible so CSS animations do not restart; occupancy flips rebuild performer HTML. Scroll positions restored via `data-scroll`. Pointer-down defers re-render so buttons receive real clicks under 10 Hz paint.
+
+---
+
+## 11. Engineering rules
+
+| Rule | Detail |
+|------|--------|
+| Dependency-free | No npm, no bundler, no package manager. `index.html` + `style.css` + `game.js` (+ test/sim scripts) |
+| Gates | `node --check game.js` && `node economy.test.mjs`; after C also `node pacing.mjs` within milestone bands |
+| Version discipline | `VERSION.num`, `VERSION.build`, and in-game `CHANGELOG` advance together on behavior changes |
+| Save version | Bump `SAVE_VER` only when persisted shape changes; ship a migration step |
+| Compatibility | Preserve offline correctness; no double-count of elapsed time; fail closed on bad imports |
+| Visual invariant | Neon-noir language and CSS/DOM performer unless a task explicitly redesigns them |
+| Tests | `economy.test.mjs` boots Game without `game.init()` (boot line stripped); `pacing.mjs` same prelude |
+| Balance process | Tune costs/rates against `pacing.mjs` reference bot; SHIFTS lengths/mults, 50% offline, 8h cap, walk-in 0.02, strike structure are off-limits knobs unless re-planned |
+
+Primary files: `index.html`, `style.css`, `game.js`. Scripts: `economy.test.mjs`, `pacing.mjs`.
+
+---
+
+## 12. Future: prestige
+
+Prestige is **not implemented in code**. When the club reaches **25 regulars**, design intent is a franchise sale/reopen loop with a separate meta currency (**Legacy**), permanent perks, and a SAVE_VER 5→6 migration.
+
+Full locked design — fantasy, gate, reset rules, Legacy formula, starter perks, save sketch, pacing hooks, non-goals, UI — lives in **[`PRESTIGE.md`](./PRESTIGE.md)**. Do not invent prestige numbers in this file; point implementers there.
+
+---
+
+## Doc maintenance
+
+- Rewrite claims against `game.js`, not against stale plans.  
+- Keep Owner's List UI copy aligned with formulas when both change in the same PR (rail goal `why` matches tip rate +$0.06/s). Do not silent-fix economy numbers to match stale copy.  
+- After any balance PR: re-check §4–§8 tables and run `pacing.mjs`.  
+- After prestige ships: fold a short “as shipped” summary into §12 and keep `PRESTIGE.md` as the deep design archive or retire it deliberately.
+- Save-path order is load-bearing: import is log → persist → replace (§9.3); load offline is claim → conditional catch-up → post-catch-up write (§9.6). Prestige (future) must match import’s persist-before-replace rule in `PRESTIGE.md`.
+
+**End of DESIGN.md**
