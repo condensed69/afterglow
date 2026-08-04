@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.6.0', build: 168, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.6.0', build: 169, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 5;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -21,6 +21,19 @@ class Game {
   // Set on pagehide only when this tab still owns — survives F5, not present when a live
   // tab is duplicated (pagehide did not run). Consumed once on the next init as wasOwner.
   RELOAD_KEY = 'afterglow.tabOwnerReload';
+  // Cross-tab lease in localStorage: { token, at }. Owner refreshes while live.
+  // Age-only claim (offline >15s) requires no live foreign lease — disk age alone is not
+  // proof the owner is gone (background-throttled tabs may lag autosave).
+  LEASE_KEY = 'afterglow.tabOwnerLease';
+  // Claimant writes this before an age-only claim so a live owner can refresh its lease
+  // via the storage event (handshake). Shape: { token, at }.
+  PROBE_KEY = 'afterglow.tabOwnerProbe';
+  // Foreign lease younger than this = live peer. Must exceed CLAIM_OFFLINE_SEC (15s) so a
+  // throttled owner that still ticks can hold past disk lag; under 60s matches common
+  // background timer floors.
+  LEASE_TTL_MS = 45000;
+  // Min wall time between lease writes from the live timer (saves/mark still write immediately).
+  LEASE_REFRESH_MS = 2000;
 
   // Dev-only tunables the Claude-artifact prop editor used to expose
   // (showDebug / simSpeed / startingCash). Fixed to their defaults now that
@@ -82,6 +95,10 @@ class Game {
       'Non-claiming init applies a preserved short offline gap via catchUp in memory (no setItem) so the live timer cannot full-rate or Peak-award pre-load time.',
       'Future/corrupt g.ts is clamped and claimed so the sim does not freeze until wall time catches up.',
       'Autosave starts only after this tab owns the save; non-claiming second tabs no-op save(auto) so they cannot steal a live sibling after 10s.',
+      'Age-only claim (offline >15s) requires a live cross-tab lease check — disk age alone cannot steal from a throttled owner tab.',
+      'Successful import acquires ownership and starts autosave (same as manual save).',
+      'pageshow clears RELOAD_KEY so BFCache restore does not leave a stealable reload marker for tab-duplicate.',
+      'Live step evaluates Owner\'s List goals each shift slice (before rollover) so Peak-hour hero is not missed at the Peak→Last Call boundary.',
       'v4→v5 clicks backfill uses structures/crew only (not passive patrons/regulars) so walk-in saves keep goal 1.',
       'Current-format (v5) saves require sane goals/clicks/rounds; missing fields fail closed (v4 still migrates).',
       'Goal checks after step, catch-up, and player actions so offline progress can complete goals.',
@@ -561,6 +578,12 @@ class Game {
         localStorage.setItem(this.KEY, JSON.stringify({
           saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
         }));
+        // Successful persist is an explicit ownership take (like save('manual')):
+        // a non-claiming second tab must start autosave and mark owner so later
+        // progress is not lost after pausing siblings via the storage event.
+        this.state.tabStale = false;
+        this.markTabOwner();
+        this.startAutosave();
       } catch (e) { /* state already replaced; footer still shows imported */ }
       this.setState({ saveState: 'imported' });
       return true;
@@ -638,8 +661,8 @@ class Game {
     // sibling, stealing ownership and discarding up to one autosave interval of
     // progress. Under a live tab, disk ts lags by at most ~10s (autosave).
     // Claim when this tab must take ownership: fresh/wiped club, migration,
-    // offline gap larger than one autosave + slack, same-tab reload (RELOAD_KEY
-    // set on pagehide), or future/corrupt ts that must be normalized.
+    // same-tab reload (RELOAD_KEY set on pagehide), future/corrupt ts, or a
+    // large offline gap with no live foreign lease (age alone is not proof).
     //
     // Short multi-tab / non-owner open (offline ≤15s, no reload intent): do not
     // setItem (avoids stealing). Still apply the preserved gap via catchUp in
@@ -658,7 +681,20 @@ class Game {
         sessionStorage.removeItem(this.OWNER_KEY);
       }
     } catch (e) { /* private mode */ }
-    const needsClaim = !resumeExisting || upgraded || offline > CLAIM_OFFLINE_SEC || wasOwner || futureTs;
+    // Hard claims always proceed. Age-only claim is gated by cross-tab lease:
+    // a background-throttled owner may lag autosave past 15s while still live.
+    const hardClaim = !resumeExisting || upgraded || wasOwner || futureTs;
+    const ageClaimCandidate = resumeExisting && !hardClaim && offline > CLAIM_OFFLINE_SEC;
+    if (ageClaimCandidate) {
+      // Handshake: announce probe so a live owner refreshes LEASE_KEY via storage.
+      try {
+        localStorage.setItem(this.PROBE_KEY, JSON.stringify({
+          token: this.tabToken, at: Date.now()
+        }));
+      } catch (e) { /* private / quota */ }
+    }
+    const liveForeignLease = ageClaimCandidate && this.hasLiveForeignLease();
+    const needsClaim = hardClaim || (ageClaimCandidate && !liveForeignLease);
     let claimed = false;
     if (needsClaim) {
       g.ts = Date.now();
@@ -680,12 +716,14 @@ class Game {
           localStorage.setItem(this.KEY, JSON.stringify({
             saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
           }));
+          this.refreshLease();
         } catch (e) {
           this.setState({ saveState: 'save failed' });
         }
       }
     } else if (offline > 0) {
       // Non-claiming path: offline catch-up in memory only (no setItem / no steal).
+      // Includes: short multi-tab open, and ageClaim blocked by a live foreign lease.
       const report = this.catchUp(g, offline);
       if (offline > 60) this.push(g, this.awayMsg(offline, report), '#ffc94a');
       this.noteGoals(g, { live: false });
@@ -703,6 +741,8 @@ class Game {
     }
     this.timer = setInterval(() => {
       const g = this.state.g; if (!g) return;
+      // Keep cross-tab lease fresh so age-only claimers see a live peer.
+      if (this.isTabOwner()) this.refreshLeaseThrottled();
       const now = Date.now();
       const dt = Math.max(0, (now - (g.ts || now)) / 1000);
       // Skip sub-50ms ticks; leave g.ts untouched so elapsed time accrues to the next tick.
@@ -730,8 +770,14 @@ class Game {
     if (!this._storageBound) {
       this._storageBound = true;
       window.addEventListener('storage', (e) => {
-        if (e.key !== this.KEY) return;
-        this.onForeignSave();
+        if (e.key === this.KEY) {
+          this.onForeignSave();
+          return;
+        }
+        // Lease handshake: a peer probing to age-claim — refresh so they see us live.
+        if (e.key === this.PROBE_KEY && e.newValue && this.isTabOwner()) {
+          this.refreshLease();
+        }
       });
     }
     this.forceUpdate();
@@ -755,6 +801,7 @@ class Game {
   markTabOwner() {
     this._ownsSave = true;
     try { sessionStorage.setItem(this.OWNER_KEY, this.tabToken); } catch (e) { /* private mode */ }
+    this.refreshLease();
     this.ensureOwnerLifecycle();
   }
 
@@ -764,6 +811,48 @@ class Game {
       sessionStorage.removeItem(this.OWNER_KEY);
       sessionStorage.removeItem(this.RELOAD_KEY);
     } catch (e) { /* private mode */ }
+    // Drop our lease so age-claimers can take over; leave a foreign lease alone.
+    try {
+      const raw = localStorage.getItem(this.LEASE_KEY);
+      if (raw) {
+        const lease = JSON.parse(raw);
+        if (lease && lease.token === this.tabToken) localStorage.removeItem(this.LEASE_KEY);
+      }
+    } catch (e) { /* private / corrupt */ }
+  }
+
+  // Publish / refresh this tab's cross-tab lease. Call when ownership is taken
+  // or reaffirmed (save, timer). Age-only claimers treat a fresh foreign lease
+  // as proof a live peer still owns the save.
+  refreshLease() {
+    if (!this._ownsSave) return;
+    try {
+      localStorage.setItem(this.LEASE_KEY, JSON.stringify({
+        token: this.tabToken, at: Date.now()
+      }));
+      this._leaseAt = Date.now();
+    } catch (e) { /* private / quota */ }
+  }
+
+  refreshLeaseThrottled() {
+    if (!this._ownsSave) return;
+    if (this._leaseAt && (Date.now() - this._leaseAt) < this.LEASE_REFRESH_MS) return;
+    this.refreshLease();
+  }
+
+  // True when another tab's lease is still within LEASE_TTL_MS (live peer).
+  hasLiveForeignLease() {
+    try {
+      const raw = localStorage.getItem(this.LEASE_KEY);
+      if (!raw) return false;
+      const lease = JSON.parse(raw);
+      if (!lease || typeof lease.token !== 'string' || typeof lease.at !== 'number') return false;
+      if (lease.token === this.tabToken) return false;
+      if (!Number.isFinite(lease.at)) return false;
+      return (Date.now() - lease.at) < this.LEASE_TTL_MS;
+    } catch (e) {
+      return false;
+    }
   }
 
   // Start the 10s autosave interval once. No-op if already running.
@@ -772,9 +861,11 @@ class Game {
     this.saver = setInterval(() => this.save('auto'), 10000);
   }
 
-  // pagehide fires on F5 / navigation / close. Write reload intent only if this
-  // page context still owns — a live tab that is merely duplicated never runs
-  // pagehide, so the duplicate does not inherit wasOwner.
+  // pagehide fires on F5 / navigation / close / BFCache freeze. Write reload
+  // intent only if this page context still owns — a live tab that is merely
+  // duplicated never runs pagehide, so the duplicate does not inherit wasOwner.
+  // pageshow clears RELOAD_KEY on resume (incl. BFCache) so a restored live
+  // page does not leave a stealable marker for a later tab-duplicate.
   ensureOwnerLifecycle() {
     if (this._ownerLifecycleBound) return;
     this._ownerLifecycleBound = true;
@@ -785,6 +876,11 @@ class Game {
           sessionStorage.setItem(this.RELOAD_KEY, this.tabToken);
         }
       } catch (e) { /* private mode */ }
+    });
+    window.addEventListener('pageshow', () => {
+      // Normal load: init already consumed RELOAD_KEY. BFCache restore: init does
+      // not re-run, so clear the pagehide marker left when we entered the cache.
+      try { sessionStorage.removeItem(this.RELOAD_KEY); } catch (e) { /* private mode */ }
     });
   }
 
@@ -953,6 +1049,9 @@ class Game {
       g.elapsed += chunk;
       g.shiftT += chunk;
       remaining -= chunk;
+      // Per-slice live goals BEFORE shift rollover: Peak-hour hero (hype≥60 &&
+      // shiftIdx===1) would miss if the only noteGoals ran after Peak→Last Call.
+      this.noteGoals(g, { live: true });
       if (g.shiftT >= r.shift.len) {
         g.shiftT = 0;
         g.shiftIdx = (g.shiftIdx + 1) % 4;
@@ -966,7 +1065,6 @@ class Game {
         }
       }
     }
-    this.noteGoals(g, { live: true });
     g.ts = Date.now();
     this.setState(s => ({ tick: s.tick + 1 }));
   }

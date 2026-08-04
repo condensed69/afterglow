@@ -25,11 +25,25 @@ const root = {
 Object.defineProperty(root, 'innerHTML', { set: () => {}, get: () => '' });
 Object.defineProperty(root, 'style', { value: {}, writable: true });
 
+// Capture listeners so ownership lifecycle (pagehide/pageshow/storage) is testable.
+const windowListeners = Object.create(null);
 globalThis.window = {
-  addEventListener: () => {},
-  removeEventListener: () => {},
+  addEventListener: (type, fn) => {
+    if (!windowListeners[type]) windowListeners[type] = [];
+    windowListeners[type].push(fn);
+  },
+  removeEventListener: (type, fn) => {
+    if (!windowListeners[type]) return;
+    windowListeners[type] = windowListeners[type].filter(f => f !== fn);
+  },
+  dispatchEvent: (type, event) => {
+    for (const fn of (windowListeners[type] || [])) fn(event || {});
+  },
   ResizeObserver: undefined,
 };
+function clearWindowListeners() {
+  for (const k of Object.keys(windowListeners)) delete windowListeners[k];
+}
 globalThis.document = {
   getElementById: (id) => {
     if (id === 'stage') {
@@ -115,6 +129,13 @@ function resourceNames() {
 function newGame(startingCash) {
   // Isolate tab-owner session flag between tests (simulates a fresh tab by default).
   sessionStorage.clear();
+  clearWindowListeners();
+  // Drop cross-tab lease/probe left by prior tests so age-only claim is not blocked
+  // by a stale foreign heartbeat from another Game instance.
+  try {
+    localStorage.removeItem('afterglow.tabOwnerLease');
+    localStorage.removeItem('afterglow.tabOwnerProbe');
+  } catch (e) { /* ignore */ }
   const game = new Game(root);
   // Suppress render() during tests (actions call forceUpdate → render).
   game.forceUpdate = () => {};
@@ -1893,6 +1914,148 @@ test('manual save from non-owner acquires ownership and starts autosave', () => 
   const stored = JSON.parse(localStorage.getItem('afterglow.save'));
   strictEqual(stored.g.cash, 333, 'manual save wrote disk');
   if (game.saver) clearInterval(game.saver);
+});
+
+// ── AAR-73 residual Codex (claim lease + import owner + BFCache + peak) ───────
+console.log('\nAAR-73 residual Codex (claim lease + import owner + BFCache + peak)');
+
+test('age-only claim blocked by live foreign lease (offline >15s)', () => {
+  // Live owner tab is background-throttled: disk ts >15s old, but lease is fresh.
+  // New tab must not steal via setItem.
+  const game = newGame(20);
+  sessionStorage.clear();
+  const diskTs = Date.now() - 20_000; // 20s — past CLAIM_OFFLINE_SEC
+  const b = { rail: 2, bar: 1, vip: 0, dj: 0, marquee: 0, flyers: 1, door: 0, dress: 0 };
+  localStorage.setItem('afterglow.save', JSON.stringify({
+    saveVer: 5, ver: '0.6.0', build: 168, g: {
+      cash: 888, hype: 10, buzz: 5, patrons: 4, regulars: 0, clout: 0,
+      crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      b, u: {}, r: {},
+      goals: ['work', 'rail', 'word'], clicks: 5, rounds: 0,
+      elapsed: 120, night: 1, shiftIdx: 0, shiftT: 30, log: [], ts: diskTs
+    }
+  }));
+  // Fresh lease from a different tab token.
+  localStorage.setItem(game.LEASE_KEY, JSON.stringify({
+    token: 'live-sibling-token', at: Date.now() - 1000
+  }));
+  const rawBefore = localStorage.getItem('afterglow.save');
+
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+
+  strictEqual(localStorage.getItem('afterglow.save'), rawBefore,
+    'live foreign lease blocks age-only claim setItem');
+  strictEqual(game.isTabOwner(), false, 'claimant does not become owner');
+  ok(game.state.g.ts > diskTs, 'gap still applied in memory');
+  ok(game.state.g.cash >= 888, 'in-memory catch-up may earn');
+});
+
+test('age-only claim proceeds when foreign lease is stale/absent', () => {
+  const game = newGame(20);
+  sessionStorage.clear();
+  const hourAgo = Date.now() - 3600_000;
+  localStorage.setItem('afterglow.save', JSON.stringify({
+    saveVer: 5, ver: '0.6.0', build: 168, g: {
+      cash: 100, hype: 10, buzz: 5, patrons: 4, regulars: 0, clout: 0,
+      crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      b: { rail: 2, bar: 1, vip: 0, dj: 0, marquee: 0, flyers: 1, door: 0, dress: 0 },
+      u: {}, r: {},
+      goals: ['work', 'rail', 'word'], clicks: 5, rounds: 0,
+      elapsed: 120, night: 1, shiftIdx: 0, shiftT: 30, log: [], ts: hourAgo
+    }
+  }));
+  // Stale lease (older than LEASE_TTL_MS) must not block claim.
+  localStorage.setItem(game.LEASE_KEY, JSON.stringify({
+    token: 'dead-sibling', at: Date.now() - 120_000
+  }));
+
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+
+  ok(game.isTabOwner(), 'stale lease allows age-only claim');
+  const stored = JSON.parse(localStorage.getItem('afterglow.save'));
+  ok(stored.g.ts > hourAgo + 3_000_000, 'claimed ts on disk');
+  const lease = JSON.parse(localStorage.getItem(game.LEASE_KEY));
+  strictEqual(lease.token, game.tabToken, 'owner publishes its own lease after claim');
+});
+
+test('import from non-owner acquires ownership and starts autosave', () => {
+  const game = newGame(20);
+  sessionStorage.clear();
+  const diskTs = Date.now() - 5000;
+  localStorage.setItem('afterglow.save', JSON.stringify({
+    saveVer: 5, ver: '0.6.0', build: 168, g: {
+      cash: 50, hype: 5, buzz: 2, patrons: 1, regulars: 0, clout: 0,
+      crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      b: { rail: 0, bar: 0, vip: 0, dj: 0, marquee: 0, flyers: 0, door: 0, dress: 0 },
+      u: {}, r: {},
+      goals: [], clicks: 0, rounds: 0,
+      elapsed: 10, night: 1, shiftIdx: 0, shiftT: 5, log: [], ts: diskTs
+    }
+  }));
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  strictEqual(game.isTabOwner(), false);
+  strictEqual(game.saver, null);
+
+  const payload = JSON.stringify({
+    saveVer: 5, ver: '0.6.0', build: 168, g: {
+      cash: 999, hype: 20, buzz: 10, patrons: 5, regulars: 1, clout: 0,
+      crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      b: { rail: 1, bar: 0, vip: 0, dj: 0, marquee: 0, flyers: 0, door: 0, dress: 0 },
+      u: {}, r: {},
+      goals: ['work', 'rail'], clicks: 5, rounds: 0,
+      elapsed: 50, night: 1, shiftIdx: 0, shiftT: 10, log: [], ts: Date.now()
+    }
+  });
+  strictEqual(game.importSaveFromText(payload), true);
+  ok(game.isTabOwner(), 'import marks tab as owner');
+  ok(game.saver != null, 'import starts autosave');
+  strictEqual(game.state.tabStale, false);
+  strictEqual(game.state.g.cash, 999);
+  const stored = JSON.parse(localStorage.getItem('afterglow.save'));
+  strictEqual(stored.g.cash, 999, 'import persisted');
+  if (game.saver) clearInterval(game.saver);
+});
+
+test('pageshow clears RELOAD_KEY (BFCache restore must not leave stealable marker)', () => {
+  const game = newGame(20);
+  // Become owner so lifecycle listeners bind.
+  game.markTabOwner();
+  // Simulate pagehide writing reload intent (BFCache freeze path).
+  sessionStorage.setItem(game.RELOAD_KEY, game.tabToken);
+  // BFCache resume: pageshow fires, init does not re-run.
+  window.dispatchEvent('pageshow', { persisted: true });
+  strictEqual(sessionStorage.getItem(game.RELOAD_KEY), null,
+    'pageshow clears reload intent so a later tab-duplicate cannot wasOwner-steal');
+});
+
+test('live step awards Peak-hour hero when chunk crosses Peak→Last Call', () => {
+  // step() that begins in Peak and rolls into Last Call must still credit peak
+  // if hype≥60 during the Peak portion (evaluate before rollover).
+  const game = newGame(20);
+  const prior = ['work', 'rail', 'word', 'pulse', 'contract', 'energy', 'house',
+    'backstage', 'regulars', 'study', 'roster'];
+  game.state.g = {
+    cash: 200, hype: 65, buzz: 10, patrons: 8, regulars: 5, clout: 2,
+    crew: 3, jobs: { stage: 1, vipjob: 1, floor: 1, off: 0 },
+    b: { rail: 2, bar: 1, vip: 1, dj: 2, marquee: 0, flyers: 1, door: 0, dress: 1 },
+    u: { led: true }, r: { tips: true },
+    goals: prior.slice(), clicks: 20, rounds: 2,
+    elapsed: 600, night: 2,
+    shiftIdx: 1, // Peak Hours
+    shiftT: 54.95, // 0.05s before Peak ends (len 55)
+    log: [], ts: Date.now()
+  };
+  const cashBefore = game.state.g.cash;
+  // 0.2s live step: first slice finishes Peak, second enters Last Call.
+  game.step(0.2);
+  ok(game.state.g.goals.includes('peak'), 'Peak-hour hero credited mid-step before rollover');
+  ok(game.state.g.cash >= cashBefore + 200, 'peak reward paid');
+  ok(game.state.g.shiftIdx === 2 || game.state.g.shiftT > 0, 'step advanced past Peak boundary');
 });
 
 // ── Results ──────────────────────────────────────────────────────────────────
