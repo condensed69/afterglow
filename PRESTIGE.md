@@ -1,0 +1,388 @@
+# PRESTIGE.md — Franchise Prestige Design
+
+**Status:** design locked for first implementation  
+**Scope:** document only (no `game.js` change in the PRESTIGE.md PR)  
+**Depends on:** PLAN-NEXT workstreams A–C (save file I/O, Owner's List, balance + `pacing.mjs`)  
+**Save format when implemented:** SAVE_VER 5 → **6**  
+**Plan source:** `.omo/PLAN-NEXT.md` §D  
+
+This doc is complete enough for a later implementation PR: no open design questions for the first prestige ship. Numbers cite post–workstream-C balance intent; if live costs drift, re-check the worked table and the prestige pacing scenario, not the fantasy or field list.
+
+---
+
+## 1. Fantasy & name
+
+**Fantasy.** The player sells the club to a franchise group and reopens under their banner. The room is new, the name is licensed, and the previous run's reputation survives as **Legacy** — not as cash, not as Clout.
+
+**Pitch (in-world).** A franchise man has been asking about you. When the club has enough regulars to prove the concept, they make an offer: sign over this location, keep the know-how, start the next room with a permanent edge.
+
+**Currency name: Legacy**
+
+| Currency | Role |
+|----------|------|
+| **Clout** | Run currency only. Spent on research. Resets on prestige. |
+| **Legacy** | Prestige currency. Earned on reset, spent on permanent perks. Never converts to/from Clout. |
+
+Do **not** reuse Clout as prestige currency. Do not rename Clout. UI copy may say "franchise" in the offer flow; the resource label is always **Legacy**.
+
+**Internal ids (locked):**
+
+| Concept | Id / field |
+|---------|------------|
+| Prestige currency (spendable this meta) | `g.legacy` |
+| Lifetime Legacy earned | `g.legacyTotal` |
+| Purchased perk ranks | `g.perks` (object map `perkId → rank`) |
+| Times prestiged | `g.prestiges` (integer) |
+| Perk definitions table | `PRESTIGE_PERKS` (class constant, like `BUILDINGS`) |
+| Helper | `perk(g, id)` → current rank (0 if missing) |
+
+---
+
+## 2. Gate
+
+**Condition (locked):** `g.regulars >= 25`.
+
+This is deliberately identical to Owner's List goal 14 (`name` — "A name in this town"). Onboarding ends exactly where prestige begins. Completing goal 14 is **not** required to prestige (a migrated mid-game save with 25+ regulars can prestige without a completed goals array), but the teaser line on goal 14 points at this system:
+
+> Word is a franchise man has been asking about you.
+
+**UI affordance:**
+
+- When `g.regulars >= 25`, a header control **"Franchise offer"** appears (same header strip as shift / version badge family — not buried in Settings).
+- Below gate, the control is absent (not disabled gray). No prestige teaser chrome before the gate.
+- Clicking opens the **confirmation modal** with the reset report **preview** (Legacy gain, what resets, what persists). Confirm commits; cancel closes with no state change.
+
+**Gate is evaluated live** from current `g.regulars` (fractional sim is fine; use `>= 25` the same way goal 14 does). Offline catch-up that crosses 25 does not auto-open the modal; it only makes the button appear on the next render.
+
+---
+
+## 3. Reset rules
+
+On confirm of Franchise offer:
+
+### Reset (wipe to fresh-run defaults)
+
+| Field / group | After prestige |
+|---------------|----------------|
+| `cash` | starting cash (`props.startingCash`, default 20), then apply start perks (see §5) |
+| `hype`, `buzz`, `patrons`, `regulars`, `clout` | 0 |
+| `b` (buildings) | all 0, then apply start perks (e.g. free Flyer Crew) |
+| `u` (upgrades) | all false |
+| `r` (research) | all false |
+| `crew` | 0, then apply start perks (e.g. start with 1 crew) |
+| `jobs` | all 0; if start-with-crew perk, assign that crew to `stage` |
+| `shiftIdx`, `shiftT`, `night`, `elapsed` | 0 / 0 / 1 / 0 (same as `fresh()` night baseline) |
+| `goals` | `[]` — Owner's List **resets** and replays |
+| `clicks`, `rounds` | 0 |
+| `log` | cleared, then one franchise line (see §9) |
+| Strike session flag | cleared |
+
+### Persist (carry across prestige)
+
+| Field | Behavior |
+|-------|----------|
+| `legacy` | previous `legacy` − spent this session + **newly earned** this reset (see §4) |
+| `legacyTotal` | += newly earned this reset (never decreases) |
+| `perks` | unchanged (purchases permanent until a future redesign) |
+| `prestiges` | += 1 |
+| Save-format / version fields | as always on write (`saveVer`, `ver`, `build`) |
+
+**Order of operations (locked):**
+
+1. Compute `gain = legacyGain(g)` from **pre-reset** `regulars` and `night` (§4).  
+2. Snapshot `perks`, `legacy`, `legacyTotal`, `prestiges`.  
+3. Replace run state with `fresh()`-equivalent run fields.  
+4. Restore meta: `legacy = snapshot.legacy + gain`, `legacyTotal = snapshot.legacyTotal + gain`, `perks = snapshot.perks`, `prestiges = snapshot.prestiges + 1`.  
+5. Apply start-of-run perk effects (crew, buildings) on the new `g`.  
+6. Log the franchise line; autosave.
+
+**Not a full wipe:** Settings → Wipe still clears everything including Legacy/perks (existing wipe semantics). Prestige is a soft reset, not wipe.
+
+**Owner's List:** resets every prestige. Prestige-tier goals are explicitly out of scope (§8).
+
+---
+
+## 4. Legacy formula
+
+**Formula (locked):**
+
+```text
+legacyGain(g) = floor( sqrt(regulars) + night / 7 )
+```
+
+- `regulars` and `night` are pre-reset values.  
+- `sqrt` is math square root (not integer sqrt).  
+- Primary reward is the gate resource (regulars); long runs add via nights.  
+- Minimum at the gate: `regulars === 25`, `night === 0` → `floor(5 + 0) = 5`.  
+- No soft cap on gain for v1; extreme AFK farms are acceptable for first ship.
+
+**Helper shape (implementation sketch):**
+
+```js
+legacyGain(g) {
+  const reg = Math.max(0, g.regulars || 0);
+  const nights = Math.max(0, g.night || 0);
+  return Math.floor(Math.sqrt(reg) + nights / 7);
+}
+```
+
+### Worked table
+
+| Regulars | Night | √regulars | night/7 | **Legacy gain** |
+|---------:|------:|----------:|--------:|----------------:|
+| 25 | 0 | 5.00 | 0.00 | **5** |
+| 25 | 10 | 5.00 | 1.43 | **6** |
+| 25 | 14 | 5.00 | 2.00 | **7** |
+| 36 | 7 | 6.00 | 1.00 | **7** |
+| 49 | 0 | 7.00 | 0.00 | **7** |
+| 60 | 30 | 7.75 | 4.29 | **12** |
+| 100 | 50 | 10.00 | 7.14 | **17** |
+| 144 | 70 | 12.00 | 10.00 | **22** |
+
+Plan check points: **25 regulars / night 10 → 6** (plan prose said ~7; exact formula yields 6 — **table wins**); **25 / 14 → 7**; **60 / 30 → 12**. Implementers copy the formula, not the "~" estimates.
+
+**Spending:** Legacy is only spent on perks (§5). No bank interest, no conversion to cash/Clout.
+
+---
+
+## 5. Starter perks (6)
+
+Data-driven table `PRESTIGE_PERKS`. All costs in **Legacy**. First implementation ships exactly these six; order is shop display order.
+
+| # | id | Name | Effect | Cost | Max rank | Notes |
+|---|-----|------|--------|-----:|---------:|-------|
+| 1 | `cash10` | House cut | +10% all cash income per rank | 1 | 5 | Multiplies final cash rate (same layer as stacking cash mults — see apply rules) |
+| 2 | `startCrew` | Seed roster | Start run with 1 crew on Main Stage | 2 | 1 | Applied after `fresh()`; `crew = 1`, `jobs.stage = 1` |
+| 3 | `startFlyers` | Street team | Start run with Flyer Crew ×1 built | 3 | 1 | `b.flyers = 1` after fresh; does not refund if player rebuilds |
+| 4 | `offline65` | Franchise playbook | Offline / catchUp rate 50% → 65% | 4 | 1 | Only `catchUp` dt factor; live `step` stays 100% |
+| 5 | `doorPlus` | Extra bouncer slot | +1 max Door Staff | 5 | 1 | `door` building `max` 6 → 7 when owned |
+| 6 | `clout25` | Name recognition | +25% Clout gain | 6 | 1 | Multiplies `rates().clout` |
+
+**Total Legacy to buy everything once (max ranks):**  
+`cash10`×5 (5) + 2 + 3 + 4 + 5 + 6 = **25** Legacy lifetime spend for full tree at rank caps.
+
+### `perk(g, id)` helper
+
+```js
+perk(g, id) {
+  const p = g.perks && g.perks[id];
+  return typeof p === 'number' && p > 0 ? p : 0;
+}
+```
+
+Single helper used everywhere — no scattered `g.perks?.x` copies.
+
+### Apply rules (locked)
+
+1. **`cash10`** — in `rates()`, after existing cash multipliers are composed for income terms, multiply **all cash income components** (non-crew cash and VIP crew cash) by `(1 + 0.10 * perk(g, 'cash10'))`. Do **not** multiply wages. Net cash = boosted income − wages (same strike structure).  
+2. **`startCrew` / `startFlyers`** — only in prestige reset path and in `fresh()` when loading a meta-save that already has those perks (new club after prestige, and brand-new game with perks should not happen without prestige; `fresh()` still checks perks so a future "new run keep meta" path is consistent).  
+3. **`offline65`** — `catchUp` uses `dt = wall * (perk(g, 'offline65') ? 0.65 : 0.5)` instead of hardcoded `0.5`. Live `step` unchanged. Away report still honest on gross/wages.  
+4. **`doorPlus`** — in buy path and UI max for Door Staff: `max = (BUILDINGS door max) + perk(g, 'doorPlus')` → 6 or 7.  
+5. **`clout25`** — `clout` rate × `(1 + 0.25 * perk(g, 'clout25'))` (rank is 0/1).  
+6. **Purchase action** — `buyPerk(id)`: if rank < max and `g.legacy >= cost` (cost is flat per rank for `cash10`, same 1 Legacy each rank), decrement legacy, increment `g.perks[id]`. No refunds.  
+7. **Shop availability** — Perks panel always visible once `g.prestiges >= 1` **or** `g.legacyTotal > 0` **or** any perk rank > 0. Before first prestige, no Perks UI (Legacy is 0 and unused).
+
+### Implementation touch points (for the future code PR)
+
+| Area | Change |
+|------|--------|
+| `rates()` | cash mult, clout mult |
+| `caps()` | none required for v1 (door is max on building, not caps) |
+| Door buy / card | honor +1 max |
+| `catchUp()` | 0.5 → 0.65 factor |
+| `fresh()` / prestige reset | apply start crew / flyers |
+| `renderVals` / systems | Perks tab or Settings subsection + Franchise modal |
+| Tests | gain formula table, reset field matrix, perk apply, migration 5→6 |
+
+---
+
+## 6. Save format (v5 → v6)
+
+**Bump `SAVE_VER` to 6** only in the implementation PR (not this doc PR).
+
+### New fields on `g` (defaults)
+
+```js
+// meta — prestige
+legacy: 0,        // spendable Legacy
+legacyTotal: 0,   // lifetime earned
+perks: {},        // { [perkId]: rank }
+prestiges: 0      // times confirmed franchise deal
+```
+
+`isValidSavePayload` must **not** require these fields (same pattern as goals/clicks/rounds on v4→v5): migration fills them; import validates before migrate.
+
+### Migration sketch
+
+```js
+// MIGRATIONS[5]: v5 → v6 prestige meta fields
+5(g) {
+  if (typeof g.legacy !== 'number' || !Number.isFinite(g.legacy)) g.legacy = 0;
+  if (typeof g.legacyTotal !== 'number' || !Number.isFinite(g.legacyTotal)) g.legacyTotal = 0;
+  if (!g.perks || typeof g.perks !== 'object') g.perks = {};
+  if (typeof g.prestiges !== 'number' || !Number.isFinite(g.prestiges)) g.prestiges = 0;
+  // Clamp junk ranks from hand-edited saves
+  for (const def of this.PRESTIGE_PERKS) {
+    let r = g.perks[def.id];
+    if (typeof r !== 'number' || r < 0) r = 0;
+    g.perks[def.id] = Math.min(def.max, Math.floor(r));
+  }
+}
+```
+
+- Old saves migrate with **zero** prestige state.  
+- `fresh()` initializes the four fields directly.  
+- `sanitizeG` / numeric wipe lists include `legacy`, `legacyTotal`, `prestiges`; `perks` sanitized as above.
+
+### File + clipboard import
+
+Exported `.json` and clipboard payloads are the same shape (`{ saveVer, ver, build, g }`). On import, **the existing migration chain runs** — a v4/v5 file gains prestige fields when the game is on SAVE_VER 6. No parallel import path for prestige. Call this out in settings hint if needed: "Older saves upgrade on load; franchise progress appears after you prestige in this version."
+
+### Future saveVers
+
+Do not invent v7 in this design. Next shape change gets its own migration step.
+
+---
+
+## 7. Balance hooks (`pacing.mjs`)
+
+When prestige is implemented, extend `pacing.mjs` (dependency-free, same DOM prelude as `economy.test.mjs`) with a **prestige run** scenario:
+
+### Scenario: `prestige-run`
+
+1. **Run 1:** reference bot (same buy/assign/active policy as §C) plays until `regulars >= 25` **and** night is at least 10 (or until wall-time cap if the gate is slow — record both).  
+2. Record wall-time of first **LED** upgrade (`u.led`) as `t1`.  
+3. Perform prestige reset with formula gain; spend **exactly 1 Legacy** on `cash10` rank 1 (leave remaining Legacy unspent).  
+4. **Run 2:** same bot from post-prestige start state.  
+5. Record wall-time of first LED as `t2`.  
+6. **Assert:** `t2 < t1` (run 2 reaches first upgrade faster with +10% cash). Exit non-zero on failure.
+
+### Reporting
+
+Print a second table block:
+
+```text
+Prestige scenario
+  run1 first LED:  …s
+  run2 first LED (+10% cash perk): …s
+  delta: …s (must be < 0 wall for run2 − run1)
+```
+
+### Tuning policy
+
+- If the assert fails after implementation, **prefer perk magnitude / bot gate timing**, not reopening the formula, unless the formula is clearly wrong vs §4 table.  
+- Prestige scenario is a regression guard for "prestige must matter," not a full meta balance suite.  
+- Existing §C milestone bands stay required; prestige scenario is additive.
+
+---
+
+## 8. Non-goals (first implementation)
+
+Explicitly **out of scope** for the first prestige ship:
+
+| Non-goal | Rationale |
+|----------|-----------|
+| Second-location simulation | One club fantasy; no parallel rooms |
+| Multi-club map / travel | No world map UI |
+| Prestige-tier Owner's List goals | List resets; new goal rows later if needed |
+| Leaderboards / cloud ranks | Static site, local saves only |
+| Legacy → cash/Clout conversion | Keeps currencies pure |
+| Perk refunds / respec | Flat purchases; wipe is the hard reset |
+| Auto-prestige | Modal confirm only |
+| Franchise Binder research revival | Was removed pending this design; **do not** reintroduce a research that duplicates Legacy — prestige replaces that orphan concept |
+| Changing SHIFTS / offline cap (8h) / walk-in 0.02 as prestige levers | Unrelated; offline **rate** 50→65 is the only offline knob here |
+
+If a later plan wants multi-club, it supersedes this section deliberately — not by creeping into v1.
+
+---
+
+## 9. UI sketch
+
+### 9.1 Header — Franchise offer
+
+- Placement: header row, near shift label / primary status.  
+- Label: **Franchise offer**.  
+- Visible only when `regulars >= 25`.  
+- Style: existing neon CTA language (pink/cyan accent), not a second art system.
+
+### 9.2 Confirmation modal
+
+**Title:** Franchise offer  
+
+**Body (preview, pre-confirm):**
+
+1. Short fantasy line (one sentence): e.g. "Sign the club over. Keep the know-how as Legacy. Reopen under the banner."  
+2. **You will earn:** `+N Legacy` (from `legacyGain(g)`).  
+3. **You keep:** Legacy bank (after gain), perks, prestige count.  
+4. **You reset:** cash, room stats, buildings, upgrades, research, crew, shift/night, Owner's List.  
+5. Optional detail line: `regulars` and `night` used in the formula (mono, dim).
+
+**Actions:**
+
+- Primary: **Sign the deal** (confirm)  
+- Secondary: **Not yet** (cancel)
+
+No third button. No "don't show again."
+
+### 9.3 Reset report (post-confirm)
+
+Night log line (and optional toast using existing save-state patterns if cheap):
+
+```text
+Signed the franchise deal: +7 Legacy
+```
+
+Use the actual gain, not a hardcoded 7. Color: gold/amber (`#ffc94a`) to match migration/away notices, or franchise pink if that reads better next to existing log colors — implementer picks one existing token, no new palette.
+
+### 9.4 Legacy in the ledger
+
+- After first prestige (or whenever `legacyTotal > 0`), ledger shows a **Legacy** row with the other resources (Cash, Hype, Buzz, Patrons, Regulars, Clout).  
+- Display: whole numbers (`fmt` / floor as appropriate for a currency that only moves in integers).  
+- Rate column: blank or "perk shop" note — Legacy does not tick passively.  
+- Color: distinct from Clout (Clout stays fuchsia `#e879f9`); suggest cool gold or soft white-gold so it reads as meta, not run income.
+
+### 9.5 Perks shop
+
+- Systems column: new sub-tab **Perks** **or** a block under Settings — prefer a **Perks** tab once meta is unlocked so Settings stays save-focused.  
+- Each row: name, effect blurb, cost, rank `cur/max`, buy button.  
+- `cash10` shows rank and "×5 max".  
+- Insufficient Legacy: button disabled with "N Legacy short" (same meta pattern as research).
+
+### 9.6 Owner's List interaction
+
+- After prestige, panel shows goal 1 again (`0 / 14`).  
+- No special "you've prestiged" goal in v1.  
+- Completing goal 14 again is allowed; teaser line still fine as flavor.
+
+### 9.7 Accessibility / input
+
+- Modal traps focus with existing modal patterns if any; otherwise match wipe-confirm UX.  
+- Confirm is click-only for v1 (no keyboard chord required).
+
+---
+
+## Implementation checklist (future code PR)
+
+Use this as the acceptance spine when coding prestige (not part of this doc-only deliverable):
+
+- [ ] `PRESTIGE_PERKS` + `perk()` + `legacyGain()`  
+- [ ] Franchise offer button at `regulars >= 25`  
+- [ ] Modal preview + confirm reset matrix (§3)  
+- [ ] Log line with real gain  
+- [ ] Ledger Legacy row when meta unlocked  
+- [ ] Perks shop + spend  
+- [ ] Apply rules in `rates` / `catchUp` / door max / fresh  
+- [ ] SAVE_VER 6 + `MIGRATIONS[5]` + `fresh()` defaults  
+- [ ] File/clipboard import migrates v5→v6  
+- [ ] `economy.test.mjs`: formula table samples, reset persist/wipe split, migration zeros, cash perk mult, offline 65%  
+- [ ] `pacing.mjs` prestige-run scenario green  
+- [ ] VERSION + build + CHANGELOG together; SAVE_VER 6  
+- [ ] No second location, no prestige goals, no leaderboards  
+
+---
+
+## Doc history
+
+| Date | Note |
+|------|------|
+| 2026-08-04 | Initial lock from PLAN-NEXT §D (AAR-51). Formula table resolves plan "~7" ambiguity via exact `floor(sqrt(reg)+night/7)`. |
