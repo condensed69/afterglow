@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.6.1', build: 164, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.6.1', build: 165, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 5;
   KEY = 'afterglow.save';
 
@@ -64,7 +64,9 @@ class Game {
       'Retuned building/upgrade/research costs, click value, goal rewards, hire price, and rates for active-play pacing.',
       'roundPrice() single source for UI and pacing bot (buyRound when cash > 3× live price).',
       'Catch-up evaluates goals each offline slice so threshold goals (patrons/hype) complete if crossed mid-window then decay.',
-      'pacing.mjs advances 1s of sim between each bot decision (not five decisions then +5s).'
+      'pacing.mjs advances 1s of sim between each bot decision (not five decisions then +5s).',
+      'Owner\'s List rail why matches tip rate (+$0.06/s); Floor Work / regulars copy no longer claims conversion.',
+      'Live step() evaluates goals each sim slice before shift rollover so Peak-hour hero can complete mid-tick.'
     ]},
     { v: '0.6.0', date: '2026-08-04', codename: 'Neon Zero', notes: [
       'Owner\'s List: sequential 14-goal onboarding panel at the top of the systems column.',
@@ -191,7 +193,7 @@ class Game {
   JOBS = [
     { id: 'stage', name: 'Main Stage', desc: '+0.24 Hype/s each' },
     { id: 'vipjob', name: 'VIP Room', desc: '+$1.35/s each' },
-    { id: 'floor', name: 'Floor Work', desc: '+0.035 Buzz/s, +regulars' },
+    { id: 'floor', name: 'Floor Work', desc: '+0.035 Buzz/s' },
     { id: 'off', name: 'Off Shift', desc: 'No wage drain' }
   ];
 
@@ -207,7 +209,7 @@ class Game {
     },
     {
       id: 'rail', title: 'Brass brings tips',
-      why: 'Patrons standing at a rail tip +$0.05/s each. Tips are your first real income.',
+      why: 'Patrons standing at a rail tip +$0.06/s each. Tips are your first real income.',
       hint: 'Club tab → Tip Rail. Click "Work the room" to afford it.',
       reward: { cash: 12, clout: 0 },
       check: g => (g.b && g.b.rail || 0) >= 1,
@@ -264,7 +266,7 @@ class Game {
     {
       id: 'regulars', title: 'They keep coming back',
       why: 'Regulars mint Clout. Three faces the door knows is the start of a reputation.',
-      hint: 'Floor Work converts patrons into regulars. Assign someone when the room is busy.',
+      hint: 'Regulars convert slowly from busy floors. VIP Booths raise the rate; keep patrons high.',
       reward: { cash: 0, clout: 2 },
       check: g => (g.regulars || 0) >= 3,
       progress: g => ({ cur: Math.min(g.regulars || 0, 3), max: 3 })
@@ -306,7 +308,7 @@ class Game {
     {
       id: 'name', title: 'A name in this town',
       why: 'Word is a franchise man has been asking about you.',
-      hint: 'Grow Regulars to 25. Floor Work, VIP, and long nights compound.',
+      hint: 'Grow Regulars to 25. VIP Booths and long busy nights compound conversion.',
       reward: { cash: 0, clout: 5 },
       check: g => (g.regulars || 0) >= 25,
       progress: g => ({ cur: Math.min(g.regulars || 0, 25), max: 25 })
@@ -895,6 +897,9 @@ class Game {
       g.elapsed += chunk;
       g.shiftT += chunk;
       remaining -= chunk;
+      // Per-slice goals before shift rollover: a live tick (dt ≤ 2) can finish Peak
+      // Hours mid-loop; post-loop noteGoals would see the next shift and miss peak.
+      this.noteGoals(g, { live: true });
       if (g.shiftT >= r.shift.len) {
         g.shiftT = 0;
         g.shiftIdx = (g.shiftIdx + 1) % 4;
@@ -908,7 +913,6 @@ class Game {
         }
       }
     }
-    this.noteGoals(g, { live: true });
     g.ts = Date.now();
     this.setState(s => ({ tick: s.tick + 1 }));
   }
