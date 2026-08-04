@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.6.1', build: 162, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.6.1', build: 163, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 5;
   KEY = 'afterglow.save';
 
@@ -61,7 +61,8 @@ class Game {
     { v: '0.6.1', date: '2026-08-04', codename: 'Neon Zero', notes: [
       'Balance pass — pacing targets in PLAN-NEXT §C; numbers only, no mechanic changes.',
       'Reference bot simulator pacing.mjs: milestone bands for rail, crew, patrons, LED, research, all upgrades.',
-      'Retuned building/upgrade/research costs, click value, goal rewards, hire price, and rates for active-play pacing.'
+      'Retuned building/upgrade/research costs, click value, goal rewards, hire price, and rates for active-play pacing.',
+      'roundPrice() single source for UI and pacing bot (buyRound when cash > 3× live price).'
     ]},
     { v: '0.6.0', date: '2026-08-04', codename: 'Neon Zero', notes: [
       'Owner\'s List: sequential 14-goal onboarding panel at the top of the systems column.',
@@ -142,11 +143,11 @@ class Game {
   BUILDINGS = [
     // Costs/growth retuned for PLAN-NEXT §C pacing bands (numbers only).
     { id: 'rail', name: 'Tip Rail', cost: 140, growth: 1.16, desc: 'Brass rail along the stage. Up to 6 patrons per rail tip +$0.06/s.' },
-    { id: 'bar', name: 'Back Bar', cost: 150, growth: 1.18, desc: 'Drinks pay the rent. +$0.42/s and +5 floor capacity.' },
+    { id: 'bar', name: 'Back Bar', cost: 150, growth: 1.18, desc: 'Drinks pay the rent. +$0.45/s and +5 floor capacity.' },
     { id: 'dj', name: 'DJ Booth', cost: 180, growth: 1.17, desc: 'Keeps the room moving. +0.10 Hype/s.' },
     { id: 'marquee', name: 'Marquee Sign', cost: 380, growth: 1.22, desc: '+0.07 Buzz/s and +35 Buzz capacity.' },
     { id: 'flyers', name: 'Flyer Crew', cost: 210, growth: 1.16, desc: 'Windshields all over downtown. +0.025 Buzz/s.' },
-    { id: 'vip', name: 'VIP Booth', cost: 600, growth: 1.24, desc: 'Private bookings. +$1.2/s and +18% regular conversion.' },
+    { id: 'vip', name: 'VIP Booth', cost: 600, growth: 1.24, desc: 'Private bookings. +$1.25/s and +18% regular conversion.' },
     { id: 'door', name: 'Door Staff', cost: 300, growth: 1.20, max: 6, desc: 'Fewer incidents. Cuts Hype decay by 12% each. (max 6)' },
     { id: 'dress', name: 'Dressing Room', cost: 500, growth: 1.28, desc: '+2 crew capacity.' }
   ];
@@ -906,6 +907,11 @@ class Game {
     this.forceUpdate();
   }
 
+  // Round price — single source for UI and pacing.mjs reference bot (PLAN-NEXT §C).
+  roundPrice(g) {
+    return Math.floor(50 + (g.patrons || 0) * 7);
+  }
+
   // --- render values ---
   bar(pct, color) {
     return { width: Math.max(0, Math.min(100, pct)) + '%', height: '100%', background: color, borderRadius: '3px', transition: 'width .18s linear' };
@@ -1064,7 +1070,7 @@ class Game {
 
     // Click / round numbers retuned for PLAN-NEXT §C pacing (active-play early curve).
     const clickVal = 1.15 + g.b.rail * 0.65 + g.hype * 0.07;
-    const roundPrice = Math.floor(50 + g.patrons * 7);
+    const roundPrice = this.roundPrice(g);
     const hypeRoom = Math.max(0, cap.hype - g.hype);
     const roundGain = Math.min(14, hypeRoom);
     const roundOk = g.cash >= roundPrice && roundGain > 0;

@@ -256,12 +256,10 @@ function workCrowdOnce(game) {
 function buyRoundIfWanted(game) {
   const g = game.state.g;
   if (g.shiftIdx !== 0) return;
-  const roundPrice = Math.floor(40 + g.patrons * 6);
-  if (g.cash > 3 * roundPrice) {
-    const before = g.rounds || 0;
+  // Live game price via Game.roundPrice (same expression as renderVals / buyRound).
+  const price = game.roundPrice(g);
+  if (g.cash > 3 * price) {
     game.renderVals().buyRound();
-    // buyRound may no-op if hype is capped
-    void before;
   }
 }
 
@@ -276,9 +274,10 @@ function botSecond(game) {
   tryHire(game);
   tryBuyBuilding(game, 'dj', 2);
 
-  // Enable further upgrades / late economy (dress for crew 3, VIP, etc.)
+  // Beyond the literal priority list: buy buildings required by the cheapest
+  // unbought upgrade, and dress so crew target can reach min(cap, 3). Without
+  // these, "all upgrades" / crew-3 are unreachable under the locked bot policy.
   tryBuyUpgradeReqs(game);
-  // Dressing room so hire target can reach 3 when cash allows
   if (game.caps(g).crew < 3) tryBuyBuilding(game, 'dress', 1);
   tryHire(game);
 
