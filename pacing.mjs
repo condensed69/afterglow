@@ -95,7 +95,7 @@ const MILESTONES = [
     targetLabel: '12–18 min ±30%',
     lo: 12 * 60 * 0.7,
     hi: 18 * 60 * 1.3,
-    check: (g) => !!g.u.led || Object.values(g.u || {}).some(Boolean),
+    check: (g) => !!g.u.led,
   },
   {
     id: 'research',

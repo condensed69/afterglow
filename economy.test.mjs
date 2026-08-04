@@ -1844,6 +1844,43 @@ test('successful import clears tabStale and restarts autosave', () => {
   }
 });
 
+// AAR-71 / PR #14 Codex P2: unknown b/u/r/jobs keys must not survive import
+// (Structures used Object.values(g.b) and could concatenate string XSS bait).
+test('crafted unknown g.b key is stripped; Structures stays numeric', () => {
+  const game = newGame(10);
+  const evil = '<img src=x onerror="window.__xssBuild=1">';
+  const payload = {
+    saveVer: game.SAVE_VER,
+    ver: game.VERSION.num,
+    build: game.VERSION.build,
+    g: {
+      cash: 50, hype: 1, buzz: 0, patrons: 0, regulars: 0, clout: 0, crew: 0,
+      jobs: { stage: 0, vipjob: 0, floor: 0, off: 0, evilJob: evil },
+      b: { rail: 2, bar: 1, evil },
+      u: { led: false, evilUp: true },
+      r: { loop: false, evilRes: true },
+      elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: Date.now(),
+      goals: [], clicks: 0, rounds: 0
+    }
+  };
+  strictEqual(game.importSaveFromText(JSON.stringify(payload)), true);
+  const g = game.state.g;
+  strictEqual(g.b.evil, undefined, 'unknown building key stripped');
+  strictEqual(Object.prototype.hasOwnProperty.call(g.b, 'evil'), false, 'evil not own prop of g.b');
+  strictEqual(g.b.rail, 2, 'known building preserved');
+  strictEqual(g.b.bar, 1, 'known building preserved');
+  strictEqual(g.u.evilUp, undefined, 'unknown upgrade key stripped');
+  strictEqual(g.r.evilRes, undefined, 'unknown research key stripped');
+  strictEqual(g.jobs.evilJob, undefined, 'unknown jobs key stripped');
+  // Structures must be a plain number string — no HTML payload.
+  const structures = game.renderVals().stats.find(s => s.k === 'Structures');
+  ok(structures, 'Structures stat present');
+  ok(/^\d+$/.test(structures.v), `Structures is numeric digits only: ${structures.v}`);
+  ok(!structures.v.includes('<'), 'Structures has no raw angle bracket');
+  ok(!structures.v.includes('onerror'), 'Structures has no onerror bait');
+  strictEqual(structures.v, '3', 'Structures counts known buildings only (2+1)');
+});
+
 // AAR-67 / PR #14 Codex P2: setItem throw must not claim import success or ownership
 test('import setItem throw fails closed without claiming ownership', () => {
   const game = newGame(25);

@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.6.1', build: 166, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.6.1', build: 167, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 5;
   KEY = 'afterglow.save';
 
@@ -67,7 +67,9 @@ class Game {
       'pacing.mjs advances 1s of sim between each bot decision (not five decisions then +5s).',
       'Owner\'s List rail why matches tip rate (+$0.06/s); Floor Work / regulars copy no longer claims conversion.',
       'Live step() evaluates goals each sim slice before shift rollover so Peak-hour hero can complete mid-tick.',
-      'Import persists before replacing the live club: setItem failure surfaces import failed, leaves the prior club, and does not clear tabStale or restart autosave.'
+      'Import persists before replacing the live club: setItem failure surfaces import failed, leaves the prior club, and does not clear tabStale or restart autosave.',
+      'Import rebuilds buildings/upgrades/research/jobs from known catalog IDs only — unknown keys cannot reach Structures or other Object.values paths.',
+      'pacing.mjs First upgrade (LED) milestone requires g.u.led specifically (not any upgrade).'
     ]},
     { v: '0.6.0', date: '2026-08-04', codename: 'Neon Zero', notes: [
       'Owner\'s List: sequential 14-goal onboarding panel at the top of the systems column.',
@@ -492,25 +494,34 @@ class Game {
     if (g.shiftT < 0 || g.shiftT >= this.SHIFTS[g.shiftIdx].len) return false;
     if (g.elapsed < 0 || g.night < 1) return false;
 
+    // Rebuild from known IDs only — unknown keys (e.g. string-valued XSS bait under
+    // g.b) must not survive into Object.values(g.b) / Structures or other paths.
     for (const [key, defs, fallback] of [
       ['b', this.BUILDINGS, 0], ['u', this.UPGRADES, false], ['r', this.RESEARCH, false]
     ]) {
       if (g[key] === undefined) g[key] = {};
       if (!g[key] || typeof g[key] !== 'object' || Array.isArray(g[key])) return false;
+      const next = Object.create(null);
       for (const def of defs) {
-        if (g[key][def.id] === undefined) g[key][def.id] = fallback;
-        const value = g[key][def.id];
+        let value = g[key][def.id];
+        if (value === undefined) value = fallback;
         if (key === 'b') {
           if (!Number.isInteger(value) || value < 0) return false;
         } else if (typeof value !== 'boolean') return false;
+        next[def.id] = value;
       }
+      g[key] = next;
     }
 
     if (!g.jobs || typeof g.jobs !== 'object' || Array.isArray(g.jobs)) return false;
+    const jobsNext = Object.create(null);
     for (const k of ['stage', 'vipjob', 'floor', 'off']) {
-      if (g.jobs[k] === undefined) g.jobs[k] = 0;
-      if (!Number.isFinite(g.jobs[k]) || g.jobs[k] < 0) return false;
+      let value = g.jobs[k];
+      if (value === undefined) value = 0;
+      if (!Number.isFinite(value) || value < 0) return false;
+      jobsNext[k] = value;
     }
+    g.jobs = jobsNext;
     if (!Array.isArray(g.log)) g.log = [];
     // Keep raw validated t/msg (length-capped) so export→import is idempotent.
     // Escape only at the render() innerHTML boundary; restrict color to hex.
@@ -1146,7 +1157,8 @@ class Game {
     const stats = [
       { k: 'Crew', v: g.crew + ' / ' + cap.crew },
       { k: 'On stage', v: String(g.jobs.stage) },
-      { k: 'Structures', v: String(Object.values(g.b).reduce((a, b) => a + b, 0)) },
+      // Sum only known building IDs (defense in depth vs unknown keys).
+      { k: 'Structures', v: String(this.BUILDINGS.reduce((a, d) => a + (g.b[d.id] || 0), 0)) },
       { k: 'Night time', v: Math.floor(g.elapsed / 60) + 'm ' + Math.floor(g.elapsed % 60) + 's' }
     ];
 
