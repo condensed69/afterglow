@@ -175,8 +175,8 @@ clout    = regulars × 0.0011
 Live timer (`init` interval 100 ms):
 
 - `dt < 0.05` → skip (do not advance `ts`)  
-- `dt > 2` → `catchUp` at 50% (same path as load offline), then `noteGoals({ live: false })`  
-- else → `step(dt)` full rate, `noteGoals({ live: true })`
+- `dt > 2` → `catchUp` at 50% (same path as load offline; per-slice `noteGoals({ live: false })` inside), then a post-`catchUp` `noteGoals({ live: false })`  
+- else → `step(dt)` full rate — **per-slice** `noteGoals({ live: true })` **before** shift rollover inside the sim loop (not only after the whole `step`)
 
 Load-time offline uses the same `catchUp` + away log when offline > 60 s.
 
@@ -269,7 +269,10 @@ Persisted: `g.goals[]` (completed ids), `g.clicks`, `g.rounds`. Not required by 
 
 - `activeGoal(g)` → first incomplete, or `null` (resting copy: “Club runs itself”, 14/14).  
 - `noteGoals(g, { live })` evaluates **only** the active goal; on complete: pay reward once, push id, log `Owner's list: <title> — <reward>`.  
-- Call sites: end of live `step` (`live: true`); **each offline slice inside `catchUp`** and after load/`catchUp` large gaps (`live: false`); after actions (`buyBuilding`, `buyUpgrade`, `buyResearch`, `hireCrew`, `moveJob`, `workCrowd`, `buyRound`).  
+- Call sites:
+  - **Live `step`:** after each sim slice **before** shift rollover (`live: true`). A tick that starts in Peak Hours and ends in Last Call can still complete **peak** mid-loop; post-loop-only evaluation would miss it.
+  - **Offline `catchUp`:** each offline slice (`live: false`); also once after load / large-gap `catchUp` (`live: false`).
+  - **Actions:** after `buyBuilding`, `buyUpgrade`, `buyResearch`, `hireCrew`, `moveJob`, `workCrowd`, `buyRound` (default `live: true`).
 - Goal **`peak`**: completes only when `live !== false` — never offline.
 
 ### 7.3 Arc (post-C rewards)
@@ -361,13 +364,18 @@ Files and clipboard are interchangeable by design.
 
 ### 9.3 Import pipeline (`importSaveFromText`)
 
+Safety-critical order is **log → persist → replace** (not replace-first). A quota/storage failure must not leave the player on an imported club that never hit disk.
+
 1. `JSON.parse`  
 2. `isValidSavePayload` (saveVer finite; cash/hype/buzz/patrons/regulars/clout/crew numbers; jobs object)  
 3. If `saveVer !== SAVE_VER`: `migrateFrom` chain; missing step → fail  
 4. `completeImportedG` (fill defaults, reject unsafe values)  
-5. Stamp `ts = now`, replace `state.g`, persist, log restore  
+5. Stamp `ts = now` on the **candidate** `g` (not yet live)  
+6. Push restore log line onto the candidate (`push(g, 'Save restored.', …)`) so disk and memory share the same night-log entry  
+7. `localStorage.setItem` with the candidate payload — **must succeed**  
+8. Only then: replace `state.g`, clear `_onStrike`, clear `tabStale`, restart autosave if stopped, `saveState: 'imported'`  
 
-Corrupt / future / incomplete → `saveState: 'import failed'`, live club unchanged.
+If `setItem` throws (or any earlier step fails) → `saveState: 'import failed'`, live club / tabStale / autosave ownership **unchanged**.
 
 ### 9.4 Migration chain
 
