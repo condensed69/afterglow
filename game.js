@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.7.0', build: 175, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.7.0', build: 176, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 5;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -84,7 +84,8 @@ class Game {
     { v: '0.7.0', date: '2026-08-04', codename: 'Neon Zero', notes: [
       'Removed the CSS/DOM dancer and pole — the stage is now lighting, haze, crowd silhouettes and the stage lip.',
       'Dropped dancerHTML(), perfStyle, the #performer-stage preservation path, and the stageH ResizeObserver that existed only to fit the figure.',
-      'style.css: .performer / .pole rules and the dn* dance keyframes deleted.'
+      'style.css: .performer / .pole rules and the dn* dance keyframes deleted.',
+      'Look Motion help: Easy stills the stage (not a dancer); neon-sign hide threshold documented as 300px to match CSS.'
     ]},
     { v: '0.6.6', date: '2026-08-04', codename: 'Neon Zero', notes: [
       'Reverted the 660px stage cap — it left dead gutters on desktop; the stage is fluid again with the side columns capped.',
@@ -105,7 +106,7 @@ class Game {
     ]},
     { v: '0.6.2', date: '2026-08-04', codename: 'Neon Zero', notes: [
       'Stage sign no longer overlaps the Main Stage caption on narrow center columns.',
-      'Stage panel is a CSS size container; the girls-girls-girls sign drops below the caption under 660px and hides under 420px.'
+      'Stage panel is a CSS size container; the girls-girls-girls sign drops below the caption under 660px and hides under 300px.'
     ]},
     { v: '0.6.1', date: '2026-08-04', codename: 'Neon Zero', notes: [
       'Balance pass — pacing targets in PLAN-NEXT §C; numbers only, no mechanic changes.',
@@ -1743,7 +1744,7 @@ class Game {
         '</div>' +
         '<div>' + label('Motion', this.MOTIONS[l.motion]) +
           '<div style="display:flex;gap:6px">' + seg('motion', this.MOTIONS) + '</div>' +
-          '<div style="font-size:10px;color:#9c86ab;line-height:1.45;margin-top:5px">Easy stills the room but keeps the dancer. Still freezes everything.</div>' +
+          '<div style="font-size:10px;color:#9c86ab;line-height:1.45;margin-top:5px">Easy stills the stage but keeps the UI badges. Still freezes everything.</div>' +
         '</div>' +
         '<button data-lk="reset:1" style="background:#170e22;border:1px solid #311d44;border-radius:6px;color:#9c86ab;padding:8px;cursor:pointer;font-size:10.5px;font-family:inherit;font-weight:700">Reset look</button>' +
       '</div>';

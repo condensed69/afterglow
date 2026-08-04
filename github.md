@@ -24,7 +24,7 @@ path: (repo root — index.html + style.css + game.js)
 - Numbers are always monospace. Labels are uppercase, 9-11px, 2.5-3.5px letter-spacing.
 - Environmental art is CSS/DOM (marquee bulbs, sweeping spotlight cones, crowd silhouettes,
   stage lip, haze).
-- Layout: three columns — ledger (262px) / stage + log (fluid) / systems tabs (352px),
+- Layout: three columns — ledger (minmax 232–268px) / stage + log (fluid) / systems (minmax 320–392px),
   with a header bar and a footer version stamp.
 
 ## Working rules (operator, 2026-08-04 — binding)
