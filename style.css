@@ -44,8 +44,6 @@ a:hover { color: #67e8f9; }
    motion intensity reads --bpm (driven from Hype in game.js) so the dancer
    crowds faster as the room heats up. */
 .performer { position: absolute; left: 50%; bottom: 0; width: 210px; height: 238px; transform: translateX(-50%); filter: drop-shadow(0 0 14px rgba(255,45,120,.35)); }
-.performer.idle, .performer.idle * { animation-play-state: paused; }
-.performer.idle { opacity: .55; }
 /* Bare pole while Main Stage has no assigned crew */
 .performer.empty { opacity: .72; filter: drop-shadow(0 0 10px rgba(34,211,238,.28)); }
 .performer.crowd { filter: drop-shadow(0 0 22px rgba(255,45,120,.55)); }
