@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.6.0', build: 171, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.6.0', build: 172, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 5;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -100,9 +100,13 @@ class Game {
       'Autosave starts only after this tab owns the save; non-claiming second tabs no-op save(auto) so they cannot steal a live sibling after 10s.',
       'Age-only claim (offline >15s) requires a live cross-tab lease check — disk age alone cannot steal from a throttled owner tab.',
       'Age-only claim writes PROBE_KEY then waits for a live owner to refresh LEASE_KEY before claiming (no immediate re-read race).',
-      'Non-owner tabs are read-only: sim and controls pause with a banner until reload/import/manual save takes over.',
-      'Successful import acquires ownership and starts autosave (same as manual save).',
+      'Non-owner tabs are read-only: sim and controls pause with a banner until reload or import takes over.',
+      'Save now / save(manual) is a no-op while tabStale or non-owner — never writes stale state.g or steals ownership from a live sibling.',
+      'Successful import acquires ownership and starts autosave (explicit restore path).',
       'Import persists before replacing the live club: setItem failure surfaces import failed, leaves the prior club, and does not clear tabStale or restart autosave.',
+      'Night-log import keeps raw validated text and hex-only colors; HTML escape happens only at render so export→import round-trips stay idempotent.',
+      'Import strips unknown keys under buildings/upgrades/research/jobs so crafted extras cannot reach Structures unescaped.',
+      'Settings: Download save (.json) + Load save from file… (shared importSaveFromText path with clipboard).',
       'pageshow clears RELOAD_KEY so BFCache restore does not leave a stealable reload marker for tab-duplicate.',
       'Live step evaluates Owner\'s List goals each shift slice (before rollover) so Peak-hour hero is not missed at the Peak→Last Call boundary.',
       'v4→v5 clicks backfill uses structures/crew only (not passive patrons/regulars) so walk-in saves keep goal 1.',
@@ -429,6 +433,24 @@ class Game {
     this.render();
   }
 
+  // Escape text before interpolating into root.innerHTML (night log, etc.).
+  escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  // Hex colors only for inline log style — blocks css/js injection via color.
+  safeLogColor(c) {
+    if (typeof c !== 'string') return '#b9a5c9';
+    const s = c.trim();
+    if (/^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?([0-9a-fA-F]{2})?$/.test(s)) return s;
+    return '#b9a5c9';
+  }
+
   // Jobs/crew fixups shared by load, migrations, and clipboard import (PLAN §2.1 / §2.2).
   sanitizeG(g) {
     if (!g || typeof g !== 'object') return g;
@@ -498,28 +520,43 @@ class Game {
     if (g.shiftT < 0 || g.shiftT >= this.SHIFTS[g.shiftIdx].len) return false;
     if (g.elapsed < 0 || g.night < 1) return false;
 
+    // Rebuild from known IDs only — unknown keys (e.g. string-valued XSS bait under
+    // g.b) must not survive into Object.values(g.b) / Structures or other paths.
     for (const [key, defs, fallback] of [
       ['b', this.BUILDINGS, 0], ['u', this.UPGRADES, false], ['r', this.RESEARCH, false]
     ]) {
       if (g[key] === undefined) g[key] = {};
       if (!g[key] || typeof g[key] !== 'object' || Array.isArray(g[key])) return false;
+      const next = Object.create(null);
       for (const def of defs) {
-        if (g[key][def.id] === undefined) g[key][def.id] = fallback;
-        const value = g[key][def.id];
+        let value = g[key][def.id];
+        if (value === undefined) value = fallback;
         if (key === 'b') {
           if (!Number.isInteger(value) || value < 0) return false;
         } else if (typeof value !== 'boolean') return false;
+        next[def.id] = value;
       }
+      g[key] = next;
     }
 
     if (!g.jobs || typeof g.jobs !== 'object' || Array.isArray(g.jobs)) return false;
+    const jobsNext = Object.create(null);
     for (const k of ['stage', 'vipjob', 'floor', 'off']) {
-      if (g.jobs[k] === undefined) g.jobs[k] = 0;
-      if (!Number.isFinite(g.jobs[k]) || g.jobs[k] < 0) return false;
+      let value = g.jobs[k];
+      if (value === undefined) value = 0;
+      if (!Number.isFinite(value) || value < 0) return false;
+      jobsNext[k] = value;
     }
+    g.jobs = jobsNext;
     if (!Array.isArray(g.log)) g.log = [];
+    // Keep raw validated t/msg (length-capped) so export→import is idempotent.
+    // Escape only at the render() innerHTML boundary; restrict color to hex.
     g.log = g.log.filter(x => x && typeof x === 'object' &&
-      typeof x.t === 'string' && typeof x.msg === 'string').slice(0, 40);
+      typeof x.t === 'string' && typeof x.msg === 'string').slice(0, 40).map(x => ({
+      t: x.t.slice(0, 32),
+      msg: x.msg.slice(0, 500),
+      color: this.safeLogColor(x.color)
+    }));
 
     // Owner's List fields (SAVE_VER 5). Not in isValidSavePayload (v4 lacks them).
     const knownGoalIds = new Set(this.GOALS.map(x => x.id));
@@ -578,8 +615,9 @@ class Game {
       }
       // Stamp now so the next tick does not treat export age as offline progress.
       g.ts = Date.now();
+      // Source-neutral: file and clipboard both use this path (PLAN-NEXT §A).
       // Log on the candidate g before write so disk and memory share the restore line.
-      this.push(g, 'Save restored from clipboard.', '#22d3ee');
+      this.push(g, 'Save restored.', '#22d3ee');
       try {
         localStorage.setItem(this.KEY, JSON.stringify({
           saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
@@ -596,7 +634,7 @@ class Game {
       }
       this._onStrike = false;
       this.state.g = g;
-      // Successful persist is an explicit ownership take (like save('manual')):
+      // Successful persist is an explicit ownership take (import path):
       // a non-claiming second tab must start autosave and mark owner so later
       // progress is not lost after pausing siblings via the storage event.
       this.state.tabStale = false;
@@ -685,7 +723,7 @@ class Game {
     // setItem (avoids stealing). Still apply the preserved gap via catchUp in
     // memory and advance g.ts so the live timer cannot full-rate step pre-load
     // time or award live-only Peak for it. Disk stays untouched until this tab
-    // explicitly acquires ownership (claim path, manual save, or import).
+    // explicitly acquires ownership (claim path, reload takeover, or import).
     const CLAIM_OFFLINE_SEC = 15;
     let wasOwner = false;
     try {
@@ -791,7 +829,7 @@ class Game {
     // Autosave only for the owning tab. A non-claiming second/duplicated tab
     // must not start the 10s timer — the first auto write would setItem a stale
     // snapshot, fire storage → onForeignSave on the live sibling, and pause it.
-    // Non-owners are also read-only (tabStale) until takeover/import/manual save.
+    // Non-owners are also read-only (tabStale) until reload takeover or import.
     if (ageClaimDeferred) {
       this.state.tabStale = true;
       this.state.saveState = 'checking ownership…';
@@ -965,7 +1003,7 @@ class Game {
   push(g, msg, color) {
     const d = new Date();
     const t = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
-    g.log.unshift({ t, msg, color: color || '#b9a5c9' });
+    g.log.unshift({ t, msg, color: this.safeLogColor(color || '#b9a5c9') });
     if (g.log.length > 40) g.log.pop();
   }
 
@@ -1179,11 +1217,11 @@ class Game {
   save(kind) {
     const g = this.state.g;
     if (!g) return;
-    // After a foreign-tab write, never autosave over their data (manual save still allowed).
-    if (kind === 'auto' && this.state.tabStale) return;
-    // Non-owners must not autosave: a second/duplicated tab's first auto write
-    // would steal the live sibling via storage → onForeignSave.
-    if (kind === 'auto' && !this.isTabOwner()) return;
+    // Non-owner / foreign-tab pause: never write (auto or manual). Settings
+    // "Save now" must not persist a paused tab's stale state.g, call
+    // markTabOwner(), clear tabStale, and discard a live sibling's progress.
+    // Takeover is reload (takeOverTab) or successful import only.
+    if (this.state.tabStale || !this.isTabOwner()) return;
     try {
       if (this._probeTimer) {
         clearTimeout(this._probeTimer);
@@ -1191,7 +1229,6 @@ class Game {
       }
       localStorage.setItem(this.KEY, JSON.stringify({ saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g }));
       this.markTabOwner();
-      // Manual/explicit write from a non-owner acquires ownership and unpauses.
       this.state.tabStale = false;
       this.startAutosave();
       this.setState({ tabStale: false, saveState: kind === 'auto' ? 'autosaved' : 'saved ✓' });
@@ -1292,6 +1329,42 @@ class Game {
       toggleChangelog: () => this.setState(s => ({ showChangelog: !s.showChangelog })),
       toggleSettings: () => this.setState(s => ({ showSettings: !s.showSettings, resetArmed: false })),
       saveNow: () => this.save('manual'),
+      // File + clipboard share one payload shape so either restore path accepts either export.
+      downloadSave: () => {
+        try {
+          const json = JSON.stringify({ saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g: this.state.g });
+          const blob = new Blob([json], { type: 'application/json' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'afterglow-save.json';
+          a.click();
+          URL.revokeObjectURL(a.href);
+          this.setState({ saveState: 'downloaded' });
+        } catch (e) {
+          this.setState({ saveState: 'download failed' });
+        }
+      },
+      importSaveFile: () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json,application/json';
+        input.onchange = () => {
+          const file = input.files && input.files[0];
+          if (!file) {
+            this.setState({ saveState: 'import failed' });
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = () => {
+            this.importSaveFromText(String(reader.result || '').trim());
+          };
+          reader.onerror = () => {
+            this.setState({ saveState: 'import failed' });
+          };
+          reader.readAsText(file);
+        };
+        input.click();
+      },
       exportSave: async () => { try { await navigator.clipboard.writeText(JSON.stringify({ saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g: this.state.g })); this.setState({ saveState: 'copied' }); } catch (e) { this.setState({ saveState: 'clipboard failed' }); } },
       importSave: async () => {
         let text = '';
@@ -1434,7 +1507,12 @@ class Game {
     return {
       ...base,
       resources, stats, tabs, cards, tabHint, jobs, crewOpen: this.state.tab === 'crew' && g.crew > 0,
-      log: g.log.map(l => ({ t: l.t, msg: l.msg, style: { color: l.color } })),
+      // Escape t/msg at the HTML boundary only (g.log stays raw for save round-trips).
+      log: g.log.map(l => ({
+        t: this.escapeHtml(l.t),
+        msg: this.escapeHtml(l.msg),
+        style: { color: this.safeLogColor(l.color) }
+      })),
       shiftName: r.shift.name, nightNo: g.night, shiftMultLabel: 'x' + r.sm.toFixed(2),
       shiftBar: this.bar(g.shiftT / r.shift.len * 100, r.shift.tint),
       perfStyle: {
@@ -1659,10 +1737,12 @@ class Game {
           </div>
           <div style="padding:16px 18px;display:flex;flex-direction:column;gap:10px">
             <button data-h="${this.bind(v.saveNow)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Save now</button>
+            <button data-h="${this.bind(v.downloadSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Download save (.json)</button>
+            <button data-h="${this.bind(v.importSaveFile)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Load save from file…</button>
             <button data-h="${this.bind(v.exportSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Copy save to clipboard</button>
             <button data-h="${this.bind(v.importSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Restore save from clipboard</button>
             <button data-h="${this.bind(v.hardReset)}" style="${css(v.resetStyle)}">${v.resetLabel}</button>
-            <div style="font-size:10.5px;color:#5c4470;line-height:1.5;font-family:'IBM Plex Mono',monospace">${v.resetHint} ${v.verFull} · save format v${v.saveVer}</div>
+            <div style="font-size:10.5px;color:#5c4470;line-height:1.5;font-family:'IBM Plex Mono',monospace">${v.resetHint} Files and clipboard saves are the same format — either restores either way. ${v.verFull} · save format v${v.saveVer}</div>
           </div>
         </div>
       </div>` : '';

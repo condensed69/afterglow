@@ -56,8 +56,33 @@ globalThis.document = {
     }
     return root;
   },
-  createElement: () => ({ ...root }),
+  createElement: () => ({ ...root, click: () => {}, files: null }),
   createTextNode: () => ({}),
+};
+// Blob / object-URL / FileReader shims for PLAN-NEXT §A download + load-file paths.
+// Keep the real URL constructor (Node uses it for import.meta.url); only add blob helpers.
+globalThis.Blob = class Blob {
+  constructor(parts, opts) {
+    this.parts = parts;
+    this.type = (opts && opts.type) || '';
+  }
+};
+globalThis.URL.createObjectURL = () => 'blob:test';
+globalThis.URL.revokeObjectURL = () => {};
+globalThis.FileReader = class FileReader {
+  constructor() {
+    this.result = null;
+    this.onload = null;
+    this.onerror = null;
+  }
+  readAsText(file) {
+    try {
+      this.result = file && file._text != null ? file._text : '';
+      if (typeof this.onload === 'function') this.onload();
+    } catch (e) {
+      if (typeof this.onerror === 'function') this.onerror(e);
+    }
+  }
 };
 globalThis.localStorage = {
   _data: Object.create(null),
@@ -1095,17 +1120,17 @@ test('onForeignSave stops autosave interval and marks tab stale', () => {
   strictEqual(game.state.tabStale, true);
 });
 
-test('autosave is a no-op while tabStale; manual save still writes', () => {
+test('autosave and manual save are no-ops while tabStale', () => {
   const game = newGame(10);
+  game.markTabOwner(); // even a former owner must not write while tabStale
   game.state.g.cash = 123;
   game.state.tabStale = true;
   localStorage.removeItem(game.KEY);
   game.save('auto');
   strictEqual(localStorage.getItem(game.KEY), null, 'autosave must not clobber foreign save');
   game.save('manual');
-  const raw = localStorage.getItem(game.KEY);
-  ok(raw, 'manual save still allowed (last-explicit-wins)');
-  strictEqual(JSON.parse(raw).g.cash, 123);
+  strictEqual(localStorage.getItem(game.KEY), null, 'manual save must not clobber while tabStale');
+  strictEqual(game.state.tabStale, true, 'manual save must not clear tabStale');
 });
 
 // ── Integer patrons display (PLAN §2.4) ───────────────────────────────────────
@@ -1120,6 +1145,273 @@ test('Patrons ledger shows floor(g.patrons); sim value stays fractional', () => 
   // fmt(Math.floor(3.87)) → fmt(3) → "3.00" for values < 10
   strictEqual(row.val, game.fmt(3), `ledger must show floored patrons, got ${row.val}`);
   strictEqual(game.state.g.patrons, 3.87, 'simulation patrons must remain fractional');
+});
+
+// ── File save I/O (PLAN-NEXT §A, folded into B / AAR-78) ───────────────────────
+console.log('\nFile save I/O (PLAN-NEXT §A)');
+
+test('export payload round-trips through importSaveFromText into identical g', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g.cash = 555;
+  g.hype = 18;
+  g.buzz = 7;
+  g.patrons = 4.25;
+  g.regulars = 2.5;
+  g.clout = 3;
+  g.crew = 2;
+  g.jobs = { stage: 1, vipjob: 0, floor: 0, off: 1 };
+  g.b.rail = 2;
+  g.b.bar = 1;
+  g.goals = ['work'];
+  g.clicks = 5;
+  g.rounds = 0;
+  const payload = {
+    saveVer: game.SAVE_VER,
+    ver: game.VERSION.num,
+    build: game.VERSION.build,
+    g: JSON.parse(JSON.stringify(g))
+  };
+  const exported = JSON.stringify(payload);
+  game.state.g = game.fresh();
+  game.state.g.cash = 1;
+  const okImport = game.importSaveFromText(exported);
+  strictEqual(okImport, true);
+  strictEqual(game.state.saveState, 'imported');
+  strictEqual(game.state.g.cash, 555);
+  strictEqual(game.state.g.hype, 18);
+  strictEqual(game.state.g.buzz, 7);
+  strictEqual(game.state.g.patrons, 4.25);
+  strictEqual(game.state.g.regulars, 2.5);
+  strictEqual(game.state.g.clout, 3);
+  strictEqual(game.state.g.crew, 2);
+  strictEqual(game.state.g.b.rail, 2);
+  strictEqual(game.state.g.b.bar, 1);
+  strictEqual(game.state.g.jobs.stage, 1);
+  strictEqual(game.state.g.jobs.off, 1);
+});
+
+test('v4 file payload imports like clipboard (shared importSaveFromText path)', () => {
+  const game = newGame(10);
+  const g = {
+    cash: 88, hype: 5, buzz: 1, patrons: 2, regulars: 0.5, clout: 1,
+    crew: 1, jobs: { stage: 1, vipjob: 0, floor: 0, off: 0 },
+    b: { rail: 1 }, u: {}, r: {}, elapsed: 10, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: Date.now()
+  };
+  const fileText = JSON.stringify({
+    saveVer: 4,
+    ver: '0.5.2',
+    build: 158,
+    g
+  });
+  game.state.g.cash = 1;
+  const okImport = game.importSaveFromText(fileText);
+  strictEqual(okImport, true);
+  strictEqual(game.state.saveState, 'imported');
+  strictEqual(game.state.g.cash, 88);
+  strictEqual(game.state.g.b.rail, 1);
+  const stored = JSON.parse(localStorage.getItem(game.KEY));
+  strictEqual(stored.saveVer, game.SAVE_VER);
+  strictEqual(stored.g.cash, 88);
+});
+
+test('garbage file content fails closed with import failed', () => {
+  const game = newGame(40);
+  game.state.g.cash = 40;
+  game.state.g.hype = 9;
+  const before = game.state.g;
+  const okImport = game.importSaveFromText('{not a valid save file');
+  strictEqual(okImport, false);
+  strictEqual(game.state.saveState, 'import failed');
+  strictEqual(game.state.g, before, 'club reference must be unchanged');
+  strictEqual(game.state.g.cash, 40);
+  strictEqual(game.state.g.hype, 9);
+});
+
+test('downloadSave sets saveState downloaded (Blob path)', () => {
+  const game = newGame(20);
+  const v = game.renderVals();
+  ok(typeof v.downloadSave === 'function', 'downloadSave handler present');
+  v.downloadSave();
+  strictEqual(game.state.saveState, 'downloaded');
+});
+
+test('importSaveFile routes FileReader text into importSaveFromText', () => {
+  const game = newGame(15);
+  const g = game.state.g;
+  g.cash = 321;
+  g.b.flyers = 2;
+  g.goals = [];
+  g.clicks = 0;
+  g.rounds = 0;
+  const payload = JSON.stringify({
+    saveVer: game.SAVE_VER,
+    ver: game.VERSION.num,
+    build: game.VERSION.build,
+    g: JSON.parse(JSON.stringify(g))
+  });
+  game.state.g = game.fresh();
+  game.state.g.cash = 2;
+
+  let captured = null;
+  const prevCreate = document.createElement;
+  document.createElement = (tag) => {
+    const el = { ...root, click: () => {}, files: null, type: '', accept: '', onchange: null };
+    if (tag === 'input') captured = el;
+    return el;
+  };
+  try {
+    const v = game.renderVals();
+    v.importSaveFile();
+    ok(captured, 'hidden file input created');
+    strictEqual(captured.type, 'file');
+    captured.files = [{ _text: payload, name: 'afterglow-save.json' }];
+    captured.onchange();
+  } finally {
+    document.createElement = prevCreate;
+  }
+  strictEqual(game.state.saveState, 'imported');
+  strictEqual(game.state.g.cash, 321);
+  strictEqual(game.state.g.b.flyers, 2);
+  const msgs = game.state.g.log.map(e => e.msg);
+  ok(msgs.some(m => m === 'Save restored.'), `expect neutral restore log, got: ${msgs.join(' | ')}`);
+  ok(!msgs.some(m => /clipboard/i.test(m)), 'restore log must not mention clipboard after file load');
+});
+
+// ── Import log sanitization (AAR-58 / AAR-62, folded into B / AAR-78) ──────────
+console.log('\nImport log sanitization (AAR-58 / AAR-62)');
+
+test('crafted HTML in imported log is escaped at render, not stored as entities', () => {
+  const game = newGame(10);
+  const payload = {
+    saveVer: game.SAVE_VER,
+    ver: game.VERSION.num,
+    build: game.VERSION.build,
+    g: {
+      cash: 50, hype: 1, buzz: 0, patrons: 0, regulars: 0, clout: 0, crew: 0,
+      jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      b: {}, u: {}, r: {},
+      goals: [], clicks: 0, rounds: 0,
+      elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, ts: Date.now(),
+      log: [
+        {
+          t: '12:00',
+          msg: '<img src=x onerror="window.__xss=1">alert(1)',
+          color: 'red;background:url(javascript:alert(1))'
+        },
+        {
+          t: '<script>x</script>',
+          msg: 'ok line',
+          color: '#22d3ee'
+        }
+      ]
+    }
+  };
+  const okImport = game.importSaveFromText(JSON.stringify(payload));
+  strictEqual(okImport, true);
+  const log = game.state.g.log;
+  const xssEntry = log.find(e => /onerror|img/i.test(e.msg));
+  ok(xssEntry, 'crafted entry retained in g.log');
+  ok(xssEntry.msg.includes('<img'), 'g.log keeps raw angle brackets (not pre-escaped)');
+  ok(!xssEntry.msg.includes('&lt;img'), 'g.log must not store entity-escaped markup');
+  strictEqual(xssEntry.color, '#b9a5c9', 'unsafe color falls back to default');
+  const hexEntry = log.find(e => e.msg === 'ok line');
+  ok(hexEntry, 'plain msg retained raw');
+  strictEqual(hexEntry.color, '#22d3ee', 'valid hex color preserved');
+  const v = game.renderVals();
+  for (const row of v.log) {
+    ok(!String(row.msg).includes('<img'), 'renderVals msg has no raw img tag');
+    ok(!String(row.t).includes('<script'), 'renderVals t has no raw script tag');
+    if (row.style && row.style.color) {
+      ok(/^#[0-9a-fA-F]{3,8}$/.test(row.style.color), `render color is hex: ${row.style.color}`);
+    }
+  }
+  const renderedXss = v.log.find(r => /onerror|img/i.test(r.msg));
+  ok(renderedXss, 'crafted entry present in renderVals');
+  ok(renderedXss.msg.includes('&lt;img'), 'render boundary entity-escapes markup');
+  ok(!renderedXss.msg.includes('<img'), 'render boundary has no raw <img');
+});
+
+test('import → export → import leaves log text visually identical', () => {
+  const game = newGame(10);
+  const originalMsg = 'Hello & welcome <Peak> "VIP"';
+  const originalT = 'N1 Early';
+  const payload = {
+    saveVer: game.SAVE_VER,
+    ver: game.VERSION.num,
+    build: game.VERSION.build,
+    g: {
+      cash: 50, hype: 1, buzz: 0, patrons: 0, regulars: 0, clout: 0, crew: 0,
+      jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      b: {}, u: {}, r: {},
+      goals: [], clicks: 0, rounds: 0,
+      elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, ts: Date.now(),
+      log: [{ t: originalT, msg: originalMsg, color: '#ff2d78' }]
+    }
+  };
+  strictEqual(game.importSaveFromText(JSON.stringify(payload)), true);
+  const afterFirst = game.state.g.log.find(e => e.msg === originalMsg || e.msg.includes('Hello'));
+  ok(afterFirst, 'first import keeps original msg');
+  strictEqual(afterFirst.msg, originalMsg, 'first import stores raw msg');
+  strictEqual(afterFirst.t, originalT, 'first import stores raw t');
+  const display1 = game.renderVals().log.find(r => r.msg.includes('Hello') || r.msg.includes('welcome'));
+  ok(display1, 'first render has entry');
+
+  const exported = JSON.stringify({
+    saveVer: game.SAVE_VER,
+    ver: game.VERSION.num,
+    build: game.VERSION.build,
+    g: game.state.g
+  });
+  const game2 = newGame(10);
+  strictEqual(game2.importSaveFromText(exported), true);
+  const afterSecond = game2.state.g.log.find(e => e.msg === originalMsg || e.msg.includes('Hello'));
+  ok(afterSecond, 'second import finds original msg');
+  strictEqual(afterSecond.msg, originalMsg, 're-import must not double-escape storage');
+  strictEqual(afterSecond.t, originalT, 're-import t unchanged');
+  const display2 = game2.renderVals().log.find(r => r.msg.includes('Hello') || r.msg.includes('welcome'));
+  ok(display2, 'second render has entry');
+  strictEqual(display2.msg, display1.msg, 'visible log text identical after round-trip');
+  strictEqual(display2.t, display1.t, 'visible log time identical after round-trip');
+  ok(display2.msg.includes('&amp;') || display2.msg.includes('&lt;'), 'display escapes special chars once');
+  ok(!display2.msg.includes('&amp;amp;'), 'no double-escaped ampersand');
+  ok(!display2.msg.includes('&amp;lt;'), 'no double-escaped angle bracket');
+});
+
+// ── Unknown building keys / Structures XSS (AAR-63) ──────────────────────────
+console.log('\nUnknown building keys stripped on import (AAR-63)');
+
+test('crafted unknown g.b key is stripped; Structures stays numeric', () => {
+  const game = newGame(10);
+  const evil = '<img src=x onerror="window.__xssBuild=1">';
+  const payload = {
+    saveVer: game.SAVE_VER,
+    ver: game.VERSION.num,
+    build: game.VERSION.build,
+    g: {
+      cash: 50, hype: 1, buzz: 0, patrons: 0, regulars: 0, clout: 0, crew: 0,
+      jobs: { stage: 0, vipjob: 0, floor: 0, off: 0, evilJob: evil },
+      b: { rail: 2, bar: 1, evil },
+      u: { led: false, evilUp: true },
+      r: { loop: false, evilRes: true },
+      goals: [], clicks: 0, rounds: 0,
+      elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: Date.now()
+    }
+  };
+  strictEqual(game.importSaveFromText(JSON.stringify(payload)), true);
+  const g = game.state.g;
+  strictEqual(g.b.evil, undefined, 'unknown building key stripped');
+  strictEqual(Object.prototype.hasOwnProperty.call(g.b, 'evil'), false, 'evil not own prop of g.b');
+  strictEqual(g.b.rail, 2, 'known building preserved');
+  strictEqual(g.b.bar, 1, 'known building preserved');
+  strictEqual(g.u.evilUp, undefined, 'unknown upgrade key stripped');
+  strictEqual(g.r.evilRes, undefined, 'unknown research key stripped');
+  strictEqual(g.jobs.evilJob, undefined, 'unknown jobs key stripped');
+  const structures = game.renderVals().stats.find(s => s.k === 'Structures');
+  ok(structures, 'Structures stat present');
+  ok(/^\d+$/.test(structures.v), `Structures is numeric digits only: ${structures.v}`);
+  ok(!structures.v.includes('<'), 'Structures has no raw angle bracket');
+  ok(!structures.v.includes('onerror'), 'Structures has no onerror bait');
 });
 
 // ── Owner's List (PLAN-NEXT §B) ───────────────────────────────────────────────
@@ -1893,7 +2185,7 @@ test('claiming init starts autosave; owner save(auto) writes', () => {
   if (game.saver) clearInterval(game.saver);
 });
 
-test('manual save from non-owner acquires ownership and starts autosave', () => {
+test('manual save from non-owner is a no-op (no ownership steal)', () => {
   const game = newGame(20);
   sessionStorage.clear();
   const diskTs = Date.now() - 5000;
@@ -1911,13 +2203,28 @@ test('manual save from non-owner acquires ownership and starts autosave', () => 
   if (game.timer) clearInterval(game.timer);
   strictEqual(game.isTabOwner(), false);
   strictEqual(game.saver, null);
+  const rawBefore = localStorage.getItem('afterglow.save');
 
   game.state.g.cash = 333;
   game.save('manual');
-  ok(game.isTabOwner(), 'manual save takes ownership (last-explicit-wins)');
-  ok(game.saver != null, 'manual save starts autosave after acquiring ownership');
-  const stored = JSON.parse(localStorage.getItem('afterglow.save'));
-  strictEqual(stored.g.cash, 333, 'manual save wrote disk');
+  strictEqual(game.isTabOwner(), false, 'manual save must not take ownership while non-owner');
+  strictEqual(game.saver, null, 'manual save must not start autosave while non-owner');
+  strictEqual(localStorage.getItem('afterglow.save'), rawBefore, 'disk must not be clobbered with stale cash');
+  strictEqual(JSON.parse(rawBefore).g.cash, 200, 'sibling disk cash preserved');
+  if (game.saver) clearInterval(game.saver);
+});
+
+test('owner save(manual) writes while not tabStale', () => {
+  const game = newGame(20);
+  game.markTabOwner();
+  game.state.tabStale = false;
+  game.state.g.cash = 444;
+  localStorage.removeItem(game.KEY);
+  game.save('manual');
+  const raw = localStorage.getItem(game.KEY);
+  ok(raw, 'owner manual save writes');
+  strictEqual(JSON.parse(raw).g.cash, 444);
+  strictEqual(game.state.saveState, 'saved ✓');
   if (game.saver) clearInterval(game.saver);
 });
 
@@ -2199,7 +2506,7 @@ test('non-owner short multi-tab open is read-only (tabStale; actions no-op)', ()
   strictEqual(game.state.g.b.rail, 0, 'building not purchased while tabStale');
 });
 
-test('manual save unpauses non-owner and acquires ownership', () => {
+test('tabStale + save(manual) does not write or clear pause (AAR-78)', () => {
   const game = newGame(20);
   sessionStorage.clear();
   const diskTs = Date.now() - 5000;
@@ -2216,11 +2523,14 @@ test('manual save unpauses non-owner and acquires ownership', () => {
   game.init();
   if (game.timer) clearInterval(game.timer);
   strictEqual(game.state.tabStale, true);
+  const rawBefore = localStorage.getItem('afterglow.save');
   game.state.g.cash = 111;
   game.save('manual');
-  ok(game.isTabOwner());
-  strictEqual(game.state.tabStale, false, 'manual save clears read-only pause');
-  ok(game.saver != null);
+  strictEqual(game.isTabOwner(), false, 'must not mark owner while tabStale');
+  strictEqual(game.state.tabStale, true, 'manual save must not clear read-only pause');
+  strictEqual(game.saver, null, 'must not start autosave while tabStale');
+  strictEqual(localStorage.getItem('afterglow.save'), rawBefore, 'disk unchanged');
+  strictEqual(JSON.parse(rawBefore).g.cash, 80, 'sibling progress preserved');
   if (game.saver) clearInterval(game.saver);
 });
 
