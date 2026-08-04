@@ -1183,6 +1183,30 @@ test('catchUp completion: state satisfying goal 4 completes via post-catchUp not
   ok(g.log.some(e => /Owner's list: A floor with a pulse/.test(e.msg)), 'log line on complete');
 });
 
+test('catchUp mid-window threshold: pulse completes if patrons peak then decay', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  // pulse active; start above 8 patrons with no buzz so the floor drains offline.
+  g.goals = ['work', 'rail', 'word'];
+  g.clicks = 5;
+  g.b.rail = 1;
+  g.b.flyers = 1;
+  g.patrons = 9.5;
+  g.buzz = 0;
+  g.hype = 0;
+  g.cash = 100;
+  // Long away: decay pulls patrons well below 8 by the end (2%/s of sim time at 50% rate).
+  game.catchUp(g, 3600);
+  ok(g.patrons < 8, `end patrons below threshold (got ${g.patrons})`);
+  ok(g.goals.includes('pulse'), 'pulse credited when threshold was crossed mid-catchUp');
+  ok(g.log.some(e => /Owner's list: A floor with a pulse/.test(e.msg)), 'pulse log from mid-slice noteGoals');
+  // Post-only noteGoals would miss this; reward must already be paid.
+  const cashAfter = g.cash;
+  game.noteGoals(g, { live: false });
+  strictEqual(g.cash, cashAfter, 'no second pulse reward after catchUp');
+  strictEqual(g.goals.filter(id => id === 'pulse').length, 1, 'pulse id once');
+});
+
 test('migration 4→5: v4 save with rail+flyers pre-completes those goals, no reward cash', () => {
   const game = newGame(10);
   const cash = 100;

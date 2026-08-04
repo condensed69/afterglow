@@ -119,7 +119,6 @@ const MILESTONES = [
 ];
 
 const SIM_HOURS = 8;
-const STEP_SEC = 5;
 
 function bandRange(m) {
   return { lo: m.lo, hi: m.hi };
@@ -300,12 +299,11 @@ function run() {
   let wall = 0;
 
   while (wall < totalSec) {
-    // One bot decision per simulated second inside the 5s step chunk.
-    for (let s = 0; s < STEP_SEC && wall + s < totalSec; s++) {
-      botSecond(game);
-    }
-    game.step(STEP_SEC);
-    wall += STEP_SEC;
+    // One bot decision per simulated second, then advance 1s of sim so
+    // income/resource changes precede the next decision (not 5 decisions then +5s).
+    botSecond(game);
+    game.step(1);
+    wall += 1;
 
     const g = game.state.g;
     for (const m of MILESTONES) {

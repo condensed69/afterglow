@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.6.1', build: 163, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.6.1', build: 164, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 5;
   KEY = 'afterglow.save';
 
@@ -62,7 +62,9 @@ class Game {
       'Balance pass — pacing targets in PLAN-NEXT §C; numbers only, no mechanic changes.',
       'Reference bot simulator pacing.mjs: milestone bands for rail, crew, patrons, LED, research, all upgrades.',
       'Retuned building/upgrade/research costs, click value, goal rewards, hire price, and rates for active-play pacing.',
-      'roundPrice() single source for UI and pacing bot (buyRound when cash > 3× live price).'
+      'roundPrice() single source for UI and pacing bot (buyRound when cash > 3× live price).',
+      'Catch-up evaluates goals each offline slice so threshold goals (patrons/hype) complete if crossed mid-window then decay.',
+      'pacing.mjs advances 1s of sim between each bot decision (not five decisions then +5s).'
     ]},
     { v: '0.6.0', date: '2026-08-04', codename: 'Neon Zero', notes: [
       'Owner\'s List: sequential 14-goal onboarding panel at the top of the systems column.',
@@ -758,6 +760,10 @@ class Game {
         g.shiftIdx = (g.shiftIdx + 1) % 4;
         if (g.shiftIdx === 0) g.night++;
       }
+      // Per-slice goal check: threshold goals (patrons/hype) may peak mid-window
+      // then decay before catch-up ends — post-only noteGoals would miss them.
+      // live:false keeps peak-hour hero offline-ineligible.
+      this.noteGoals(g, { live: false });
     }
     return { earned, wagesPaid, struck };
   }
