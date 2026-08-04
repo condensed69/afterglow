@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.4.2', build: 144, channel: 'alpha', date: '2026-08-03', codename: 'Neon Zero' };
+  VERSION = { num: '0.5.3', build: 159, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 4;
   KEY = 'afterglow.save';
 
@@ -27,7 +27,47 @@ class Game {
   SIM = 0.1;
   OFFLINE_STEP = 1.0;
 
+  // Session-only: tracks strike onset so the unpaid-crew log fires once per strike.
+  _onStrike = false;
+
+  // Save-format steps: MIGRATIONS[v] upgrades g from saveVer v → v+1 (PLAN §2.2).
+  // On load, apply the chain saveVer → … → SAVE_VER; wipe only when a step is missing.
+  MIGRATIONS = {
+    // v3 → v4: jobs/crew assignment honesty (was an informal init() fixup).
+    3(g) {
+      this.sanitizeG(g);
+    }
+  };
+
   CHANGELOG = [
+    { v: '0.5.3', date: '2026-08-04', codename: 'Neon Zero', notes: [
+      'Clipboard restore now completes and validates every simulation field before replacing the live club.',
+      'Crew stay on strike while non-crew revenue cannot cover payroll, preventing alternating unpaid production ticks.'
+    ]},
+    { v: '0.5.2', date: '2026-08-03', codename: 'Neon Zero', notes: [
+      'Reorganization only — no behavior change.',
+      'Section headers in game.js (constants / economy / simulation / actions / render / boot).',
+      'Removed dead .performer.idle CSS; DESIGN.md marked superseded (historical 0.3.x canvas prototype).'
+    ]},
+    { v: '0.5.1', date: '2026-08-03', codename: 'Neon Zero', notes: [
+      'Settings: Restore save from clipboard — validate shape, sanitize jobs/crew, fail closed on bad JSON.',
+      'Save migration map: saveVer 3 upgrades to 4 in place; wipe only when no path (corrupt JSON still wipes).',
+      'Multi-tab guard: foreign localStorage write stops this tab\'s autosave and shows a reload banner (no silent clobber).',
+      'Patrons ledger shows whole people (Math.floor); simulation stays fractional.'
+    ]},
+    { v: '0.5.0', date: '2026-08-03', codename: 'Neon Zero', notes: [
+      'Unify catch-up: offline load and large live gaps both use catchUp() at 50% rate (cap 8h).',
+      'Live timer routes dt > 2s through catchUp instead of full-rate step slices (no hidden-tab hang).',
+      'Remove dt floor speed-up: ticks under 50ms skip instead of advancing 0.1s of sim time.',
+      'Strike rule: at $0 cash when wages exceed non-crew income, crew output and wages zero until buildings recover.',
+      'Walk-in trickle: baseline +0.02 patrons/s pull so a rail-first opener earns with zero Buzz.',
+      'Door Staff capped at 6 (decay floor already there); card shows maxed and buy rejects beyond.',
+      'Consolidate patron income: remove uncapped patrons×0.012; cash from patrons flows via tip rail only (flat base covers the door).',
+      'Off Shift is display-only: residual roster count, no steppers; dead moveJob(off, +1) branch removed.',
+      'buyUpgrade enforces building requirements in the action (not UI-only).',
+      'Remove Franchise Binder research until prestige design (orphan r.franchise in old saves is harmless).',
+      'Honest away-report: shows gross earned and wages from catchUp (not cash-floor delta); notes if crew struck.'
+    ]},
     { v: '0.4.2', date: '2026-08-03', codename: 'Neon Zero', notes: [
       'Main Stage empty-state: hires open on stage, Crew-tab CTA, no ghost idle body.',
       'Click reliability: defer re-renders while the pointer is down so CTAs register normal presses.'
@@ -60,6 +100,7 @@ class Game {
     { v: '0.1.0', date: '2026-06-28', codename: 'Cold Open', notes: ['Repo created, static canvas sketch.'] }
   ];
 
+  // --- constants (shifts, buildings, upgrades, research, jobs) ---
   SHIFTS = [
     { name: 'Early Doors', mult: 0.7, len: 40, tint: '#22d3ee' },
     { name: 'Peak Hours', mult: 1.6, len: 55, tint: '#ff2d78' },
@@ -68,13 +109,13 @@ class Game {
   ];
 
   BUILDINGS = [
-    { id: 'rail', name: 'Tip Rail', cost: 30, growth: 1.15, desc: 'Brass rail along the stage. +$0.05/s per patron worth of tips.' },
+    { id: 'rail', name: 'Tip Rail', cost: 30, growth: 1.15, desc: 'Brass rail along the stage. Up to 6 patrons per rail tip +$0.05/s.' },
     { id: 'bar', name: 'Back Bar', cost: 75, growth: 1.17, desc: 'Drinks pay the rent. +$0.30/s and +5 floor capacity.' },
     { id: 'dj', name: 'DJ Booth', cost: 140, growth: 1.19, desc: 'Keeps the room moving. +0.09 Hype/s.' },
     { id: 'marquee', name: 'Marquee Sign', cost: 220, growth: 1.22, desc: '+0.10 Buzz/s and +35 Buzz capacity.' },
     { id: 'flyers', name: 'Flyer Crew', cost: 95, growth: 1.16, desc: 'Windshields all over downtown. +0.06 Buzz/s.' },
     { id: 'vip', name: 'VIP Booth', cost: 400, growth: 1.24, desc: 'Private bookings. +$0.9/s and +18% regular conversion.' },
-    { id: 'door', name: 'Door Staff', cost: 180, growth: 1.20, desc: 'Fewer incidents. Cuts Hype decay by 12% each.' },
+    { id: 'door', name: 'Door Staff', cost: 180, growth: 1.20, max: 6, desc: 'Fewer incidents. Cuts Hype decay by 12% each. (max 6)' },
     { id: 'dress', name: 'Dressing Room', cost: 320, growth: 1.28, desc: '+2 crew capacity.' }
   ];
 
@@ -91,8 +132,7 @@ class Game {
     { id: 'loop', name: 'Reputation Loop', cost: 4, desc: 'Regulars each add $0.04/s on their own.' },
     { id: 'latemenu', name: 'Late Kitchen', cost: 8, desc: 'After Hours multiplier 0.45 → 0.95.' },
     { id: 'promo', name: 'Promoter Network', cost: 14, desc: 'Buzz converts to patrons 60% faster.' },
-    { id: 'payroll', name: 'Payroll Software', cost: 22, desc: 'Crew wages drop 40%.' },
-    { id: 'franchise', name: 'Franchise Binder', cost: 60, desc: 'Unlocks the second location. [prestige — not implemented]' }
+    { id: 'payroll', name: 'Payroll Software', cost: 22, desc: 'Crew wages drop 40%.' }
   ];
 
   JOBS = [
@@ -104,6 +144,8 @@ class Game {
 
   state = {
     stageH: 300, tab: 'club', showChangelog: false, showSettings: false, tick: 0, saveState: 'idle', resetArmed: false,
+    // true when another tab wrote KEY — autosave is off until reload (PLAN §2.3).
+    tabStale: false,
     g: null
   };
 
@@ -187,17 +229,9 @@ class Game {
     this.render();
   }
 
-  init() {
-    let g = null, migrated = false, prevVer = null;
-    try {
-      const raw = localStorage.getItem(this.KEY);
-      if (raw) {
-        const p = JSON.parse(raw);
-        prevVer = p.ver || null;
-        if (p.saveVer === this.SAVE_VER) g = p.g; else migrated = true;
-      }
-    } catch (e) { migrated = true; }
-    if (!g) g = this.fresh();
+  // Jobs/crew fixups shared by load, migrations, and clipboard import (PLAN §2.1 / §2.2).
+  sanitizeG(g) {
+    if (!g || typeof g !== 'object') return g;
     g.jobs = g.jobs || { stage: 0, vipjob: 0, floor: 0, off: 0 };
     g.crew = Math.max(0, g.crew | 0);
     // Keep assignment totals honest after old saves / partial migrations.
@@ -213,39 +247,161 @@ class Game {
         if (!over) break;
       }
     }
+    return g;
+  }
+
+  // Apply MIGRATIONS chain from fromVer up to SAVE_VER. Returns false when a step is missing
+  // (including future saveVer > SAVE_VER or non-finite fromVer) — caller should wipe.
+  migrateFrom(g, fromVer) {
+    if (!g || typeof g !== 'object') return false;
+    if (typeof fromVer !== 'number' || !Number.isFinite(fromVer)) return false;
+    if (fromVer > this.SAVE_VER) return false;
+    if (fromVer === this.SAVE_VER) return true;
+    if (fromVer < 1) return false;
+    for (let v = fromVer; v < this.SAVE_VER; v++) {
+      const step = this.MIGRATIONS[v];
+      if (typeof step !== 'function') return false;
+      step.call(this, g);
+    }
+    return true;
+  }
+
+  // Fail-closed shape check for clipboard restore (PLAN §2.1).
+  isValidSavePayload(p) {
+    if (!p || typeof p !== 'object') return false;
+    if (typeof p.saveVer !== 'number' || !Number.isFinite(p.saveVer)) return false;
+    const g = p.g;
+    if (!g || typeof g !== 'object') return false;
+    for (const k of ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'clout', 'crew']) {
+      if (typeof g[k] !== 'number' || !Number.isFinite(g[k])) return false;
+    }
+    if (!g.jobs || typeof g.jobs !== 'object') return false;
+    return true;
+  }
+
+  // Complete optional fields from a fresh save, while rejecting values that
+  // would make rates(), simulation, or rendering unsafe. This runs on the
+  // parsed candidate before state.g is replaced, so a bad import cannot poison
+  // either the current session or localStorage.
+  completeImportedG(g) {
+    const defaults = this.fresh();
+    const numeric = ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'clout', 'crew',
+      'elapsed', 'night', 'shiftIdx', 'shiftT', 'ts'];
+    for (const k of numeric) {
+      if (g[k] === undefined) g[k] = defaults[k];
+      if (typeof g[k] !== 'number' || !Number.isFinite(g[k])) return false;
+    }
+    if (!Number.isInteger(g.shiftIdx) || !this.SHIFTS[g.shiftIdx]) return false;
+    if (g.shiftT < 0 || g.shiftT >= this.SHIFTS[g.shiftIdx].len) return false;
+    if (g.elapsed < 0 || g.night < 1) return false;
+
+    for (const [key, defs, fallback] of [
+      ['b', this.BUILDINGS, 0], ['u', this.UPGRADES, false], ['r', this.RESEARCH, false]
+    ]) {
+      if (g[key] === undefined) g[key] = {};
+      if (!g[key] || typeof g[key] !== 'object' || Array.isArray(g[key])) return false;
+      for (const def of defs) {
+        if (g[key][def.id] === undefined) g[key][def.id] = fallback;
+        const value = g[key][def.id];
+        if (key === 'b') {
+          if (!Number.isInteger(value) || value < 0) return false;
+        } else if (typeof value !== 'boolean') return false;
+      }
+    }
+
+    if (!g.jobs || typeof g.jobs !== 'object' || Array.isArray(g.jobs)) return false;
+    for (const k of ['stage', 'vipjob', 'floor', 'off']) {
+      if (g.jobs[k] === undefined) g.jobs[k] = 0;
+      if (!Number.isFinite(g.jobs[k]) || g.jobs[k] < 0) return false;
+    }
+    if (!Array.isArray(g.log)) g.log = [];
+    g.log = g.log.filter(x => x && typeof x === 'object' &&
+      typeof x.t === 'string' && typeof x.msg === 'string').slice(0, 40);
+    this.sanitizeG(g);
+    return true;
+  }
+
+  // Parse + validate + migrate + sanitize a save blob. On success replaces state.g and persists.
+  // On any failure: saveState 'import failed', current club unchanged.
+  importSaveFromText(text) {
+    try {
+      const p = JSON.parse(text);
+      if (!this.isValidSavePayload(p)) {
+        this.setState({ saveState: 'import failed' });
+        return false;
+      }
+      const g = p.g;
+      if (p.saveVer !== this.SAVE_VER) {
+        if (!this.migrateFrom(g, p.saveVer)) {
+          this.setState({ saveState: 'import failed' });
+          return false;
+        }
+      }
+      if (!this.completeImportedG(g)) {
+        this.setState({ saveState: 'import failed' });
+        return false;
+      }
+      // Stamp now so the next tick does not treat export age as offline progress.
+      g.ts = Date.now();
+      this._onStrike = false;
+      this.state.g = g;
+      this.push(g, 'Save restored from clipboard.', '#22d3ee');
+      try {
+        localStorage.setItem(this.KEY, JSON.stringify({
+          saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
+        }));
+      } catch (e) { /* state already replaced; footer still shows imported */ }
+      this.setState({ saveState: 'imported' });
+      return true;
+    } catch (e) {
+      this.setState({ saveState: 'import failed' });
+      return false;
+    }
+  }
+
+  init() {
+    let g = null, wiped = false, upgraded = false, prevVer = null, fromSaveVer = null;
+    try {
+      const raw = localStorage.getItem(this.KEY);
+      if (raw) {
+        const p = JSON.parse(raw);
+        prevVer = p.ver || null;
+        fromSaveVer = p.saveVer;
+        if (p.saveVer === this.SAVE_VER && p.g && typeof p.g === 'object') {
+          g = p.g;
+        } else if (p.g && typeof p.g === 'object' && typeof p.saveVer === 'number' && p.saveVer < this.SAVE_VER) {
+          // Upgrade path: apply MIGRATIONS chain; wipe only if a step is missing.
+          if (this.migrateFrom(p.g, p.saveVer)) {
+            g = p.g;
+            upgraded = true;
+          } else {
+            wiped = true;
+          }
+        } else {
+          // Future saveVer, missing g, or non-numeric version — no path.
+          wiped = true;
+        }
+      }
+    } catch (e) { wiped = true; }
+    // Recover safely from a previously persisted malformed clipboard import.
+    // Missing optional fields are completed; unsafe values reset the save.
+    if (g && !this.completeImportedG(g)) {
+      g = null;
+      wiped = true;
+    }
+    if (!g) g = this.fresh();
+    this.sanitizeG(g);
     g.log = [];
 
     const offline = g.ts ? Math.min((Date.now() - g.ts) / 1000, 28800) : 0;
     this.state.g = g;
     this.push(g, 'Doors open. ' + this.VERSION.codename + ' build ' + this.VERSION.build + '.', '#22d3ee');
-    if (migrated) this.push(g, 'Save format changed — previous save reset.', '#ff2d78');
+    if (wiped) this.push(g, 'Save format changed — previous save reset.', '#ff2d78');
+    else if (upgraded) this.push(g, 'Save migrated from format v' + fromSaveVer + ' → v' + this.SAVE_VER + '.', '#ffc94a');
     if (prevVer && prevVer !== this.VERSION.num) this.push(g, 'Updated ' + prevVer + ' → ' + this.VERSION.num + '.', '#ffc94a');
     if (offline > 0) {
-      const cashBefore = Math.max(0, g.cash);
-      let remaining = offline;
-      while (remaining > 0) {
-        const rates = this.rates(g);
-        const cap = rates.cap;
-        const left = rates.shift.len - g.shiftT;
-        const wall = Math.min(remaining, left, this.OFFLINE_STEP);
-        const dt = wall * 0.5;
-        g.cash = Math.max(0, g.cash + rates.cash * dt);
-        g.hype = Math.max(0, Math.min(cap.hype, g.hype + rates.hype * dt));
-        g.buzz = Math.max(0, Math.min(cap.buzz, g.buzz + rates.buzz * dt - rates.buzzSpent * dt));
-        g.patrons = Math.max(0, Math.min(cap.patrons, g.patrons + rates.patrons * dt));
-        g.regulars = Math.max(0, g.regulars + rates.regulars * dt);
-        g.clout = Math.max(0, g.clout + rates.clout * dt);
-        g.shiftT += wall;
-        g.elapsed += wall;
-        remaining -= wall;
-        if (g.shiftT >= rates.shift.len) {
-          g.shiftT = 0;
-          g.shiftIdx = (g.shiftIdx + 1) % 4;
-          if (g.shiftIdx === 0) g.night++;
-        }
-      }
-      const reported = Math.max(0, g.cash - cashBefore);
-      if (offline > 60) this.push(g, 'Away ' + Math.round(offline / 60) + 'm — the room kept tipping: +$' + this.fmt(reported) + '.', '#ffc94a');
+      const report = this.catchUp(g, offline);
+      if (offline > 60) this.push(g, this.awayMsg(offline, report), '#ffc94a');
     }
     g.ts = Date.now();
 
@@ -261,12 +417,42 @@ class Game {
     this.timer = setInterval(() => {
       const g = this.state.g; if (!g) return;
       const now = Date.now();
-      let dt = Math.max(0, (now - (g.ts || now)) / 1000);
-      if (dt < 0.05) dt = 0.1;
-      this.step(Math.min(dt, 28800));
+      const dt = Math.max(0, (now - (g.ts || now)) / 1000);
+      // Skip sub-50ms ticks; leave g.ts untouched so elapsed time accrues to the next tick.
+      // (Previously floored dt to 0.1, which ran the sim faster than real time.)
+      if (dt < 0.05) return;
+      // Large gaps (tab hidden / suspended) use catchUp at 50% rate — same path as load-time offline.
+      if (dt > 2) {
+        const gap = Math.min(dt, 28800);
+        const report = this.catchUp(g, gap);
+        if (dt > 60) this.push(g, this.awayMsg(gap, report), '#ffc94a');
+        g.ts = Date.now();
+        this.setState(s => ({ tick: s.tick + 1 }));
+      } else {
+        this.step(Math.min(dt, 28800));
+      }
     }, 100);
     this.saver = setInterval(() => this.save('auto'), 10000);
+    // storage only fires in *other* tabs — stop autosave so we don't clobber their write (PLAN §2.3).
+    // Bind once: init() may re-run in tests; page boot calls it a single time.
+    if (!this._storageBound) {
+      this._storageBound = true;
+      window.addEventListener('storage', (e) => {
+        if (e.key !== this.KEY) return;
+        this.onForeignSave();
+      });
+    }
     this.forceUpdate();
+  }
+
+  // Another tab wrote/removed KEY. Freeze autosave; banner offers reload to adopt their save.
+  onForeignSave() {
+    if (this.state.tabStale) return;
+    if (this.saver) {
+      clearInterval(this.saver);
+      this.saver = null;
+    }
+    this.setState({ tabStale: true, saveState: 'paused (other tab)' });
   }
 
   push(g, msg, color) {
@@ -288,6 +474,7 @@ class Game {
     return n.toFixed(2);
   }
 
+  // --- economy (caps, rates) ---
   caps(g) {
     return {
       patrons: 10 + g.b.bar * 5 + (g.u.coat ? 20 : 0) + g.b.vip * 4,
@@ -308,29 +495,103 @@ class Game {
     const bottle = g.u.bottle ? 2.2 : 1;
 
     const railCap = g.b.rail * 6;
-    let cash = (0.08 + Math.min(g.patrons, railCap) * 0.05 + g.b.bar * 0.30) * cashMult;
-    cash += g.b.vip * 0.9 * bottle * cashMult;
-    cash += g.jobs.vipjob * 1.10 * crewMult * bottle * cashMult;
-    cash += g.patrons * 0.012 * cashMult;
-    if (g.r.loop) cash += g.regulars * 0.04 * cashMult;
-    const wage = (g.crew - g.jobs.off) * 0.22 * (g.r.payroll ? 0.6 : 1);
-    cash -= wage;
+    // Non-crew cash: base door + tip rail + bar + VIP rooms + regulars loop.
+    // Patron tips only via rail (PLAN §1.6); flat 0.08 covers the door.
+    let nonCrewCash = (0.08 + Math.min(g.patrons, railCap) * 0.05 + g.b.bar * 0.30) * cashMult;
+    nonCrewCash += g.b.vip * 0.9 * bottle * cashMult;
+    if (g.r.loop) nonCrewCash += g.regulars * 0.04 * cashMult;
 
-    const hypeGain = (g.b.dj * 0.09 + g.jobs.stage * 0.22 * crewMult) * (g.u.led ? 1.3 : 1);
+    let wage = (g.crew - g.jobs.off) * 0.22 * (g.r.payroll ? 0.6 : 1);
+    let vipCrewCash = g.jobs.vipjob * 1.10 * crewMult * bottle * cashMult;
+    let stageHype = g.jobs.stage * 0.22 * crewMult;
+    let floorBuzz = g.jobs.floor * 0.05 * crewMult;
+
+    // Strike: crew only work when the club's non-crew revenue covers payroll.
+    // Do not use cash > 0 as the recovery condition: strike ticks earn a small
+    // door trickle, which otherwise causes alternating strike/production ticks.
+    let strike = false;
+    if (nonCrewCash < wage) {
+      vipCrewCash = 0;
+      stageHype = 0;
+      floorBuzz = 0;
+      wage = 0;
+      strike = true;
+    }
+
+    const cash = nonCrewCash + vipCrewCash - wage;
+
+    const hypeGain = (g.b.dj * 0.09 + stageHype) * (g.u.led ? 1.3 : 1);
     const decay = g.hype * 0.014 * Math.max(0.25, 1 - g.b.door * 0.12);
     const hype = hypeGain - decay;
 
-    const buzz = (g.b.marquee * 0.10 + g.b.flyers * 0.06 + g.jobs.floor * 0.05 * crewMult) * (g.u.photog ? 1.5 : 1);
+    const buzz = (g.b.marquee * 0.10 + g.b.flyers * 0.06 + floorBuzz) * (g.u.photog ? 1.5 : 1);
     const promoMult = g.r.promo ? 1.6 : 1;
     const basis = (g.buzz > 0 ? Math.min(g.buzz, 0.8) : 0) * promoMult;
-    const pull = basis * (1 + g.hype / 200);
+    // Walk-in trickle: flat +0.02 patrons/s, unscaled by Hype (PLAN §1.4).
+    const pull = basis * (1 + g.hype / 200) + 0.02;
     const space = Math.max(0, cap.patrons - g.patrons);
     const admitted = Math.min(pull, space);
     const buzzSpent = basis > 0 && pull > 0 ? basis * (admitted / pull) : 0;
     const patrons = admitted - g.patrons * 0.02;
     const regulars = g.patrons * 0.0007 * (1 + g.b.vip * 0.18) * sm;
     const clout = g.regulars * 0.0016;
-    return { cash, hype, buzz, patrons, regulars, clout, wage, cap, shift, sm, pull, buzzSpent };
+    return { cash, hype, buzz, patrons, regulars, clout, wage, cap, shift, sm, pull, buzzSpent, strike };
+  }
+
+  // Edge-triggered strike log: one line on onset, not per tick.
+  noteStrike(g, strike) {
+    if (strike && !this._onStrike) {
+      this.push(g, 'Crew unpaid — on strike.', '#ff2d78');
+    }
+    this._onStrike = !!strike;
+  }
+
+  // Format load/live away log from catchUp accumulators (PLAN §1.10).
+  // Uses gross earned + wages, not cash-floor delta (which collapsed losses to +$0).
+  awayMsg(seconds, { earned = 0, wagesPaid = 0, struck = false } = {}) {
+    let msg = 'Away ' + Math.round(seconds / 60) + 'm — earned $' + this.fmt(earned) + ', wages −$' + this.fmt(wagesPaid) + '.';
+    if (struck) msg += ' Crew struck while you were gone.';
+    return msg;
+  }
+
+  // --- simulation (step, catchUp) ---
+  // Offline / large-gap simulation at 50% rate. Wall time advances fully;
+  // resource accrual uses dt = wall * 0.5. Silent shift/night rollover.
+  // Returns gross cash earned, wages paid, and whether a strike occurred (1.10).
+  catchUp(g, seconds) {
+    if (!g || !(seconds > 0)) return { earned: 0, wagesPaid: 0, struck: false };
+    seconds = Math.min(seconds, 28800);
+    let remaining = seconds;
+    let earned = 0;
+    let wagesPaid = 0;
+    let struck = false;
+    while (remaining > 0) {
+      const rates = this.rates(g);
+      if (rates.strike) struck = true;
+      this.noteStrike(g, rates.strike);
+      const cap = rates.cap;
+      const left = rates.shift.len - g.shiftT;
+      const wall = Math.min(remaining, left, this.OFFLINE_STEP);
+      const dt = wall * 0.5;
+      // rates.cash is net of wage; reconstruct gross for reporting.
+      earned += (rates.cash + rates.wage) * dt;
+      wagesPaid += rates.wage * dt;
+      g.cash = Math.max(0, g.cash + rates.cash * dt);
+      g.hype = Math.max(0, Math.min(cap.hype, g.hype + rates.hype * dt));
+      g.buzz = Math.max(0, Math.min(cap.buzz, g.buzz + rates.buzz * dt - rates.buzzSpent * dt));
+      g.patrons = Math.max(0, Math.min(cap.patrons, g.patrons + rates.patrons * dt));
+      g.regulars = Math.max(0, g.regulars + rates.regulars * dt);
+      g.clout = Math.max(0, g.clout + rates.clout * dt);
+      g.shiftT += wall;
+      g.elapsed += wall;
+      remaining -= wall;
+      if (g.shiftT >= rates.shift.len) {
+        g.shiftT = 0;
+        g.shiftIdx = (g.shiftIdx + 1) % 4;
+        if (g.shiftIdx === 0) g.night++;
+      }
+    }
+    return { earned, wagesPaid, struck };
   }
 
   step(dt) {
@@ -341,6 +602,7 @@ class Game {
     let remaining = dt;
     while (remaining > 0) {
       const r = this.rates(g);
+      this.noteStrike(g, r.strike);
       const cap = r.cap;
       const left = r.shift.len - g.shiftT;
       const chunk = Math.min(remaining, left, this.SIM);
@@ -374,15 +636,19 @@ class Game {
   save(kind) {
     const g = this.state.g;
     if (!g) return;
+    // After a foreign-tab write, never autosave over their data (manual save still allowed).
+    if (kind === 'auto' && this.state.tabStale) return;
     try {
       localStorage.setItem(this.KEY, JSON.stringify({ saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g }));
       this.setState({ saveState: kind === 'auto' ? 'autosaved' : 'saved ✓' });
     } catch (e) { this.setState({ saveState: 'save failed' }); }
   }
 
+  // --- actions (buy*, hire, moveJob) ---
   buyBuilding(def) {
     const g = this.state.g;
     const n = g.b[def.id];
+    if (def.max != null && n >= def.max) return;
     const price = Math.floor(def.cost * Math.pow(def.growth, n));
     if (g.cash < price) return;
     g.cash -= price;
@@ -393,6 +659,9 @@ class Game {
   buyUpgrade(def) {
     const g = this.state.g;
     if (g.u[def.id] || g.cash < def.cost) return;
+    // Enforce building req in the action (UI already gates; do not trust UI alone).
+    const reqId = Object.keys(def.req)[0];
+    if (g.b[reqId] < def.req[reqId]) return;
     g.cash -= def.cost;
     g.u[def.id] = true;
     this.push(g, 'Installed ' + def.name + '.', '#ffc94a');
@@ -421,13 +690,13 @@ class Game {
   }
   moveJob(id, d) {
     const g = this.state.g;
+    // Off Shift is the residual pool (display-only); never assign to it directly.
+    if (id === 'off') return;
     if (d > 0) {
-      const used = g.jobs.stage + g.jobs.vipjob + g.jobs.floor + g.jobs.off;
-      if (id !== 'off') { if (g.jobs.off < 1) return; g.jobs.off--; }
-      else if (used >= g.crew) return;
+      if (g.jobs.off < 1) return;
+      g.jobs.off--;
       g.jobs[id]++;
     } else {
-      if (id === 'off') return;
       if (g.jobs[id] < 1) return;
       g.jobs[id]--;
       g.jobs.off++;
@@ -435,6 +704,7 @@ class Game {
     this.forceUpdate();
   }
 
+  // --- render values ---
   bar(pct, color) {
     return { width: Math.max(0, Math.min(100, pct)) + '%', height: '100%', background: color, borderRadius: '3px', transition: 'width .18s linear' };
   }
@@ -458,6 +728,23 @@ class Game {
       toggleSettings: () => this.setState(s => ({ showSettings: !s.showSettings, resetArmed: false })),
       saveNow: () => this.save('manual'),
       exportSave: async () => { try { await navigator.clipboard.writeText(JSON.stringify({ saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g: this.state.g })); this.setState({ saveState: 'copied' }); } catch (e) { this.setState({ saveState: 'clipboard failed' }); } },
+      importSave: async () => {
+        let text = '';
+        try {
+          if (navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
+            text = await navigator.clipboard.readText();
+          } else {
+            text = window.prompt('Paste save JSON to restore:') || '';
+          }
+        } catch (e) {
+          text = window.prompt('Paste save JSON to restore:') || '';
+        }
+        if (!text || !String(text).trim()) {
+          this.setState({ saveState: 'import failed' });
+          return;
+        }
+        this.importSaveFromText(String(text).trim());
+      },
       hardReset: () => {
         if (!this.state.resetArmed) { this.setState({ resetArmed: true }); return; }
         localStorage.removeItem(this.KEY);
@@ -465,7 +752,10 @@ class Game {
         this.push(this.state.g, 'Save wiped. Fresh club.', '#ff2d78');
         this.setState({ showSettings: false, resetArmed: false });
       },
-      tickCount: this.state.tick, saveState: this.state.saveState
+      tickCount: this.state.tick, saveState: this.state.saveState,
+      tabStale: this.state.tabStale,
+      // Reload adopts the other tab's save from localStorage (last-explicit-wins via reload).
+      takeOverTab: () => { window.location.reload(); }
     };
     if (!g) return base;
 
@@ -473,10 +763,11 @@ class Game {
     const sign = v => (v >= 0 ? '+' : '') + this.fmt(v) + '/s';
 
     const resources = [
-      { name: 'Cash', val: '$' + this.fmt(g.cash), rate: sign(r.cash), pct: 100, color: '#ffc94a', note: r.wage > 0 ? 'wages −$' + this.fmt(r.wage) + '/s' : 'no payroll yet' },
+      { name: 'Cash', val: '$' + this.fmt(g.cash), rate: sign(r.cash), pct: 100, color: '#ffc94a', note: r.strike ? 'crew unpaid — on strike' : (r.wage > 0 ? 'wages −$' + this.fmt(r.wage) + '/s' : 'no payroll yet') },
       { name: 'Hype', val: this.fmt(g.hype), rate: sign(r.hype), pct: g.hype / cap.hype * 100, color: '#ff2d78', note: 'cap ' + cap.hype + ' · x' + (1 + g.hype / 140).toFixed(2) + ' income' },
       { name: 'Buzz', val: this.fmt(g.buzz), rate: sign(r.buzz - r.buzzSpent), pct: g.buzz / cap.buzz * 100, color: '#22d3ee', note: 'cap ' + cap.buzz + ' · pulls patrons in' },
-      { name: 'Patrons', val: this.fmt(g.patrons), rate: sign(r.patrons), pct: g.patrons / cap.patrons * 100, color: '#a855f7', note: 'floor cap ' + cap.patrons },
+      // Display whole people; sim keeps fractional g.patrons (PLAN §2.4).
+      { name: 'Patrons', val: this.fmt(Math.floor(g.patrons)), rate: sign(r.patrons), pct: g.patrons / cap.patrons * 100, color: '#a855f7', note: 'floor cap ' + cap.patrons },
       { name: 'Regulars', val: this.fmt(g.regulars), rate: sign(r.regulars), pct: Math.min(100, g.regulars), color: '#4ade80', note: g.r.loop ? '$0.04/s each' : 'unlock Reputation Loop' },
       { name: 'Clout', val: this.fmt(g.clout), rate: sign(r.clout), pct: Math.min(100, g.clout * 2), color: '#e879f9', note: 'spent on research' }
     ].map(x => ({
@@ -515,12 +806,15 @@ class Game {
 
     let cards = [], tabHint = '';
     if (this.state.tab === 'club') {
-      tabHint = 'Structures are permanent and scale in price. Everything on this tab is bought with cash.';
+      tabHint = 'Structures are permanent and scale in price. Everything on this tab is bought with cash. A few regulars wander in on their own; Buzz fills the floor faster.';
       cards = this.BUILDINGS.map(d => {
-        const n = g.b[d.id], price = Math.floor(d.cost * Math.pow(d.growth, n)), ok = g.cash >= price;
-        return { name: d.name, desc: d.desc, owned: n > 0 ? '×' + n : '—', btn: 'Build $' + this.fmt(price),
-          meta: ok ? 'affordable' : 'need $' + this.fmt(price - g.cash), locked: !ok,
-          wrapStyle: cardWrap(true), btnStyle: btn(ok), act: () => this.buyBuilding(d) };
+        const n = g.b[d.id], price = Math.floor(d.cost * Math.pow(d.growth, n));
+        const maxed = d.max != null && n >= d.max;
+        const ok = !maxed && g.cash >= price;
+        return { name: d.name, desc: d.desc, owned: n > 0 ? '×' + n : '—',
+          btn: maxed ? 'Maxed' : 'Build $' + this.fmt(price),
+          meta: maxed ? 'maxed' : (ok ? 'affordable' : 'need $' + this.fmt(price - g.cash)),
+          locked: !ok, wrapStyle: cardWrap(!maxed), btnStyle: btn(ok), act: () => this.buyBuilding(d) };
       });
     } else if (this.state.tab === 'crew') {
       tabHint = 'Hire dancers, then assign them to Main Stage (Hype), VIP, or Floor. Wages tick every second — park extras Off Shift when the room is dead.';
@@ -552,14 +846,19 @@ class Game {
       });
     }
 
-    const assigned = g.jobs.stage + g.jobs.vipjob + g.jobs.floor;
-    const jobs = this.JOBS.map(j => ({
-      name: j.name, desc: j.desc, n: g.jobs[j.id],
-      inc: () => this.moveJob(j.id, 1), dec: () => this.moveJob(j.id, -1),
-      incLocked: j.id === 'off' ? assigned + g.jobs.off >= g.crew : g.jobs.off < 1,
-      decLocked: j.id === 'off' ? true : g.jobs[j.id] < 1,
-      stepStyle: { width: '26px', height: '26px', border: '1px solid #3a2350', borderRadius: '5px', background: '#170e22', color: '#e7d8f2', cursor: 'pointer', fontSize: '14px', lineHeight: 1 }
-    }));
+    const jobs = this.JOBS.map(j => {
+      if (j.id === 'off') {
+        // Passive roster row: count only, no steppers (PLAN §1.7).
+        return { name: j.name, desc: j.desc, n: g.jobs.off, passive: true };
+      }
+      return {
+        name: j.name, desc: j.desc, n: g.jobs[j.id], passive: false,
+        inc: () => this.moveJob(j.id, 1), dec: () => this.moveJob(j.id, -1),
+        incLocked: g.jobs.off < 1,
+        decLocked: g.jobs[j.id] < 1,
+        stepStyle: { width: '26px', height: '26px', border: '1px solid #3a2350', borderRadius: '5px', background: '#170e22', color: '#e7d8f2', cursor: 'pointer', fontSize: '14px', lineHeight: 1 }
+      };
+    });
 
     const clickVal = 4 + g.b.rail * 1.5 + g.hype * 0.12;
     const roundPrice = Math.floor(40 + g.patrons * 6);
@@ -607,9 +906,10 @@ class Game {
     };
   }
 
-  // --- render: turns renderVals() into markup, mirroring the original
-  // template's {{ interpolations }}, sc-for loops and sc-if branches with
-  // plain template literals + a click-handler registry (data-h index). ---
+  // --- render ---
+  // Turns renderVals() into markup, mirroring the original template's
+  // {{ interpolations }}, sc-for loops and sc-if branches with plain
+  // template literals + a click-handler registry (data-h index).
 
   bind(fn) {
     this.handlers.push(fn);
@@ -684,7 +984,14 @@ class Game {
         </div>
       </div>`).join('');
 
-    const jobRows = v.jobs.map(j => `
+    const jobRows = v.jobs.map(j => j.passive ? `
+      <div style="display:flex;align-items:center;gap:9px;border:1px solid #1a1228;border-radius:7px;background:#0c0814;padding:8px 9px;opacity:0.88">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:700;color:#9c86ab">${j.name}</div>
+          <div style="font-size:10px;color:#5c4470">${j.desc}</div>
+        </div>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#6f5885;min-width:20px;text-align:center;font-weight:600">${j.n}</span>
+      </div>` : `
       <div style="display:flex;align-items:center;gap:9px;border:1px solid #221434;border-radius:7px;background:#0f0a18;padding:8px 9px">
         <div style="flex:1;min-width:0">
           <div style="font-size:12px;font-weight:700;color:#e7d8f2">${j.name}</div>
@@ -741,6 +1048,7 @@ class Game {
           <div style="padding:16px 18px;display:flex;flex-direction:column;gap:10px">
             <button data-h="${this.bind(v.saveNow)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Save now</button>
             <button data-h="${this.bind(v.exportSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Copy save to clipboard</button>
+            <button data-h="${this.bind(v.importSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Restore save from clipboard</button>
             <button data-h="${this.bind(v.hardReset)}" style="${css(v.resetStyle)}">${v.resetLabel}</button>
             <div style="font-size:10.5px;color:#5c4470;line-height:1.5;font-family:'IBM Plex Mono',monospace">${v.resetHint} ${v.verFull} · save format v${v.saveVer}</div>
           </div>
@@ -871,14 +1179,17 @@ class Game {
     </aside>
   </main>
 
-  <footer style="display:flex;align-items:center;gap:16px;height:28px;padding:0 14px;border-top:1px solid #2a1738;background:#0b0712;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#5c4470">
-    <span style="color:#ffc94a">${v.verFull}</span>
-    <span>save v${v.saveVer}</span>
-    <span>${v.saveState}</span>
-    <div style="flex:1"></div>
-    <span>${v.debugLine}</span>
-    <span>ticks ${v.tickCount}</span>
-  </footer>
+  <div>
+    ${v.tabStale ? `<button data-h="${this.bind(v.takeOverTab)}" class="cta" style="display:block;width:100%;border:0;border-top:1px solid #6b1130;background:linear-gradient(180deg,#3a0f1e,#22060f);color:#ffc94a;font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:.3px;padding:9px 14px;cursor:pointer;text-align:center">Save changed in another tab — click to reload and take over</button>` : ''}
+    <footer style="display:flex;align-items:center;gap:16px;height:28px;padding:0 14px;border-top:1px solid #2a1738;background:#0b0712;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#5c4470">
+      <span style="color:#ffc94a">${v.verFull}</span>
+      <span>save v${v.saveVer}</span>
+      <span>${v.saveState}</span>
+      <div style="flex:1"></div>
+      <span>${v.debugLine}</span>
+      <span>ticks ${v.tickCount}</span>
+    </footer>
+  </div>
 
   ${changelogModal}
   ${settingsModal}
@@ -913,5 +1224,6 @@ class Game {
   }
 }
 
+// --- boot ---
 const game = new Game(document.getElementById('app'));
 game.init();

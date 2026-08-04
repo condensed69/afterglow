@@ -1,0 +1,1102 @@
+// economy.test.mjs — Afterglow Club Idle economy test harness
+// Run: node economy.test.mjs
+// Dependencies: none (Node built-ins only)
+// PLAN.md §1.0 — guards Phase 1 correctness fixes
+
+import { ok, strictEqual } from 'node:assert';
+import { readFileSync } from 'node:fs';
+
+// ── DOM Prelude ──────────────────────────────────────────────────────────────
+// Stub browser globals so game.js can parse and construct without a DOM.
+const root = {
+  addEventListener: () => {},
+  removeEventListener: () => {},
+  querySelector: () => null,
+  querySelectorAll: () => [],
+  contains: () => false,
+  getAttribute: () => null,
+  setAttribute: () => {},
+  closest: () => null,
+  removeChild: () => {},
+  appendChild: () => root,
+  replaceWith: () => {},
+  classList: { contains: () => false, add: () => {}, remove: () => {}, toggle: () => {} },
+};
+Object.defineProperty(root, 'innerHTML', { set: () => {}, get: () => '' });
+Object.defineProperty(root, 'style', { value: {}, writable: true });
+
+globalThis.window = {
+  addEventListener: () => {},
+  removeEventListener: () => {},
+  ResizeObserver: undefined,
+};
+globalThis.document = {
+  getElementById: (id) => {
+    if (id === 'stage') {
+      return {
+        clientHeight: 300,
+        querySelector: () => null,
+        querySelectorAll: () => [],
+        addEventListener: () => {},
+      };
+    }
+    return root;
+  },
+  createElement: () => ({ ...root }),
+  createTextNode: () => ({}),
+};
+globalThis.localStorage = {
+  _data: Object.create(null),
+  getItem(k) { return this._data[k] ?? null; },
+  setItem(k, v) { this._data[k] = String(v); },
+  removeItem(k) { delete this._data[k]; },
+  clear() { this._data = Object.create(null); },
+};
+
+// ── Load Game class (never run page boot) ────────────────────────────────────
+// game.js ends with `const game = new Game(...); game.init();` which starts
+// setInterval timers. Strip that boot so the process can exit cleanly.
+const src = readFileSync(new URL('./game.js', import.meta.url), 'utf8');
+const stripped = src
+  .replace(/\nconst game = new Game\(document\.getElementById\('app'\)\);\s*\ngame\.init\(\);\s*$/, '\n');
+if (stripped === src) {
+  console.error('economy.test.mjs: failed to strip game.js boot lines — process may hang');
+  process.exit(2);
+}
+const Game = new Function(stripped + ';\nreturn Game;')();
+
+// ── Test Harness ─────────────────────────────────────────────────────────────
+let passed = 0, failed = 0, skipped = 0;
+
+function test(label, fn) {
+  try {
+    fn();
+    passed++;
+  } catch (e) {
+    console.error(`  FAIL  ${label}`);
+    console.error(`        ${e.message}`);
+    failed++;
+  }
+}
+
+function xfail(label, fn, reason) {
+  try {
+    fn();
+    console.error(`  FAIL  ${label} (expected to fail — ${reason || 'not yet implemented'})`);
+    failed++;
+  } catch (_) {
+    console.log(`  ok    ${label} # TODO (xfail): ${reason || 'not yet implemented'}`);
+    skipped++;
+  }
+}
+
+function skip(label, reason) {
+  console.log(`  skip  ${label} # ${reason}`);
+  skipped++;
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function jobSum(g) {
+  return g.jobs.stage + g.jobs.vipjob + g.jobs.floor + g.jobs.off;
+}
+
+function resourceNames() {
+  return ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'clout'];
+}
+
+function newGame(startingCash) {
+  const game = new Game(root);
+  // Suppress render() during tests (actions call forceUpdate → render).
+  game.forceUpdate = () => {};
+  if (startingCash !== undefined) game.props.startingCash = startingCash;
+  game.state.g = game.fresh();
+  return game;
+}
+
+function buildingById(game, id) {
+  return game.BUILDINGS.find(b => b.id === id);
+}
+
+const SECONDS_PER_NIGHT = 160; // 40+55+35+30
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Test Suite
+// ──────────────────────────────────────────────────────────────────────────────
+
+console.log('\n=== economy.test.mjs — Afterglow Club Idle Economy Harness ===\n');
+
+// ── 1. Fresh state invariants ────────────────────────────────────────────────
+
+console.log('1. Fresh state');
+test('fresh() produces expected resource keys', () => {
+  const game = newGame();
+  const g = game.state.g;
+  for (const k of resourceNames()) ok(k in g, `missing key: ${k}`);
+  ok('jobs' in g, 'missing jobs');
+  ok('b' in g, 'missing buildings map');
+  ok('u' in g, 'missing upgrades map');
+  ok('r' in g, 'missing research map');
+  ok('elapsed' in g, 'missing elapsed');
+  ok('night' in g, 'missing night');
+});
+
+test('fresh() starts with 0 crew and 0 job assignments', () => {
+  const game = newGame();
+  const g = game.state.g;
+  strictEqual(g.crew, 0);
+  strictEqual(jobSum(g), 0);
+});
+
+test('fresh() respects startingCash prop', () => {
+  const game = newGame(50);
+  strictEqual(game.state.g.cash, 50);
+});
+
+// ── 2. Job invariant: sum always equals crew ─────────────────────────────────
+
+console.log('\n2. Job assignments always sum to crew');
+
+test('after hireCrew: crew=1, stage=1 → sum=1', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.b.dress = 1; // cap = 4
+  game.hireCrew();
+  strictEqual(g.crew, 1);
+  strictEqual(g.jobs.stage, 1);
+  strictEqual(g.jobs.vipjob, 0);
+  strictEqual(g.jobs.floor, 0);
+  strictEqual(g.jobs.off, 0);
+  strictEqual(jobSum(g), g.crew);
+});
+
+test('after hireCrew x4: crew=4, stage=4 → sum=4', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.b.dress = 2; // cap = 6
+  game.hireCrew();
+  game.hireCrew();
+  game.hireCrew();
+  game.hireCrew();
+  strictEqual(g.crew, 4);
+  strictEqual(g.jobs.stage, 4);
+  strictEqual(jobSum(g), g.crew);
+});
+
+test('moveJob stage→vip via off: sum stays equal', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.b.dress = 2;
+  game.hireCrew();
+  game.moveJob('stage', -1); // stage → off
+  game.moveJob('vipjob', 1); // off → vipjob
+  strictEqual(g.jobs.stage, 0);
+  strictEqual(g.jobs.vipjob, 1);
+  strictEqual(jobSum(g), g.crew);
+});
+
+test('moveJob to floor: sum stays equal', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.b.dress = 2;
+  game.hireCrew();
+  game.moveJob('stage', -1);
+  game.moveJob('floor', 1);
+  strictEqual(g.jobs.floor, 1);
+  strictEqual(jobSum(g), g.crew);
+});
+
+test('after step: job sum remains equal to crew', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.b.dress = 2;
+  game.hireCrew();
+  game.hireCrew();
+  const crew = g.crew;
+  game.step(10);
+  strictEqual(jobSum(g), crew, 'step must not change crew or jobs');
+  strictEqual(g.crew, crew);
+});
+
+test('hire/move/step sequence keeps sum === crew', () => {
+  const game = newGame(10000);
+  const g = game.state.g;
+  g.b.dress = 3;
+  game.hireCrew();
+  game.hireCrew();
+  game.hireCrew();
+  game.moveJob('stage', -1);
+  game.moveJob('floor', 1);
+  game.moveJob('stage', -1);
+  game.moveJob('vipjob', 1);
+  game.step(5);
+  game.hireCrew();
+  game.step(20);
+  game.moveJob('floor', -1);
+  game.moveJob('stage', 1);
+  strictEqual(jobSum(g), g.crew, `jobs sum ${jobSum(g)} !== crew ${g.crew}`);
+});
+
+test('moveJob(+1) on full assignment is no-op', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.b.dress = 2;
+  game.hireCrew();
+  game.moveJob('stage', 1); // off empty → no-op
+  strictEqual(g.jobs.stage, 1);
+  strictEqual(jobSum(g), g.crew);
+});
+
+test('moveJob(off, ±1) is no-op (Off Shift display-only)', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.b.dress = 2;
+  game.hireCrew();
+  game.moveJob('stage', -1);
+  strictEqual(g.jobs.off, 1);
+  game.moveJob('off', -1);
+  strictEqual(g.jobs.off, 1, 'moveJob(off, -1) must be no-op');
+  game.moveJob('off', 1);
+  strictEqual(g.jobs.off, 1, 'moveJob(off, +1) must be no-op');
+  strictEqual(jobSum(g), g.crew);
+});
+
+// ── 3. No resource goes negative (10-night run) ──────────────────────────────
+
+console.log('\n3. No resource goes negative across simulated run');
+
+function simulateNights(game, nights) {
+  game.step(nights * SECONDS_PER_NIGHT);
+}
+
+test('10-night run with buildings, crew, and purchases: all resources >= 0', () => {
+  const game = newGame(8000);
+  const g = game.state.g;
+
+  // Purchases: buildings via buyBuilding where affordable, plus direct counts
+  const rail = buildingById(game, 'rail');
+  const bar = buildingById(game, 'bar');
+  const dress = buildingById(game, 'dress');
+  game.buyBuilding(rail);
+  game.buyBuilding(rail);
+  game.buyBuilding(bar);
+  game.buyBuilding(dress);
+
+  // Seed remaining economy state for a lively club
+  g.b.dj = Math.max(g.b.dj, 1);
+  g.b.marquee = Math.max(g.b.marquee, 1);
+  g.b.dress = Math.max(g.b.dress, 1);
+
+  game.hireCrew();
+  game.hireCrew();
+  game.moveJob('stage', -1);
+  game.moveJob('floor', 1);
+  strictEqual(jobSum(g), g.crew);
+
+  // Mid-run cash can be tight; keep enough runway that wages don't wipe everything
+  // but still exercise purchase + sim paths.
+  if (g.cash < 100) g.cash = 100;
+
+  // Spot-check non-negativity every night, not only at the end
+  for (let n = 0; n < 10; n++) {
+    simulateNights(game, 1);
+    for (const k of resourceNames()) {
+      ok(g[k] >= 0, `night+${n + 1}: ${k} is ${g[k]} (must be >= 0)`);
+    }
+    strictEqual(jobSum(g), g.crew, `night+${n + 1}: jobs sum !== crew`);
+  }
+
+  ok(g.night >= 10, `expected night >= 10, got ${g.night}`);
+});
+
+test('10-night run with zero buildings: still no negative resources', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  simulateNights(game, 10);
+  for (const k of resourceNames()) {
+    ok(g[k] >= 0, `${k} is ${g[k]} (must be >= 0)`);
+  }
+});
+
+// ── 4. Door Staff cap (7th purchase) — PLAN §1.5 ─────────────────────────────
+
+console.log('\n4. Door Staff purchase limit (PLAN §1.5)');
+
+test('door entry exists in BUILDINGS', () => {
+  const game = newGame();
+  const door = buildingById(game, 'door');
+  ok(door, 'door BUILDINGS entry must exist');
+  strictEqual(door.name, 'Door Staff');
+});
+
+{
+  const doorProbe = buildingById(newGame(), 'door');
+  const hasMax = doorProbe && typeof doorProbe.max === 'number';
+  if (hasMax) {
+    test('7th Door Staff purchase is rejected (max cap)', () => {
+      const game = newGame(1e9);
+      const g = game.state.g;
+      const door = buildingById(game, 'door');
+      for (let i = 0; i < 6; i++) game.buyBuilding(door);
+      strictEqual(g.b.door, 6);
+      game.buyBuilding(door);
+      strictEqual(g.b.door, 6, '7th door purchase must not increase count');
+    });
+  } else {
+    xfail('7th Door Staff purchase is rejected (max cap)', () => {
+      const game = newGame(1e9);
+      const g = game.state.g;
+      const door = buildingById(game, 'door');
+      for (let i = 0; i < 6; i++) game.buyBuilding(door);
+      strictEqual(g.b.door, 6);
+      game.buyBuilding(door);
+      strictEqual(g.b.door, 6, '7th door purchase must not increase count');
+    }, 'PLAN §1.5: max: 6 cap on door BUILDINGS not yet implemented');
+
+    test('door BUILDINGS entry has no max field yet (pre-1.5)', () => {
+      const door = buildingById(newGame(), 'door');
+      ok(!('max' in door) || door.max === undefined, 'door max field expected absent before 1.5');
+    });
+  }
+}
+
+// ── 5. catchUp (PLAN §1.1) ──────────────────────────────────────────────────
+
+console.log('\n5. catchUp offline simulation (PLAN §1.1)');
+
+{
+  const probe = newGame();
+  if (typeof probe.catchUp === 'function') {
+    test('catchUp(g, 3600) yields ~50% of live step cash (±2%)', () => {
+      // Seed without path-dependent hype/buzz/patron feedback so the half-rate
+      // relationship is exact (nonlinear mults make live vs 50%-accrual diverge
+      // even with identical shift alignment).
+      function seeded() {
+        const game = newGame(500);
+        const g = game.state.g;
+        g.b.rail = 2;
+        g.b.bar = 1;
+        g.cash = 500;
+        g.hype = 0;
+        g.buzz = 0;
+        g.patrons = 0;
+        g.regulars = 0;
+        g.crew = 0;
+        g.jobs = { stage: 0, vipjob: 0, floor: 0, off: 0 };
+        g.shiftIdx = 0;
+        g.shiftT = 0;
+        g.elapsed = 0;
+        g.ts = Date.now();
+        return game;
+      }
+      const live = seeded();
+      const off = seeded();
+      const cashLive0 = live.state.g.cash;
+      const cashOff0 = off.state.g.cash;
+
+      // Live: full-rate step for 3600s wall
+      live.step(3600);
+      const liveGain = live.state.g.cash - cashLive0;
+
+      // Offline: catchUp at 50% rate
+      const result = off.catchUp(off.state.g, 3600);
+      const offGain = off.state.g.cash - cashOff0;
+
+      // Offline cash delta should be ≈ half of live (same shift alignment)
+      const expected = liveGain * 0.5;
+      const tol = Math.max(Math.abs(expected) * 0.02, 0.01);
+      ok(
+        Math.abs(offGain - expected) <= tol,
+        `offline cash gain ${offGain} vs 50% live ${expected} (tol ${tol}); catchUp result=${JSON.stringify(result)}`
+      );
+    });
+
+    test('catchUp caps at 28800s', () => {
+      const game = newGame(100);
+      const g = game.state.g;
+      g.b.bar = 1;
+      g.cash = 100;
+      g.shiftIdx = 0;
+      g.shiftT = 0;
+      const before = g.elapsed;
+      game.catchUp(g, 999999);
+      // Wall time advanced should be at most 28800
+      ok(g.elapsed - before <= 28800 + 1e-6, `elapsed advanced ${g.elapsed - before}, cap 28800`);
+    });
+  } else {
+    skip('catchUp method exists and yields ~50% of live step()', 'PLAN §1.1: catchUp not yet implemented');
+    skip('catchUp(g, 3600) produces cash within 2% of live step equivalent', 'PLAN §1.1: catchUp not yet implemented');
+    skip('catchUp caps at 28800s', 'PLAN §1.1: catchUp not yet implemented');
+
+    test('catchUp method is absent (pre-1.1 baseline)', () => {
+      const game = newGame();
+      strictEqual(typeof game.catchUp, 'undefined', 'catchUp must not exist before PLAN §1.1');
+    });
+  }
+}
+
+// ── 6. Strike rule (PLAN §1.3) ───────────────────────────────────────────────
+
+console.log('\n6. Strike rule at cash=0 (PLAN §1.3)');
+
+test('rates() computes wage field when non-crew revenue covers payroll', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.crew = 3;
+  g.jobs = { stage: 1, vipjob: 1, floor: 1, off: 0 };
+  g.b.bar = 20;
+  const r = game.rates(g);
+  ok(typeof r.wage === 'number', 'rates() must return a wage number');
+  ok(r.wage > 0, 'wage must be > 0 when crew is working (crew=3, off=0)');
+  ok(!r.strike, 'no strike when recurring revenue covers payroll');
+});
+
+test('rates() does not crash at cash=0', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.cash = 0;
+  g.crew = 3;
+  g.jobs = { stage: 1, vipjob: 1, floor: 1, off: 0 };
+  const r = game.rates(g);
+  ok(typeof r.cash === 'number', 'rates() must return cash number even at cash=0');
+});
+
+test('at cash=0 with wages > non-crew income: wage is 0 and strike true', () => {
+  const game = newGame(0);
+  const g = game.state.g;
+  g.cash = 0;
+  g.crew = 3;
+  g.jobs = { stage: 1, vipjob: 1, floor: 1, off: 0 };
+  // No buildings → non-crew income tiny; wages positive
+  const r = game.rates(g);
+  strictEqual(r.wage, 0, 'wage must be 0 when strike is active');
+  strictEqual(r.strike, true, 'strike flag must be true');
+});
+
+test('at cash=0 with wages > non-crew income: crew output zeroed', () => {
+  const game = newGame(0);
+  const g = game.state.g;
+  g.cash = 0;
+  g.crew = 3;
+  g.jobs = { stage: 1, vipjob: 1, floor: 1, off: 0 };
+  g.hype = 0;
+  g.buzz = 0;
+  g.patrons = 0;
+  // Struck rates: no vipjob cash, no stage hype, no floor buzz
+  const struck = game.rates(g);
+  strictEqual(struck.wage, 0, 'wage must be 0 on strike');
+  strictEqual(struck.strike, true, 'strike active');
+  // A cash balance alone must not end an underfunded strike.
+  g.cash = 100;
+  const stillStruck = game.rates(g);
+  strictEqual(stillStruck.strike, true, 'cash balance does not cover recurring payroll');
+  // Paid rates after recurring non-crew revenue covers payroll have crew output.
+  g.b.bar = 20;
+  const paid = game.rates(g);
+  ok(paid.wage > 0, 'wage positive when paid');
+  ok(!paid.strike, 'strike clears when recurring revenue covers payroll');
+  // Stage hype: paid includes stage crew; struck does not (only DJ buildings = 0)
+  ok(paid.hype > struck.hype, 'stage crew hype zeroed on strike');
+  // Floor buzz: paid includes floor; struck has none (no marquee/flyers)
+  ok(paid.buzz > struck.buzz, 'floor crew buzz zeroed on strike');
+  // VIP crew cash: paid net should be lower by wages but vipjob still contributes;
+  // struck cash is pure non-crew (tiny base) with no wage
+  // Compare gross: paid.cash + paid.wage > struck.cash (vipjob contribution present when paid)
+  ok(paid.cash + paid.wage > struck.cash + struck.wage, 'vipjob cash contribution zeroed on strike');
+});
+
+test('strike edge-triggered log fires once on onset', () => {
+  const game = newGame(0);
+  const g = game.state.g;
+  g.cash = 0;
+  g.crew = 3;
+  g.jobs = { stage: 1, vipjob: 1, floor: 1, off: 0 };
+  g.log = [];
+  game._onStrike = false;
+  game.step(0.1);
+  const strikeLogs = g.log.filter(l => /on strike/i.test(l.msg));
+  strictEqual(strikeLogs.length, 1, 'exactly one strike log on onset');
+  // Further ticks while still broke must not re-log
+  game.step(0.1);
+  game.step(0.1);
+  const after = g.log.filter(l => /on strike/i.test(l.msg));
+  strictEqual(after.length, 1, 'strike log remains edge-triggered (not per-tick)');
+});
+
+test('door trickle does not alternate an underfunded strike into production', () => {
+  const game = newGame(0);
+  const g = game.state.g;
+  g.crew = 2;
+  g.jobs = { stage: 1, vipjob: 0, floor: 1, off: 0 };
+  game.step(1);
+  ok(g.cash > 0, 'non-crew door revenue accumulates during strike');
+  const hype = g.hype;
+  const buzz = g.buzz;
+  game.step(1);
+  strictEqual(game.rates(g).strike, true, 'crew remain on strike with positive trickle cash');
+  strictEqual(g.hype, hype, 'stage crew do not produce on the next tick');
+  strictEqual(g.buzz, buzz, 'floor crew do not produce on the next tick');
+});
+
+test('no strike when non-crew income covers wages at cash=0', () => {
+  const game = newGame(0);
+  const g = game.state.g;
+  g.cash = 0;
+  // One crew on stage only (wage 0.22); many bars → non-crew covers wage
+  g.crew = 1;
+  g.jobs = { stage: 1, vipjob: 0, floor: 0, off: 0 };
+  g.b.bar = 20;
+  const r = game.rates(g);
+  ok(r.wage > 0, 'crew still paid when non-crew covers wages');
+  ok(!r.strike, 'no strike when buildings cover payroll');
+});
+
+// ── 7. Walk-in trickle (PLAN §1.4) ───────────────────────────────────────────
+
+console.log('\n7. Walk-in trickle baseline pull (PLAN §1.4)');
+
+test('pull is at least 0.02 with zero buzz (walk-in baseline)', () => {
+  const game = newGame();
+  const g = game.state.g;
+  g.buzz = 0;
+  g.hype = 0;
+  g.patrons = 0;
+  const r = game.rates(g);
+  ok(r.pull >= 0.02 - 1e-9, `pull ${r.pull} must include +0.02 walk-in baseline`);
+  strictEqual(r.buzzSpent, 0, 'walk-ins spend no buzz when basis is 0');
+});
+
+test('fresh save with zero buzz admits walk-in patrons over time', () => {
+  const game = newGame();
+  const g = game.state.g;
+  g.buzz = 0;
+  g.hype = 0;
+  g.patrons = 0;
+  // ~60s of live sim should accumulate ~1.2 patrons from walk-ins alone
+  for (let i = 0; i < 600; i++) game.step(0.1);
+  ok(g.patrons > 0.5, `walk-ins must fill floor with zero buzz (patrons=${g.patrons})`);
+  ok(g.buzz === 0 || g.buzz < 1e-6, 'buzz must stay ~0 when not generating buzz');
+});
+
+test('rail + walk-in patrons earn cash with zero buzz', () => {
+  const game = newGame(100);
+  const g = game.state.g;
+  g.buzz = 0;
+  g.hype = 0;
+  g.patrons = 3; // patrons already present (walked in)
+  g.b.rail = 1;
+  g.crew = 0;
+  g.jobs = { stage: 0, vipjob: 0, floor: 0, off: 0 };
+  const cashBefore = g.cash;
+  const r = game.rates(g);
+  // rail tips: min(patrons, rail*6) * 0.05 = 3 * 0.05 = 0.15/s (plus flat base)
+  ok(r.cash > 0, `rail-first with patrons must earn cash (cash rate=${r.cash})`);
+  for (let i = 0; i < 100; i++) game.step(0.1);
+  ok(g.cash > cashBefore, `cash must grow via rail tips with zero buzz (${cashBefore} → ${g.cash})`);
+});
+
+// PLAN §1.6 — no uncapped patrons*0.012; patron cash via rail only (+ base door)
+test('patrons without rail earn only base door cash (no flat patron rate)', () => {
+  const game = newGame(100);
+  const g = game.state.g;
+  g.patrons = 100;
+  g.b.rail = 0;
+  g.b.bar = 0;
+  g.b.vip = 0;
+  g.crew = 0;
+  g.jobs = { stage: 0, vipjob: 0, floor: 0, off: 0 };
+  g.hype = 0;
+  g.regulars = 0;
+  g.shiftIdx = 0; // Early Doors mult 0.7
+  g.u = {};
+  const r = game.rates(g);
+  // cashMult = 1 * 1 * 0.7; expected non-crew = 0.08 * 0.7 only
+  const expected = 0.08 * 0.7;
+  ok(Math.abs(r.cash - expected) < 1e-9,
+    `no uncapped patrons×0.012: cash=${r.cash}, expected base door ${expected}`);
+});
+
+test('Tip Rail desc mentions per-rail patron cap', () => {
+  const game = newGame();
+  const rail = game.BUILDINGS.find(b => b.id === 'rail');
+  ok(rail, 'rail building exists');
+  ok(/Up to 6 patrons per rail/i.test(rail.desc), `Tip Rail desc updated: ${rail.desc}`);
+});
+
+// ── 8. caps() correctness ────────────────────────────────────────────────────
+
+console.log('\n8. caps() correctness');
+
+test('caps() returns expected fields', () => {
+  const game = newGame();
+  const c = game.caps(game.state.g);
+  ok('patrons' in c);
+  ok('buzz' in c);
+  ok('hype' in c);
+  ok('crew' in c);
+});
+
+test('caps().crew is 2 + dress * 2', () => {
+  const game = newGame();
+  const g = game.state.g;
+  strictEqual(game.caps(g).crew, 2);
+  g.b.dress = 1;
+  strictEqual(game.caps(g).crew, 4);
+  g.b.dress = 3;
+  strictEqual(game.caps(g).crew, 8);
+});
+
+// ── 9. SHIFTS structure ──────────────────────────────────────────────────────
+
+console.log('\n9. SHIFTS structure');
+
+test('4 shifts exist', () => {
+  const game = newGame();
+  strictEqual(game.SHIFTS.length, 4);
+});
+
+test('shift cycle totals 160s per night', () => {
+  const game = newGame();
+  const total = game.SHIFTS.reduce((s, sh) => s + sh.len, 0);
+  strictEqual(total, SECONDS_PER_NIGHT);
+});
+
+// ── 10. Edge cases ───────────────────────────────────────────────────────────
+
+console.log('\n10. Edge cases');
+
+test('step(0) does not mutate resources', () => {
+  const game = newGame(100);
+  const g = game.state.g;
+  const cash = g.cash, hype = g.hype, buzz = g.buzz, patrons = g.patrons;
+  game.step(0);
+  strictEqual(g.cash, cash);
+  strictEqual(g.hype, hype);
+  strictEqual(g.buzz, buzz);
+  strictEqual(g.patrons, patrons);
+});
+
+// ── buyUpgrade building requirements (PLAN §1.8) ─────────────────────────────
+
+console.log('\nbuyUpgrade enforces building req (PLAN §1.8)');
+
+test('buyUpgrade rejects purchase when building req unmet', () => {
+  const game = newGame(1e9);
+  const g = game.state.g;
+  const led = game.UPGRADES.find(u => u.id === 'led');
+  ok(led, 'led upgrade must exist');
+  // led requires dj × 2; leave dj at 0
+  strictEqual(g.b.dj, 0);
+  const cashBefore = g.cash;
+  game.buyUpgrade(led);
+  strictEqual(g.u.led, false, 'must not install without dj × 2');
+  strictEqual(g.cash, cashBefore, 'cash must not change when req fails');
+});
+
+test('buyUpgrade succeeds when building req and cash are met', () => {
+  const game = newGame(1e9);
+  const g = game.state.g;
+  const led = game.UPGRADES.find(u => u.id === 'led');
+  g.b.dj = 2;
+  const cashBefore = g.cash;
+  game.buyUpgrade(led);
+  strictEqual(g.u.led, true, 'must install when dj × 2 owned');
+  strictEqual(g.cash, cashBefore - led.cost);
+});
+
+test('buyUpgrade is no-op when already owned', () => {
+  const game = newGame(1e9);
+  const g = game.state.g;
+  const led = game.UPGRADES.find(u => u.id === 'led');
+  g.b.dj = 2;
+  game.buyUpgrade(led);
+  const cashAfter = g.cash;
+  game.buyUpgrade(led);
+  strictEqual(g.u.led, true);
+  strictEqual(g.cash, cashAfter, 'second buy must not charge again');
+});
+
+test('hireCrew respects crew cap', () => {
+  const game = newGame(50000);
+  const g = game.state.g;
+  const cap = game.caps(g).crew;
+  for (let i = 0; i < cap + 2; i++) game.hireCrew();
+  ok(g.crew <= cap, `crew ${g.crew} must not exceed cap ${cap}`);
+});
+
+test('hireCrew fails when cash is insufficient', () => {
+  const game = newGame(2);
+  const g = game.state.g;
+  g.b.dress = 1;
+  game.hireCrew();
+  strictEqual(g.crew, 0, 'hireCrew must fail when cash < price');
+});
+
+test('moveJob(d>0) on non-off slot pulls from off', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.b.dress = 2;
+  game.hireCrew();
+  game.hireCrew();
+  game.moveJob('stage', -1);
+  game.moveJob('vipjob', 1);
+  strictEqual(g.jobs.vipjob, 1);
+  strictEqual(g.jobs.off, 0);
+  strictEqual(jobSum(g), g.crew);
+});
+
+// ── Honest away-report (PLAN §1.10) ──────────────────────────────────────────
+
+console.log('\nhonest away-report (PLAN §1.10)');
+
+test('catchUp returns earned, wagesPaid, struck accumulators', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.b.bar = 2;
+  g.crew = 2;
+  g.jobs = { stage: 1, vipjob: 1, floor: 0, off: 0 };
+  g.shiftIdx = 0;
+  g.shiftT = 0;
+  const r = game.catchUp(g, 60);
+  ok(typeof r.earned === 'number' && r.earned > 0, `earned must be positive gross (${r.earned})`);
+  ok(typeof r.wagesPaid === 'number' && r.wagesPaid > 0, `wagesPaid must be positive (${r.wagesPaid})`);
+  strictEqual(r.struck, false, 'no strike when cash is ample');
+});
+
+test('catchUp struck=true when crew unpaid during gap', () => {
+  const game = newGame(0);
+  const g = game.state.g;
+  g.cash = 0;
+  g.crew = 3;
+  g.jobs = { stage: 1, vipjob: 1, floor: 1, off: 0 };
+  // No buildings → non-crew cannot cover wages at cash=0 (strike at least on first slice)
+  const r = game.catchUp(g, 30);
+  strictEqual(r.struck, true, 'struck must be true when strike active during gap');
+  // Base door may lift cash above 0 mid-gap so wages can resume; only struck flag is required.
+});
+
+test('awayMsg reports earned and wages, not cash-floor +$0', () => {
+  const game = newGame();
+  const msg = game.awayMsg(94 * 60, { earned: 312, wagesPaid: 88, struck: false });
+  ok(/Away 94m/.test(msg), `minutes in message: ${msg}`);
+  ok(/earned \$312/.test(msg), `earned in message: ${msg}`);
+  ok(/wages −\$88/.test(msg), `wages drag in message: ${msg}`);
+  ok(!/\+\$0/.test(msg), 'must not collapse to +$0 cash-delta wording');
+});
+
+test('awayMsg appends strike note when struck', () => {
+  const game = newGame();
+  const msg = game.awayMsg(120, { earned: 10, wagesPaid: 5, struck: true });
+  ok(/Crew struck while you were gone\./.test(msg), `strike append: ${msg}`);
+});
+
+// ── Save import (PLAN §2.1) ──────────────────────────────────────────────────
+
+console.log('\nSave import from clipboard (PLAN §2.1)');
+
+test('valid import replaces state and persists', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g.cash = 777;
+  g.hype = 12;
+  g.buzz = 4;
+  g.patrons = 3;
+  g.regulars = 1.5;
+  g.clout = 2;
+  g.crew = 2;
+  g.jobs = { stage: 1, vipjob: 0, floor: 0, off: 1 };
+  g.b.bar = 2;
+  const payload = {
+    saveVer: game.SAVE_VER,
+    ver: game.VERSION.num,
+    build: game.VERSION.build,
+    g: JSON.parse(JSON.stringify(g))
+  };
+  // Mutate live club so import must actually replace.
+  game.state.g.cash = 1;
+  game.state.g.hype = 0;
+  game.state.g.b.bar = 0;
+  const okImport = game.importSaveFromText(JSON.stringify(payload));
+  strictEqual(okImport, true, 'import must succeed');
+  strictEqual(game.state.saveState, 'imported');
+  strictEqual(game.state.g.cash, 777);
+  strictEqual(game.state.g.hype, 12);
+  strictEqual(game.state.g.b.bar, 2);
+  strictEqual(game.state.g.crew, 2);
+  // Persisted under KEY with SAVE_VER envelope.
+  const stored = JSON.parse(localStorage.getItem(game.KEY));
+  strictEqual(stored.saveVer, game.SAVE_VER);
+  strictEqual(stored.g.cash, 777);
+});
+
+test('import runs jobs sum correction (sanitizeG)', () => {
+  const game = newGame(20);
+  const payload = {
+    saveVer: game.SAVE_VER,
+    g: {
+      cash: 50, hype: 0, buzz: 0, patrons: 0, regulars: 0, clout: 0,
+      crew: 3,
+      jobs: { stage: 1, vipjob: 0, floor: 0, off: 0 }, // sum 1 < crew 3
+      b: {}, u: {}, r: {}, elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: Date.now()
+    }
+  };
+  const okImport = game.importSaveFromText(JSON.stringify(payload));
+  strictEqual(okImport, true);
+  strictEqual(game.state.g.crew, 3);
+  strictEqual(game.state.g.jobs.off, 2, 'missing assignments pad into off');
+  strictEqual(jobSum(game.state.g), 3);
+});
+
+test('invalid JSON fails closed with import failed', () => {
+  const game = newGame(50);
+  game.state.g.cash = 50;
+  const before = game.state.g;
+  const okImport = game.importSaveFromText('not-json{{{');
+  strictEqual(okImport, false);
+  strictEqual(game.state.saveState, 'import failed');
+  strictEqual(game.state.g, before, 'club reference must be unchanged');
+  strictEqual(game.state.g.cash, 50);
+});
+
+test('missing resource fields fail closed', () => {
+  const game = newGame(40);
+  game.state.g.cash = 40;
+  const okImport = game.importSaveFromText(JSON.stringify({
+    saveVer: 4,
+    g: { cash: 99, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 } } // missing hype etc.
+  }));
+  strictEqual(okImport, false);
+  strictEqual(game.state.saveState, 'import failed');
+  strictEqual(game.state.g.cash, 40, 'cash must not change on invalid payload');
+});
+
+test('missing maps and shift metadata are safely backfilled before import', () => {
+  const game = newGame(20);
+  const payload = {
+    saveVer: game.SAVE_VER,
+    g: {
+      cash: 99, hype: 1, buzz: 2, patrons: 3, regulars: 4, clout: 5,
+      crew: 1, jobs: { stage: 1, vipjob: 0, floor: 0, off: 0 }
+    }
+  };
+  strictEqual(game.importSaveFromText(JSON.stringify(payload)), true);
+  strictEqual(game.state.g.b.bar, 0);
+  strictEqual(game.state.g.u.coat, false);
+  strictEqual(game.state.g.r.loop, false);
+  strictEqual(game.state.g.shiftIdx, 0);
+  strictEqual(game.state.g.shiftT, 0);
+  ok(Number.isFinite(game.rates(game.state.g).cash), 'completed state is simulation-safe');
+});
+
+test('invalid nested state fails closed without replacing or persisting club', () => {
+  const game = newGame(40);
+  localStorage.clear();
+  const before = game.state.g;
+  const payload = { saveVer: game.SAVE_VER, g: { ...game.fresh(), b: { bar: 'many' } } };
+  strictEqual(game.importSaveFromText(JSON.stringify(payload)), false);
+  strictEqual(game.state.g, before, 'live state reference remains unchanged');
+  strictEqual(localStorage.getItem(game.KEY), null, 'invalid candidate is not persisted');
+});
+
+test('init recovers from a previously persisted malformed import', () => {
+  const game = new Game(root);
+  game.forceUpdate = () => {};
+  const poisoned = game.fresh();
+  poisoned.b = { bar: 'many' };
+  localStorage.setItem(game.KEY, JSON.stringify({ saveVer: game.SAVE_VER, g: poisoned }));
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+  strictEqual(game.state.g.b.bar, 0, 'unsafe persisted state resets to fresh');
+  ok(game.state.g.log.some(x => /previous save reset/.test(x.msg)), 'reset is disclosed in the log');
+});
+
+test('non-numeric saveVer fails closed', () => {
+  const game = newGame(30);
+  const g = game.fresh();
+  g.cash = 999;
+  const okImport = game.importSaveFromText(JSON.stringify({
+    saveVer: '4',
+    g
+  }));
+  strictEqual(okImport, false);
+  strictEqual(game.state.saveState, 'import failed');
+  strictEqual(game.state.g.cash, 30);
+});
+
+// ── Save migration map (PLAN §2.2) ───────────────────────────────────────────
+
+console.log('\nSave migration map (PLAN §2.2)');
+
+test('SAVE_VER is 4', () => {
+  const game = newGame();
+  strictEqual(game.SAVE_VER, 4);
+  ok(typeof game.MIGRATIONS[3] === 'function', 'MIGRATIONS[3] must exist');
+});
+
+test('migrateFrom(3) applies jobs/crew fixups and preserves club', () => {
+  const game = newGame();
+  const g = game.fresh();
+  g.cash = 123;
+  g.crew = 3;
+  g.jobs = { stage: 1, vipjob: 0, floor: 0, off: 0 }; // sum 1 < crew 3
+  const ok = game.migrateFrom(g, 3);
+  strictEqual(ok, true);
+  strictEqual(g.cash, 123, 'resources must survive migration');
+  strictEqual(g.crew, 3);
+  strictEqual(g.jobs.off, 2, 'missing assignments pad into off');
+  strictEqual(jobSum(g), 3);
+});
+
+test('migrateFrom returns false when a version has no path', () => {
+  const game = newGame();
+  const g = game.fresh();
+  g.cash = 50;
+  // No MIGRATIONS[1] or [2] — chain cannot reach SAVE_VER.
+  strictEqual(game.migrateFrom(g, 1), false);
+  strictEqual(game.migrateFrom(g, 2), false);
+  // Future format — no downgrade path.
+  strictEqual(game.migrateFrom(g, 99), false);
+  strictEqual(g.cash, 50, 'failed migrate must not wipe the object');
+});
+
+test('init migrates saveVer 3 from localStorage without wipe', () => {
+  localStorage.clear();
+  // Full building map so rates() stays finite if a tiny offline gap runs during init.
+  const b = { rail: 1, bar: 0, vip: 0, dj: 0, marquee: 0, flyers: 0, door: 0, dress: 0 };
+  const payload = {
+    saveVer: 3,
+    ver: '0.4.0',
+    build: 100,
+    g: {
+      cash: 88, hype: 1, buzz: 0, patrons: 0, regulars: 0, clout: 0,
+      crew: 2,
+      jobs: { stage: 1, vipjob: 0, floor: 0, off: 0 },
+      b, u: {}, r: {},
+      elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, log: [{ t: 'old', msg: 'gone' }],
+      // Far-future ts so offline catch-up does not run (this test is about migrate, not offline).
+      ts: Date.now() + 60_000
+    }
+  };
+  localStorage.setItem('afterglow.save', JSON.stringify(payload));
+  const game = new Game(root);
+  game.forceUpdate = () => {};
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+  strictEqual(game.state.g.cash, 88, 'migrated club keeps cash');
+  strictEqual(game.state.g.crew, 2);
+  strictEqual(game.state.g.b.rail, 1);
+  strictEqual(jobSum(game.state.g), 2);
+  const msgs = game.state.g.log.map(e => e.msg);
+  ok(msgs.some(m => /migrated from format v3/.test(m)), `expect migrate log, got: ${msgs.join(' | ')}`);
+  ok(!msgs.some(m => /previous save reset/.test(m)), 'must not claim wipe on successful migrate');
+});
+
+test('init wipes garbage JSON with existing reset message', () => {
+  localStorage.clear();
+  localStorage.setItem('afterglow.save', 'not-json{{{');
+  const game = new Game(root);
+  game.forceUpdate = () => {};
+  game.props.startingCash = 20;
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+  strictEqual(game.state.g.cash, 20, 'fresh club after wipe');
+  strictEqual(game.state.g.crew, 0);
+  const msgs = game.state.g.log.map(e => e.msg);
+  ok(msgs.some(m => /previous save reset/.test(m)), `expect wipe log, got: ${msgs.join(' | ')}`);
+});
+
+test('init wipes when saveVer has no migration path', () => {
+  localStorage.clear();
+  localStorage.setItem('afterglow.save', JSON.stringify({
+    saveVer: 1,
+    ver: '0.1.0',
+    g: {
+      cash: 999, hype: 0, buzz: 0, patrons: 0, regulars: 0, clout: 0,
+      crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      b: {}, u: {}, r: {}, elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: Date.now()
+    }
+  }));
+  const game = new Game(root);
+  game.forceUpdate = () => {};
+  game.props.startingCash = 20;
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+  strictEqual(game.state.g.cash, 20, 'no-path must wipe to fresh');
+  const msgs = game.state.g.log.map(e => e.msg);
+  ok(msgs.some(m => /previous save reset/.test(m)), `expect wipe log, got: ${msgs.join(' | ')}`);
+});
+
+test('import of saveVer 3 migrates then stamps SAVE_VER', () => {
+  const game = newGame(10);
+  const g = {
+    cash: 42, hype: 0, buzz: 0, patrons: 0, regulars: 0, clout: 0,
+    crew: 2, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+    b: {}, u: {}, r: {}, elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: Date.now()
+  };
+  const okImport = game.importSaveFromText(JSON.stringify({ saveVer: 3, g }));
+  strictEqual(okImport, true);
+  strictEqual(game.state.g.cash, 42);
+  strictEqual(jobSum(game.state.g), 2);
+  const stored = JSON.parse(localStorage.getItem(game.KEY));
+  strictEqual(stored.saveVer, game.SAVE_VER);
+  strictEqual(stored.g.cash, 42);
+});
+
+// ── Multi-tab storage guard (PLAN §2.3) ───────────────────────────────────────
+console.log('\nMulti-tab storage guard (PLAN §2.3)');
+
+test('onForeignSave stops autosave interval and marks tab stale', () => {
+  const game = newGame(10);
+  game.saver = setInterval(() => {}, 60_000);
+  ok(game.saver != null, 'saver mock present');
+  game.onForeignSave();
+  strictEqual(game.state.tabStale, true);
+  strictEqual(game.saver, null, 'autosave interval cleared');
+  strictEqual(game.state.saveState, 'paused (other tab)');
+  // Idempotent second call.
+  game.onForeignSave();
+  strictEqual(game.state.tabStale, true);
+});
+
+test('autosave is a no-op while tabStale; manual save still writes', () => {
+  const game = newGame(10);
+  game.state.g.cash = 123;
+  game.state.tabStale = true;
+  localStorage.removeItem(game.KEY);
+  game.save('auto');
+  strictEqual(localStorage.getItem(game.KEY), null, 'autosave must not clobber foreign save');
+  game.save('manual');
+  const raw = localStorage.getItem(game.KEY);
+  ok(raw, 'manual save still allowed (last-explicit-wins)');
+  strictEqual(JSON.parse(raw).g.cash, 123);
+});
+
+// ── Integer patrons display (PLAN §2.4) ───────────────────────────────────────
+console.log('\nInteger patrons display (PLAN §2.4)');
+
+test('Patrons ledger shows floor(g.patrons); sim value stays fractional', () => {
+  const game = newGame(10);
+  game.state.g.patrons = 3.87;
+  const v = game.renderVals();
+  const row = v.resources.find(r => r.name === 'Patrons');
+  ok(row, 'Patrons resource row present');
+  // fmt(Math.floor(3.87)) → fmt(3) → "3.00" for values < 10
+  strictEqual(row.val, game.fmt(3), `ledger must show floored patrons, got ${row.val}`);
+  strictEqual(game.state.g.patrons, 3.87, 'simulation patrons must remain fractional');
+});
+
+// ── Results ──────────────────────────────────────────────────────────────────
+
+console.log('\n───────────────────────────────────────');
+console.log(`Results: ${passed} passed, ${skipped} skipped, ${failed} failed`);
+console.log('───────────────────────────────────────\n');
+
+if (failed > 0) {
+  console.error('❌ Some tests failed.\n');
+  process.exit(1);
+}
+console.log(passed > 0 ? '✅ All non-skipped tests passed.\n' : '✅ All tests either passed or were skipped.\n');
+process.exit(0);
