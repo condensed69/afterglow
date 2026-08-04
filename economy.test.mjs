@@ -1243,10 +1243,10 @@ test('importSaveFile routes FileReader text into importSaveFromText', () => {
   ok(!msgs.some(m => /clipboard/i.test(m)), 'restore log must not mention clipboard after file load');
 });
 
-// ── Import log sanitization + tabStale ownership (AAR-58 / PR #10 residual) ───
-console.log('\nImport log sanitization + tabStale ownership (AAR-58)');
+// ── Import log sanitization + tabStale ownership (AAR-58 / AAR-62) ────────────
+console.log('\nImport log sanitization + tabStale ownership (AAR-58 / AAR-62)');
 
-test('crafted HTML in imported log does not survive completeImportedG', () => {
+test('crafted HTML in imported log is escaped at render, not stored as entities', () => {
   const game = newGame(10);
   const payload = {
     saveVer: game.SAVE_VER,
@@ -1274,26 +1274,17 @@ test('crafted HTML in imported log does not survive completeImportedG', () => {
   const okImport = game.importSaveFromText(JSON.stringify(payload));
   strictEqual(okImport, true);
   const log = game.state.g.log;
-  // Imported crafted entries must not retain raw markup (escaped entities instead).
-  for (const entry of log) {
-    if (entry.msg === 'Save restored.') continue;
-    ok(!entry.msg.includes('<'), `msg must not contain raw <: ${entry.msg}`);
-    ok(!entry.msg.includes('>'), `msg must not contain raw >: ${entry.msg}`);
-    ok(!entry.t.includes('<'), `t must not contain raw <: ${entry.t}`);
-    ok(entry.msg.includes('&lt;') || entry.msg === 'ok line' || !/onerror|script/i.test(entry.msg),
-      `dangerous markup must be entity-escaped: ${entry.msg}`);
-  }
+  // Storage keeps raw validated text (idempotent export→import).
   const xssEntry = log.find(e => /onerror|img/i.test(e.msg));
-  ok(xssEntry, 'crafted entry retained in sanitized form');
-  ok(xssEntry.msg.includes('&lt;img'), 'angle brackets escaped to entities');
-  ok(!xssEntry.msg.includes('<img'), 'raw <img tag must not survive');
-  // Color injection blocked — only hex colors allowed.
+  ok(xssEntry, 'crafted entry retained in g.log');
+  ok(xssEntry.msg.includes('<img'), 'g.log keeps raw angle brackets (not pre-escaped)');
+  ok(!xssEntry.msg.includes('&lt;img'), 'g.log must not store entity-escaped markup');
+  // Color injection blocked — only hex colors allowed in storage.
   strictEqual(xssEntry.color, '#b9a5c9', 'unsafe color falls back to default');
-  const okColor = log.find(e => e.msg === 'ok line' || e.msg.includes('ok line'));
-  // May be escaped identically; find by color path: second entry had #22d3ee and plain msg.
-  const hexEntry = log.find(e => e.color === '#22d3ee');
-  ok(hexEntry, 'valid hex color preserved');
-  // renderVals must not reintroduce raw HTML into display fields.
+  const hexEntry = log.find(e => e.msg === 'ok line');
+  ok(hexEntry, 'plain msg retained raw');
+  strictEqual(hexEntry.color, '#22d3ee', 'valid hex color preserved');
+  // renderVals escapes for innerHTML — no raw tags in display fields.
   const v = game.renderVals();
   for (const row of v.log) {
     ok(!String(row.msg).includes('<img'), 'renderVals msg has no raw img tag');
@@ -1302,6 +1293,57 @@ test('crafted HTML in imported log does not survive completeImportedG', () => {
       ok(/^#[0-9a-fA-F]{3,8}$/.test(row.style.color), `render color is hex: ${row.style.color}`);
     }
   }
+  const renderedXss = v.log.find(r => /onerror|img/i.test(r.msg));
+  ok(renderedXss, 'crafted entry present in renderVals');
+  ok(renderedXss.msg.includes('&lt;img'), 'render boundary entity-escapes markup');
+  ok(!renderedXss.msg.includes('<img'), 'render boundary has no raw <img');
+});
+
+test('import → export → import leaves log text visually identical', () => {
+  const game = newGame(10);
+  const originalMsg = 'Hello & welcome <Peak> "VIP"';
+  const originalT = 'N1 Early';
+  const payload = {
+    saveVer: game.SAVE_VER,
+    ver: game.VERSION.num,
+    build: game.VERSION.build,
+    g: {
+      cash: 50, hype: 1, buzz: 0, patrons: 0, regulars: 0, clout: 0, crew: 0,
+      jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      b: {}, u: {}, r: {},
+      elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, ts: Date.now(),
+      log: [{ t: originalT, msg: originalMsg, color: '#ff2d78' }]
+    }
+  };
+  strictEqual(game.importSaveFromText(JSON.stringify(payload)), true);
+  const afterFirst = game.state.g.log.find(e => e.msg === originalMsg || e.msg.includes('Hello'));
+  ok(afterFirst, 'first import keeps original msg');
+  strictEqual(afterFirst.msg, originalMsg, 'first import stores raw msg');
+  strictEqual(afterFirst.t, originalT, 'first import stores raw t');
+  const display1 = game.renderVals().log.find(r => r.msg.includes('Hello') || r.msg.includes('welcome'));
+  ok(display1, 'first render has entry');
+
+  // Export current save (same shape as Download / clipboard).
+  const exported = JSON.stringify({
+    saveVer: game.SAVE_VER,
+    ver: game.VERSION.num,
+    build: game.VERSION.build,
+    g: game.state.g
+  });
+  const game2 = newGame(10);
+  strictEqual(game2.importSaveFromText(exported), true);
+  const afterSecond = game2.state.g.log.find(e => e.msg === originalMsg || e.msg.includes('Hello'));
+  ok(afterSecond, 'second import finds original msg');
+  strictEqual(afterSecond.msg, originalMsg, 're-import must not double-escape storage');
+  strictEqual(afterSecond.t, originalT, 're-import t unchanged');
+  const display2 = game2.renderVals().log.find(r => r.msg.includes('Hello') || r.msg.includes('welcome'));
+  ok(display2, 'second render has entry');
+  strictEqual(display2.msg, display1.msg, 'visible log text identical after round-trip');
+  strictEqual(display2.t, display1.t, 'visible log time identical after round-trip');
+  // Entities appear once in display (not &amp;lt;).
+  ok(display2.msg.includes('&amp;') || display2.msg.includes('&lt;'), 'display escapes special chars once');
+  ok(!display2.msg.includes('&amp;amp;'), 'no double-escaped ampersand');
+  ok(!display2.msg.includes('&amp;lt;'), 'no double-escaped angle bracket');
 });
 
 test('successful import clears tabStale and restarts autosave', () => {

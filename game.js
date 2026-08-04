@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.5.5', build: 163, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.5.6', build: 164, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 4;
   KEY = 'afterglow.save';
 
@@ -40,6 +40,9 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.5.6', date: '2026-08-04', codename: 'Neon Zero', notes: [
+      'Night-log import keeps raw validated text and hex-only colors; HTML escape happens only at render so export→import round-trips stay idempotent.'
+    ]},
     { v: '0.5.5', date: '2026-08-04', codename: 'Neon Zero', notes: [
       'Import sanitizes night-log text (HTML escaped) and log colors (hex only) before render — closes XSS via crafted save files.',
       'Successful file/clipboard restore clears tabStale and restarts autosave so explicit import takes ownership after a foreign-tab pause.'
@@ -343,11 +346,12 @@ class Game {
       if (!Number.isFinite(g.jobs[k]) || g.jobs[k] < 0) return false;
     }
     if (!Array.isArray(g.log)) g.log = [];
-    // Escape t/msg and restrict color so crafted saves cannot XSS via render() innerHTML.
+    // Keep raw validated t/msg (length-capped) so export→import is idempotent.
+    // Escape only at the render() innerHTML boundary; restrict color to hex.
     g.log = g.log.filter(x => x && typeof x === 'object' &&
       typeof x.t === 'string' && typeof x.msg === 'string').slice(0, 40).map(x => ({
-      t: this.escapeHtml(x.t).slice(0, 32),
-      msg: this.escapeHtml(x.msg).slice(0, 500),
+      t: x.t.slice(0, 32),
+      msg: x.msg.slice(0, 500),
       color: this.safeLogColor(x.color)
     }));
     this.sanitizeG(g);
@@ -943,10 +947,10 @@ class Game {
     return {
       ...base,
       resources, stats, tabs, cards, tabHint, jobs, crewOpen: this.state.tab === 'crew' && g.crew > 0,
-      // Imported logs are HTML-escaped in completeImportedG; color re-checked for style safety.
+      // Escape t/msg at the HTML boundary only (g.log stays raw for save round-trips).
       log: g.log.map(l => ({
-        t: l.t,
-        msg: l.msg,
+        t: this.escapeHtml(l.t),
+        msg: this.escapeHtml(l.msg),
         style: { color: this.safeLogColor(l.color) }
       })),
       shiftName: r.shift.name, nightNo: g.night, shiftMultLabel: 'x' + r.sm.toFixed(2),
