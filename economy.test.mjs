@@ -2223,6 +2223,60 @@ test('onForeignSave clears ownership and stops autosave', () => {
   strictEqual(game.state.tabStale, true);
 });
 
+// AAR-79 review P1: non-owner Settings wipe must not destroy a live sibling save.
+test('non-owner hardReset does not removeItem disk save', () => {
+  const game = newGame(20);
+  const g0 = game.fresh();
+  g0.cash = 7777;
+  g0.ts = Date.now() - 4000;
+  localStorage.setItem(game.KEY, JSON.stringify({
+    saveVer: game.SAVE_VER, ver: game.VERSION.num, build: game.VERSION.build, g: g0
+  }));
+  // Live foreign lease so age-claim cannot steal either.
+  localStorage.setItem(game.LEASE_KEY, JSON.stringify({
+    token: 'foreign-live', at: Date.now()
+  }));
+  sessionStorage.clear();
+  game.forceUpdate = () => {};
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+  if (game._probeTimer) clearTimeout(game._probeTimer);
+  strictEqual(game.isTabOwner(), false);
+  strictEqual(game.state.tabStale, true);
+  const diskBefore = localStorage.getItem(game.KEY);
+  const cashBefore = JSON.parse(diskBefore).g.cash;
+  // Double-confirm wipe (arm + confirm) — both must no-op for non-owner.
+  const hr = game.renderVals().hardReset;
+  hr();
+  hr();
+  const diskAfter = localStorage.getItem(game.KEY);
+  ok(diskAfter, 'disk KEY still present after non-owner wipe attempts');
+  strictEqual(diskAfter, diskBefore, 'disk blob unchanged');
+  strictEqual(JSON.parse(diskAfter).g.cash, 7777, 'live sibling cash preserved');
+  strictEqual(cashBefore, 7777);
+  strictEqual(game.isTabOwner(), false, 'still not owner after wipe attempts');
+  strictEqual(game.state.tabStale, true, 'still paused after wipe attempts');
+  strictEqual(game.state.resetArmed, false, 'must not arm wipe UI while non-owner');
+});
+
+test('owner hardReset wipes disk after double-confirm', () => {
+  const game = newGame(20);
+  game.markTabOwner();
+  game.state.tabStale = false;
+  game.state.g.cash = 42;
+  localStorage.setItem(game.KEY, JSON.stringify({
+    saveVer: game.SAVE_VER, ver: game.VERSION.num, build: game.VERSION.build, g: game.state.g
+  }));
+  const hr = game.renderVals().hardReset;
+  hr(); // arm
+  strictEqual(game.state.resetArmed, true);
+  hr(); // confirm wipe
+  strictEqual(localStorage.getItem(game.KEY), null, 'owner wipe removes KEY');
+  strictEqual(game.state.g.cash, game.props.startingCash, 'fresh club after wipe');
+  ok(game.isTabOwner(), 'owner remains owner of fresh club');
+});
+
 // ── Results ──────────────────────────────────────────────────────────────────
 
 console.log('\n───────────────────────────────────────');
