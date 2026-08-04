@@ -1358,6 +1358,22 @@ test('import of a v4 payload still validates (payload checker unchanged)', () =>
   ok(!('goals' in payload.g));
 });
 
+// Orphan r.franchise (pre-prestige) must not pre-complete study on migrate/check.
+test('study/builtin ignore orphan keys; catalog research completes study', () => {
+  const game = newGame(20);
+  const g = game.fresh();
+  g.r = { franchise: true }; // preserved orphan from pre-prestige design
+  g.u = { ghostUpgrade: true };
+  const study = game.GOALS.find(x => x.id === 'study');
+  const builtin = game.GOALS.find(x => x.id === 'builtin');
+  strictEqual(study.check(g), false, 'orphan r.franchise must not complete study');
+  strictEqual(builtin.check(g), false, 'orphan u.* must not complete builtin');
+  g.r.loop = true;
+  strictEqual(study.check(g), true, 'catalog research completes study');
+  g.u.led = true;
+  strictEqual(builtin.check(g), true, 'catalog upgrade completes builtin');
+});
+
 // ── Results ──────────────────────────────────────────────────────────────────
 
 console.log('\n───────────────────────────────────────');

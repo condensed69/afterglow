@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.6.1', build: 165, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.6.1', build: 166, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 5;
   KEY = 'afterglow.save';
 
@@ -66,7 +66,8 @@ class Game {
       'Catch-up evaluates goals each offline slice so threshold goals (patrons/hype) complete if crossed mid-window then decay.',
       'pacing.mjs advances 1s of sim between each bot decision (not five decisions then +5s).',
       'Owner\'s List rail why matches tip rate (+$0.06/s); Floor Work / regulars copy no longer claims conversion.',
-      'Live step() evaluates goals each sim slice before shift rollover so Peak-hour hero can complete mid-tick.'
+      'Live step() evaluates goals each sim slice before shift rollover so Peak-hour hero can complete mid-tick.',
+      'Study/builtin goals check only catalog research/upgrades (orphan r.franchise does not complete study).'
     ]},
     { v: '0.6.0', date: '2026-08-04', codename: 'Neon Zero', notes: [
       'Owner\'s List: sequential 14-goal onboarding panel at the top of the systems column.',
@@ -258,7 +259,8 @@ class Game {
       why: 'Clout spent on research is permanent. Reputation Loop pays regulars forever.',
       hint: 'Research tab → spend Clout on any project (Reputation Loop is the cheap open).',
       reward: { cash: 50, clout: 0 },
-      check: g => g.r && Object.values(g.r).some(Boolean),
+      // Only catalog research — orphan r.franchise must not complete study.
+      check: g => this.RESEARCH.some(d => !!(g.r && g.r[d.id])),
       progress: null
     },
     {
@@ -282,7 +284,8 @@ class Game {
       why: 'Upgrades are one-time power spikes. Owning one means the club has a spine.',
       hint: 'Upgrades tab — meet the structure requirement, then buy (LED Pole is the usual first).',
       reward: { cash: 120, clout: 0 },
-      check: g => g.u && Object.values(g.u).some(Boolean),
+      // Only catalog upgrades — ignore any orphan u.* keys from old saves.
+      check: g => this.UPGRADES.some(d => !!(g.u && g.u[d.id])),
       progress: null
     },
     {
