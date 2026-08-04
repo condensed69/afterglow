@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.6.0', build: 169, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.6.0', build: 170, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 5;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -34,6 +34,9 @@ class Game {
   LEASE_TTL_MS = 45000;
   // Min wall time between lease writes from the live timer (saves/mark still write immediately).
   LEASE_REFRESH_MS = 2000;
+  // After writing PROBE_KEY, wait this long before age-claim so a live owner can refresh
+  // LEASE_KEY via the storage event. Immediate lease re-read races the async owner path.
+  PROBE_WAIT_MS = 250;
 
   // Dev-only tunables the Claude-artifact prop editor used to expose
   // (showDebug / simSpeed / startingCash). Fixed to their defaults now that
@@ -96,6 +99,8 @@ class Game {
       'Future/corrupt g.ts is clamped and claimed so the sim does not freeze until wall time catches up.',
       'Autosave starts only after this tab owns the save; non-claiming second tabs no-op save(auto) so they cannot steal a live sibling after 10s.',
       'Age-only claim (offline >15s) requires a live cross-tab lease check — disk age alone cannot steal from a throttled owner tab.',
+      'Age-only claim writes PROBE_KEY then waits for a live owner to refresh LEASE_KEY before claiming (no immediate re-read race).',
+      'Non-owner tabs are read-only: sim and controls pause with a banner until reload/import/manual save takes over.',
       'Successful import acquires ownership and starts autosave (same as manual save).',
       'pageshow clears RELOAD_KEY so BFCache restore does not leave a stealable reload marker for tab-duplicate.',
       'Live step evaluates Owner\'s List goals each shift slice (before rollover) so Peak-hour hero is not missed at the Peak→Last Call boundary.',
@@ -575,6 +580,10 @@ class Game {
       this.state.g = g;
       this.push(g, 'Save restored from clipboard.', '#22d3ee');
       try {
+        if (this._probeTimer) {
+          clearTimeout(this._probeTimer);
+          this._probeTimer = null;
+        }
         localStorage.setItem(this.KEY, JSON.stringify({
           saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
         }));
@@ -585,7 +594,7 @@ class Game {
         this.markTabOwner();
         this.startAutosave();
       } catch (e) { /* state already replaced; footer still shows imported */ }
-      this.setState({ saveState: 'imported' });
+      this.setState({ tabStale: false, saveState: 'imported' });
       return true;
     } catch (e) {
       this.setState({ saveState: 'import failed' });
@@ -683,8 +692,11 @@ class Game {
     } catch (e) { /* private mode */ }
     // Hard claims always proceed. Age-only claim is gated by cross-tab lease:
     // a background-throttled owner may lag autosave past 15s while still live.
+    // When age-claim would run, write PROBE_KEY and wait PROBE_WAIT_MS before
+    // deciding — an immediate lease re-read races the owner's async storage handler.
     const hardClaim = !resumeExisting || upgraded || wasOwner || futureTs;
     const ageClaimCandidate = resumeExisting && !hardClaim && offline > CLAIM_OFFLINE_SEC;
+    let ageClaimDeferred = false;
     if (ageClaimCandidate) {
       // Handshake: announce probe so a live owner refreshes LEASE_KEY via storage.
       try {
@@ -692,9 +704,14 @@ class Game {
           token: this.tabToken, at: Date.now()
         }));
       } catch (e) { /* private / quota */ }
+      if (this.hasLiveForeignLease()) {
+        // Already a live peer — do not claim.
+      } else {
+        // Lease absent/stale: owner may still respond to the probe. Defer claim.
+        ageClaimDeferred = true;
+      }
     }
-    const liveForeignLease = ageClaimCandidate && this.hasLiveForeignLease();
-    const needsClaim = hardClaim || (ageClaimCandidate && !liveForeignLease);
+    const needsClaim = hardClaim;
     let claimed = false;
     if (needsClaim) {
       g.ts = Date.now();
@@ -723,7 +740,7 @@ class Game {
       }
     } else if (offline > 0) {
       // Non-claiming path: offline catch-up in memory only (no setItem / no steal).
-      // Includes: short multi-tab open, and ageClaim blocked by a live foreign lease.
+      // Includes: short multi-tab open, ageClaim blocked by live lease, and deferred probe.
       const report = this.catchUp(g, offline);
       if (offline > 60) this.push(g, this.awayMsg(offline, report), '#ffc94a');
       this.noteGoals(g, { live: false });
@@ -741,8 +758,10 @@ class Game {
     }
     this.timer = setInterval(() => {
       const g = this.state.g; if (!g) return;
+      // Non-owner / foreign-tab pause: do not advance the sim (progress would be lost).
+      if (this.state.tabStale || !this.isTabOwner()) return;
       // Keep cross-tab lease fresh so age-only claimers see a live peer.
-      if (this.isTabOwner()) this.refreshLeaseThrottled();
+      this.refreshLeaseThrottled();
       const now = Date.now();
       const dt = Math.max(0, (now - (g.ts || now)) / 1000);
       // Skip sub-50ms ticks; leave g.ts untouched so elapsed time accrues to the next tick.
@@ -764,7 +783,21 @@ class Game {
     // Autosave only for the owning tab. A non-claiming second/duplicated tab
     // must not start the 10s timer — the first auto write would setItem a stale
     // snapshot, fire storage → onForeignSave on the live sibling, and pause it.
-    if (this.isTabOwner()) this.startAutosave();
+    // Non-owners are also read-only (tabStale) until takeover/import/manual save.
+    if (ageClaimDeferred) {
+      this.state.tabStale = true;
+      this.state.saveState = 'checking ownership…';
+      if (this._probeTimer) clearTimeout(this._probeTimer);
+      this._probeTimer = setTimeout(() => this.finishAgeClaim(), this.PROBE_WAIT_MS);
+    } else if (this.isTabOwner()) {
+      this.startAutosave();
+    } else if (!needsClaim) {
+      // Short multi-tab open or live foreign lease: visibly read-only.
+      // Do not overwrite saveState when a hard claim attempted and setItem failed.
+      this.state.tabStale = true;
+      this.state.saveState = 'paused (other tab)';
+    }
+    // needsClaim && !owner: claim setItem failed — keep 'save failed', no fake peer-pause.
     // storage only fires in *other* tabs — stop autosave so we don't clobber their write (PLAN §2.3).
     // Bind once: init() may re-run in tests; page boot calls it a single time.
     if (!this._storageBound) {
@@ -783,9 +816,46 @@ class Game {
     this.forceUpdate();
   }
 
-  // Another tab wrote/removed KEY. Freeze autosave; banner offers reload to adopt their save.
+  // After PROBE_WAIT_MS: claim only if no live foreign lease appeared (owner refreshed).
+  // Offline catch-up already ran in memory on the deferred path; this persists it.
+  finishAgeClaim() {
+    this._probeTimer = null;
+    if (this.isTabOwner()) return;
+    if (this.hasLiveForeignLease()) {
+      this.state.tabStale = true;
+      this.setState({ tabStale: true, saveState: 'paused (other tab)' });
+      return;
+    }
+    const g = this.state.g;
+    if (!g) return;
+    try {
+      g.ts = Date.now();
+      localStorage.setItem(this.KEY, JSON.stringify({
+        saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
+      }));
+      this.markTabOwner();
+      this.state.tabStale = false;
+      this.startAutosave();
+      this.setState({ tabStale: false, saveState: 'claimed' });
+    } catch (e) {
+      this.state.tabStale = true;
+      this.setState({ tabStale: true, saveState: 'save failed' });
+    }
+  }
+
+  // Another tab wrote/removed KEY. Freeze autosave + sim; banner offers reload to adopt their save.
   onForeignSave() {
-    if (this.state.tabStale) return;
+    if (this._probeTimer) {
+      clearTimeout(this._probeTimer);
+      this._probeTimer = null;
+    }
+    if (this.state.tabStale && !this.isTabOwner()) {
+      // Already non-owner paused; still ensure autosave is off and owner cleared.
+      if (this.saver) { clearInterval(this.saver); this.saver = null; }
+      this.clearTabOwner();
+      this.setState({ tabStale: true, saveState: 'paused (other tab)' });
+      return;
+    }
     if (this.saver) {
       clearInterval(this.saver);
       this.saver = null;
@@ -1107,17 +1177,23 @@ class Game {
     // would steal the live sibling via storage → onForeignSave.
     if (kind === 'auto' && !this.isTabOwner()) return;
     try {
+      if (this._probeTimer) {
+        clearTimeout(this._probeTimer);
+        this._probeTimer = null;
+      }
       localStorage.setItem(this.KEY, JSON.stringify({ saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g }));
       this.markTabOwner();
-      // Manual/explicit write from a non-owner acquires ownership — start autosave.
-      // (Auto path only reaches here when already owner; startAutosave is a no-op then.)
-      if (!this.state.tabStale) this.startAutosave();
-      this.setState({ saveState: kind === 'auto' ? 'autosaved' : 'saved ✓' });
+      // Manual/explicit write from a non-owner acquires ownership and unpauses.
+      this.state.tabStale = false;
+      this.startAutosave();
+      this.setState({ tabStale: false, saveState: kind === 'auto' ? 'autosaved' : 'saved ✓' });
     } catch (e) { this.setState({ saveState: 'save failed' }); }
   }
 
   // --- actions (buy*, hire, moveJob) ---
+  // Non-owner / foreign-tab pause: actions are no-ops so progress cannot be "played" without persistence.
   buyBuilding(def) {
+    if (this.state.tabStale) return;
     const g = this.state.g;
     const n = g.b[def.id];
     if (def.max != null && n >= def.max) return;
@@ -1130,6 +1206,7 @@ class Game {
     this.forceUpdate();
   }
   buyUpgrade(def) {
+    if (this.state.tabStale) return;
     const g = this.state.g;
     if (g.u[def.id] || g.cash < def.cost) return;
     // Enforce building req in the action (UI already gates; do not trust UI alone).
@@ -1142,6 +1219,7 @@ class Game {
     this.forceUpdate();
   }
   buyResearch(def) {
+    if (this.state.tabStale) return;
     const g = this.state.g;
     if (g.r[def.id] || g.clout < def.cost) return;
     g.clout -= def.cost;
@@ -1151,6 +1229,7 @@ class Game {
     this.forceUpdate();
   }
   hireCrew() {
+    if (this.state.tabStale) return;
     const g = this.state.g;
     const cap = this.caps(g).crew;
     if (g.crew >= cap) return;
@@ -1165,6 +1244,7 @@ class Game {
     this.forceUpdate();
   }
   moveJob(id, d) {
+    if (this.state.tabStale) return;
     const g = this.state.g;
     // Off Shift is the residual pool (display-only); never assign to it directly.
     if (id === 'off') return;
@@ -1371,6 +1451,7 @@ class Game {
       energyPct: Math.round(g.hype / cap.hype * 100) + '%',
       clickValue: '$' + this.fmt(clickVal),
       workCrowd: () => {
+        if (this.state.tabStale) return;
         g.cash += clickVal;
         g.buzz = Math.min(cap.buzz, g.buzz + 0.4);
         g.clicks = (g.clicks || 0) + 1;
@@ -1378,14 +1459,14 @@ class Game {
         this.forceUpdate();
       },
       roundLabel: 'Buy a round $' + this.fmt(roundPrice),
-      roundLocked: !roundOk,
+      roundLocked: !roundOk || this.state.tabStale,
       roundStyle: {
-        background: roundOk ? '#170e22' : '#120c1c', border: '1px solid ' + (roundOk ? '#3a2350' : '#1f1430'),
-        borderRadius: '8px', color: roundOk ? '#e7d8f2' : '#4a3860', padding: '13px 16px',
-        cursor: roundOk ? 'pointer' : 'not-allowed', fontSize: '12px', fontWeight: 700, minWidth: '190px'
+        background: roundOk && !this.state.tabStale ? '#170e22' : '#120c1c', border: '1px solid ' + (roundOk && !this.state.tabStale ? '#3a2350' : '#1f1430'),
+        borderRadius: '8px', color: roundOk && !this.state.tabStale ? '#e7d8f2' : '#4a3860', padding: '13px 16px',
+        cursor: roundOk && !this.state.tabStale ? 'pointer' : 'not-allowed', fontSize: '12px', fontWeight: 700, minWidth: '190px'
       },
       buyRound: () => {
-        if (!roundOk) return;
+        if (this.state.tabStale || !roundOk) return;
         g.cash -= roundPrice;
         g.hype = Math.max(0, Math.min(cap.hype, g.hype + 14));
         g.rounds = (g.rounds || 0) + 1;
@@ -1733,7 +1814,9 @@ class Game {
   </main>
 
   <div>
-    ${v.tabStale ? `<button data-h="${this.bind(v.takeOverTab)}" class="cta" style="display:block;width:100%;border:0;border-top:1px solid #6b1130;background:linear-gradient(180deg,#3a0f1e,#22060f);color:#ffc94a;font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:.3px;padding:9px 14px;cursor:pointer;text-align:center">Save changed in another tab — click to reload and take over</button>` : ''}
+    ${v.tabStale ? (v.saveState === 'checking ownership…'
+      ? `<div style="display:block;width:100%;border:0;border-top:1px solid #3a2350;background:linear-gradient(180deg,#1a1028,#120c1c);color:#c4a8e0;font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:.3px;padding:9px 14px;text-align:center">Checking for another open tab…</div>`
+      : `<button data-h="${this.bind(v.takeOverTab)}" class="cta" style="display:block;width:100%;border:0;border-top:1px solid #6b1130;background:linear-gradient(180deg,#3a0f1e,#22060f);color:#ffc94a;font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:.3px;padding:9px 14px;cursor:pointer;text-align:center">Another tab owns this save — click to reload and take over</button>`) : ''}
     <footer style="display:flex;align-items:center;gap:16px;height:28px;padding:0 14px;border-top:1px solid #2a1738;background:#0b0712;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#5c4470">
       <span style="color:#ffc94a">${v.verFull}</span>
       <span>save v${v.saveVer}</span>

@@ -1658,6 +1658,9 @@ test('init still claims on large offline gap', () => {
   }));
   game.init();
   if (game.timer) clearInterval(game.timer);
+  // Age-only claim is deferred for probe wait; flush and claim.
+  if (game._probeTimer) { clearTimeout(game._probeTimer); game._probeTimer = null; }
+  game.finishAgeClaim();
   if (game.saver) clearInterval(game.saver);
   const stored = JSON.parse(localStorage.getItem('afterglow.save'));
   ok(stored.g.ts > hourAgo + 3_000_000, 'large offline still claims ts on disk');
@@ -1863,7 +1866,7 @@ test('non-claiming init does not start autosave; save(auto) is a no-op', () => {
 test('claiming init starts autosave; owner save(auto) writes', () => {
   const game = newGame(20);
   sessionStorage.clear();
-  // Large offline → needsClaim; successful claim marks owner and starts autosave.
+  // Large offline → age-claim after probe wait; successful claim marks owner and starts autosave.
   const hourAgo = Date.now() - 3600_000;
   localStorage.setItem('afterglow.save', JSON.stringify({
     saveVer: 5, ver: '0.6.0', build: 167, g: {
@@ -1877,6 +1880,8 @@ test('claiming init starts autosave; owner save(auto) writes', () => {
   }));
   game.init();
   if (game.timer) clearInterval(game.timer);
+  if (game._probeTimer) { clearTimeout(game._probeTimer); game._probeTimer = null; }
+  game.finishAgeClaim();
 
   ok(game.isTabOwner(), 'claim path marks this tab as owner');
   ok(game.saver != null, 'owner init starts autosave interval');
@@ -1944,10 +1949,12 @@ test('age-only claim blocked by live foreign lease (offline >15s)', () => {
   game.init();
   if (game.timer) clearInterval(game.timer);
   if (game.saver) clearInterval(game.saver);
+  if (game._probeTimer) { clearTimeout(game._probeTimer); game._probeTimer = null; }
 
   strictEqual(localStorage.getItem('afterglow.save'), rawBefore,
     'live foreign lease blocks age-only claim setItem');
   strictEqual(game.isTabOwner(), false, 'claimant does not become owner');
+  strictEqual(game.state.tabStale, true, 'non-owner is paused read-only');
   ok(game.state.g.ts > diskTs, 'gap still applied in memory');
   ok(game.state.g.cash >= 888, 'in-memory catch-up may earn');
 });
@@ -1973,9 +1980,21 @@ test('age-only claim proceeds when foreign lease is stale/absent', () => {
 
   game.init();
   if (game.timer) clearInterval(game.timer);
+  // Probe wait: claim is deferred until finishAgeClaim (no immediate setItem race).
+  strictEqual(game.isTabOwner(), false, 'does not claim before probe wait elapses');
+  strictEqual(game.state.tabStale, true, 'read-only during probe wait');
+  ok(game._probeTimer != null, 'probe timer scheduled');
+  const rawMid = localStorage.getItem('afterglow.save');
+  ok(rawMid, 'disk still has pre-claim save during wait');
+
+  // Simulate probe window elapsed with no live owner response.
+  clearTimeout(game._probeTimer);
+  game._probeTimer = null;
+  game.finishAgeClaim();
   if (game.saver) clearInterval(game.saver);
 
-  ok(game.isTabOwner(), 'stale lease allows age-only claim');
+  ok(game.isTabOwner(), 'stale lease allows age-only claim after probe wait');
+  strictEqual(game.state.tabStale, false, 'unpaused after successful claim');
   const stored = JSON.parse(localStorage.getItem('afterglow.save'));
   ok(stored.g.ts > hourAgo + 3_000_000, 'claimed ts on disk');
   const lease = JSON.parse(localStorage.getItem(game.LEASE_KEY));
@@ -2056,6 +2075,109 @@ test('live step awards Peak-hour hero when chunk crosses Peak→Last Call', () =
   ok(game.state.g.goals.includes('peak'), 'Peak-hour hero credited mid-step before rollover');
   ok(game.state.g.cash >= cashBefore + 200, 'peak reward paid');
   ok(game.state.g.shiftIdx === 2 || game.state.g.shiftT > 0, 'step advanced past Peak boundary');
+});
+
+// ── AAR-74 residual Codex (probe wait + non-owner pause) ──────────────────────
+console.log('\nAAR-74 residual Codex (probe wait + non-owner pause)');
+
+test('age-claim waits for probe: live lease appearing mid-wait blocks claim', () => {
+  // Stale lease at init → deferred claim. Owner refreshes lease before finishAgeClaim.
+  const game = newGame(20);
+  sessionStorage.clear();
+  const diskTs = Date.now() - 20_000;
+  localStorage.setItem('afterglow.save', JSON.stringify({
+    saveVer: 5, ver: '0.6.0', build: 169, g: {
+      cash: 400, hype: 10, buzz: 5, patrons: 4, regulars: 0, clout: 0,
+      crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      b: { rail: 2, bar: 1, vip: 0, dj: 0, marquee: 0, flyers: 1, door: 0, dress: 0 },
+      u: {}, r: {},
+      goals: ['work', 'rail', 'word'], clicks: 5, rounds: 0,
+      elapsed: 120, night: 1, shiftIdx: 0, shiftT: 30, log: [], ts: diskTs
+    }
+  }));
+  // No live lease at probe write time (stale or absent).
+  localStorage.setItem(game.LEASE_KEY, JSON.stringify({
+    token: 'slow-owner', at: Date.now() - 120_000
+  }));
+  const rawBefore = localStorage.getItem('afterglow.save');
+
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  strictEqual(game.isTabOwner(), false, 'deferred — not owner yet');
+  strictEqual(game.state.saveState, 'checking ownership…');
+  ok(game._probeTimer != null, 'probe timer armed');
+  ok(localStorage.getItem(game.PROBE_KEY), 'probe written for owner handshake');
+
+  // Simulate live owner responding to PROBE via storage (refreshes lease).
+  localStorage.setItem(game.LEASE_KEY, JSON.stringify({
+    token: 'slow-owner', at: Date.now()
+  }));
+  clearTimeout(game._probeTimer);
+  game._probeTimer = null;
+  game.finishAgeClaim();
+  if (game.saver) clearInterval(game.saver);
+
+  strictEqual(localStorage.getItem('afterglow.save'), rawBefore, 'must not claim after owner responded');
+  strictEqual(game.isTabOwner(), false);
+  strictEqual(game.state.tabStale, true);
+  strictEqual(game.state.saveState, 'paused (other tab)');
+});
+
+test('non-owner short multi-tab open is read-only (tabStale; actions no-op)', () => {
+  const game = newGame(20);
+  sessionStorage.clear();
+  const diskTs = Date.now() - 5000;
+  localStorage.setItem('afterglow.save', JSON.stringify({
+    saveVer: 5, ver: '0.6.0', build: 169, g: {
+      cash: 50, hype: 5, buzz: 2, patrons: 1, regulars: 0, clout: 0,
+      crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      b: { rail: 0, bar: 0, vip: 0, dj: 0, marquee: 0, flyers: 0, door: 0, dress: 0 },
+      u: {}, r: {},
+      goals: [], clicks: 0, rounds: 0,
+      elapsed: 10, night: 1, shiftIdx: 0, shiftT: 5, log: [], ts: diskTs
+    }
+  }));
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+
+  strictEqual(game.isTabOwner(), false);
+  strictEqual(game.state.tabStale, true, 'non-owner paused with banner state');
+  strictEqual(game.state.saveState, 'paused (other tab)');
+  const cashBefore = game.state.g.cash;
+  const clicksBefore = game.state.g.clicks;
+  // Actions must not mutate while read-only.
+  const v = game.renderVals();
+  v.workCrowd();
+  game.buyBuilding(game.BUILDINGS.find(b => b.id === 'rail'));
+  strictEqual(game.state.g.cash, cashBefore, 'work/buy no-op while tabStale');
+  strictEqual(game.state.g.clicks, clicksBefore, 'clicks not advanced while tabStale');
+  strictEqual(game.state.g.b.rail, 0, 'building not purchased while tabStale');
+});
+
+test('manual save unpauses non-owner and acquires ownership', () => {
+  const game = newGame(20);
+  sessionStorage.clear();
+  const diskTs = Date.now() - 5000;
+  localStorage.setItem('afterglow.save', JSON.stringify({
+    saveVer: 5, ver: '0.6.0', build: 169, g: {
+      cash: 80, hype: 5, buzz: 2, patrons: 1, regulars: 0, clout: 0,
+      crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      b: { rail: 0, bar: 0, vip: 0, dj: 0, marquee: 0, flyers: 0, door: 0, dress: 0 },
+      u: {}, r: {},
+      goals: [], clicks: 0, rounds: 0,
+      elapsed: 10, night: 1, shiftIdx: 0, shiftT: 5, log: [], ts: diskTs
+    }
+  }));
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  strictEqual(game.state.tabStale, true);
+  game.state.g.cash = 111;
+  game.save('manual');
+  ok(game.isTabOwner());
+  strictEqual(game.state.tabStale, false, 'manual save clears read-only pause');
+  ok(game.saver != null);
+  if (game.saver) clearInterval(game.saver);
 });
 
 // ── Results ──────────────────────────────────────────────────────────────────
