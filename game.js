@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.6.1', build: 169, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.7.0', build: 175, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 5;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -81,6 +81,32 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.7.0', date: '2026-08-04', codename: 'Neon Zero', notes: [
+      'Removed the CSS/DOM dancer and pole — the stage is now lighting, haze, crowd silhouettes and the stage lip.',
+      'Dropped dancerHTML(), perfStyle, the #performer-stage preservation path, and the stageH ResizeObserver that existed only to fit the figure.',
+      'style.css: .performer / .pole rules and the dn* dance keyframes deleted.'
+    ]},
+    { v: '0.6.6', date: '2026-08-04', codename: 'Neon Zero', notes: [
+      'Reverted the 660px stage cap — it left dead gutters on desktop; the stage is fluid again with the side columns capped.',
+      'Look panel (Settings → Look & feel, or L): House lights, Room mood (Hot Pink / Ultraviolet / Sodium), Motion (Full / Easy / Still).',
+      'Look prefs live in localStorage afterglow.look — chrome only, never part of the save.',
+      'House-lights slider updates its readout in place instead of repainting the panel, so pointer drag and arrow keys survive.'
+    ]},
+    { v: '0.6.5', date: '2026-08-04', codename: 'Neon Zero', notes: [
+      'Stage column is capped at 660px instead of soaking up every spare pixel; side columns take the slack (268 / 392) and the shell centers on wide screens.'
+    ]},
+    { v: '0.6.4', date: '2026-08-04', codename: 'Neon Zero', notes: [
+      'Density pass toward mobile: columns 262/420/352 → 232/320/320, stage row min 300 → 190px, log row 146 → 132px.',
+      'state.stageH default follows the stage row minimum (190) so first paint and paused tabs fit instead of clipping the performer.',
+      'Performer follows the existing perfStyle fit (ResizeObserver + stage height) — no CSS scale override.'
+    ]},
+    { v: '0.6.3', date: '2026-08-04', codename: 'Neon Zero', notes: [
+      'Legibility: ledger sub-labels and job descriptions move from #5c4470 to the palette muted #9c86ab — the old value washed out on dim screens.'
+    ]},
+    { v: '0.6.2', date: '2026-08-04', codename: 'Neon Zero', notes: [
+      'Stage sign no longer overlaps the Main Stage caption on narrow center columns.',
+      'Stage panel is a CSS size container; the girls-girls-girls sign drops below the caption under 660px and hides under 420px.'
+    ]},
     { v: '0.6.1', date: '2026-08-04', codename: 'Neon Zero', notes: [
       'Balance pass — pacing targets in PLAN-NEXT §C; numbers only, no mechanic changes.',
       'Reference bot simulator pacing.mjs: milestone bands for rail, crew, patrons, LED, research, all upgrades.',
@@ -348,7 +374,7 @@ class Game {
   ];
 
   state = {
-    stageH: 300, tab: 'club', showChangelog: false, showSettings: false, tick: 0, saveState: 'idle', resetArmed: false,
+    tab: 'club', showChangelog: false, showSettings: false, tick: 0, saveState: 'idle', resetArmed: false,
     // true when another tab wrote KEY — autosave is off until reload (PLAN §2.3).
     tabStale: false,
     g: null
@@ -806,15 +832,6 @@ class Game {
       g.ts = Date.now();
     }
 
-    const measure = () => {
-      const el = document.getElementById('stage');
-      if (el && el.clientHeight && el.clientHeight !== this.state.stageH) this.setState({ stageH: el.clientHeight });
-    };
-    measure();
-    if (window.ResizeObserver) {
-      const el = document.getElementById('stage');
-      if (el) { this.ro = new ResizeObserver(measure); this.ro.observe(el); }
-    }
     this.timer = setInterval(() => {
       const g = this.state.g; if (!g) return;
       // Non-owner / foreign-tab pause: do not advance the sim (progress would be lost).
@@ -1346,6 +1363,7 @@ class Game {
       toggleChangelog: () => this.setState(s => ({ showChangelog: !s.showChangelog })),
       toggleSettings: () => this.setState(s => ({ showSettings: !s.showSettings, resetArmed: false })),
       saveNow: () => this.save('manual'),
+      openLook: () => { this.setState({ showSettings: false }); this.toggleLook(true); },
       // File + clipboard share one payload shape so either restore path accepts either export.
       downloadSave: () => {
         try {
@@ -1459,7 +1477,7 @@ class Game {
     const cardWrap = ok => ({ border: '1px solid ' + (ok ? '#2f1c42' : '#1c1129'), borderRadius: '8px', background: ok ? '#100a1a' : '#0c0714', padding: '10px 11px', opacity: ok ? 1 : 0.6 });
     const btn = (ok, tone) => ({
       background: ok ? (tone || '#ff2d78') : '#1a1226', border: 0, borderRadius: '6px',
-      color: ok ? '#fff' : '#5c4470', padding: '8px 12px', cursor: ok ? 'pointer' : 'not-allowed',
+      color: ok ? '#fff' : '#9c86ab', padding: '8px 12px', cursor: ok ? 'pointer' : 'not-allowed',
       fontSize: '11px', fontWeight: 700, letterSpacing: '.6px', minWidth: '104px'
     });
 
@@ -1537,18 +1555,6 @@ class Game {
       })),
       shiftName: r.shift.name, nightNo: g.night, shiftMultLabel: 'x' + r.sm.toFixed(2),
       shiftBar: this.bar(g.shiftT / r.shift.len * 100, r.shift.tint),
-      perfStyle: {
-        position: 'absolute', left: '50%', bottom: '22%',
-        transformOrigin: 'bottom center',
-        transform: 'translateX(-50%) scale(' + Math.max(0.42, Math.min(1, (this.state.stageH * 0.78 - 38) / 260)).toFixed(3) + ')',
-        width: '190px', height: '260px',
-        ['--bpm']: Math.max(0.55, 2.3 - (g.hype / cap.hype) * 1.6).toFixed(2) + 's',
-        ['--energy']: Math.round(g.hype / cap.hype * 100) + '%',
-        opacity: g.jobs.stage > 0 ? 1 : 0.55,
-        filter: g.jobs.stage > 0 ? 'none' : 'grayscale(.6)',
-        transition: 'opacity .4s linear'
-      },
-      dancerHTML: this.dancerHTML(g, cap),
       stageLine: g.jobs.stage > 0
         ? g.jobs.stage + ' on rotation'
         : (g.crew === 0
@@ -1623,25 +1629,129 @@ class Game {
   // {{ interpolations }}, sc-for loops and sc-if branches with plain
   // template literals + a click-handler registry (data-h index).
 
+  // --- look & feel (chrome prefs; separate key, never part of the save) ---
+  LOOK_KEY = 'afterglow.look';
+  LOOK_DEFAULT = { lights: 0, mood: 'pink', motion: 'full' };
+  MOODS = {
+    pink: { label: 'Hot Pink', deg: 0, sat: 1 },
+    uv: { label: 'Ultraviolet', deg: 46, sat: 1.06 },
+    sodium: { label: 'Sodium', deg: -32, sat: 0.84 }
+  };
+  MOTIONS = { full: 'Full', easy: 'Easy', still: 'Still' };
+
+  loadLook() {
+    let l = null;
+    try { l = JSON.parse(localStorage.getItem(this.LOOK_KEY) || 'null'); } catch (e) { l = null; }
+    const d = this.LOOK_DEFAULT;
+    l = l && typeof l === 'object' ? l : {};
+    this.look = {
+      lights: Math.min(1, Math.max(0, Number(l.lights) || d.lights)),
+      mood: this.MOODS[l.mood] ? l.mood : d.mood,
+      motion: this.MOTIONS[l.motion] ? l.motion : d.motion
+    };
+  }
+
+  saveLook() {
+    try { localStorage.setItem(this.LOOK_KEY, JSON.stringify(this.look)); } catch (e) {}
+  }
+
+  applyLook() {
+    const r = document.documentElement, l = this.look, m = this.MOODS[l.mood];
+    r.style.setProperty('--lights', String(l.lights));
+    r.style.setProperty('--mood-deg', m.deg + 'deg');
+    r.style.setProperty('--mood-sat', String(m.sat));
+    r.dataset.lights = l.lights > 0.02 ? 'on' : 'off';
+    r.dataset.mood = l.mood;
+    r.dataset.motion = l.motion;
+  }
+
+  // repaint:false is the continuous-input path — a full innerHTML repaint would
+  // destroy the range input under the pointer and kill the drag on the first event.
+  setLook(patch, repaint) {
+    Object.assign(this.look, patch);
+    this.applyLook();
+    this.saveLook();
+    if (!this.lookPanel) return;
+    if (repaint === false) {
+      const out = this.lookPanel.querySelector('[data-lk-out="lights"]');
+      if (out) out.textContent = Math.round(this.look.lights * 100) + '%';
+    } else {
+      this.paintLookPanel();
+    }
+  }
+
+  mountLook() {
+    this.loadLook();
+    this.applyLook();
+    const p = document.createElement('div');
+    // Lives outside #app so the 10fps innerHTML render cannot destroy a slider mid-drag.
+    p.id = 'look-panel';
+    p.style.cssText = 'position:fixed;right:16px;bottom:56px;width:250px;z-index:70;display:none;' +
+      'background:#0e0918;border:1px solid #3a2350;border-radius:11px;box-shadow:0 24px 70px rgba(0,0,0,.72);' +
+      "font-family:'Space Grotesk',system-ui,sans-serif;color:#f2e8f7";
+    document.body.appendChild(p);
+    this.lookPanel = p;
+    p.addEventListener('input', (e) => {
+      if (e.target.id === 'lk-lights') this.setLook({ lights: Number(e.target.value) / 100 }, false);
+    });
+    p.addEventListener('click', (e) => {
+      const b = e.target.closest && e.target.closest('[data-lk]');
+      if (!b) return;
+      const [k, val] = b.getAttribute('data-lk').split(':');
+      if (k === 'close') this.toggleLook(false);
+      else if (k === 'reset') this.setLook({ ...this.LOOK_DEFAULT });
+      else this.setLook({ [k]: val });
+    });
+    this.paintLookPanel();
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'l' && !e.metaKey && !e.ctrlKey && !/input|textarea/i.test((e.target.tagName || ''))) this.toggleLook();
+    });
+  }
+
+  toggleLook(force) {
+    const p = this.lookPanel;
+    if (!p) return;
+    const open = force === undefined ? p.style.display === 'none' : !!force;
+    p.style.display = open ? 'block' : 'none';
+    if (open) this.paintLookPanel();
+  }
+
+  paintLookPanel() {
+    const l = this.look;
+    const seg = (key, map) => Object.keys(map).map(k => {
+      const on = l[key] === k, lab = typeof map[k] === 'string' ? map[k] : map[k].label;
+      return '<button data-lk="' + key + ':' + k + '" style="flex:1;min-width:0;padding:7px 4px;cursor:pointer;font-family:inherit;' +
+        'font-size:10px;font-weight:700;letter-spacing:.4px;border-radius:6px;border:1px solid ' + (on ? '#ff2d78' : '#311d44') + ';' +
+        'background:' + (on ? 'rgba(255,45,120,.16)' : '#150d21') + ';color:' + (on ? '#ff8bb4' : '#9c86ab') + ';' +
+        'white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + lab + '</button>';
+    }).join('');
+    const label = (t, v, out) => '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">' +
+      '<span style="font-size:9px;letter-spacing:2.6px;text-transform:uppercase;color:#7b5f90;font-weight:700">' + t + '</span>' +
+      '<span ' + (out ? 'data-lk-out="' + out + '" ' : '') + 'style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#6f5885">' + v + '</span></div>';
+    this.lookPanel.innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #241536">' +
+        '<span style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700">Look</span>' +
+        '<button data-lk="close:1" style="width:24px;height:24px;border:1px solid #3a2350;border-radius:5px;background:#160d22;color:#9c86ab;cursor:pointer;font-size:12px;font-family:inherit">✕</button>' +
+      '</div>' +
+      '<div style="padding:13px 14px;display:flex;flex-direction:column;gap:15px">' +
+        '<div>' + label('House lights', Math.round(l.lights * 100) + '%', 'lights') +
+          '<input id="lk-lights" type="range" min="0" max="100" step="1" value="' + Math.round(l.lights * 100) + '" style="width:100%;accent-color:#ffc94a;cursor:pointer">' +
+          '<div style="font-size:10px;color:#9c86ab;line-height:1.45;margin-top:5px">Kill the mystique. 0% is 1am, 100% is closing time with the lights up.</div>' +
+        '</div>' +
+        '<div>' + label('Room mood', this.MOODS[l.mood].label) +
+          '<div style="display:flex;gap:6px">' + seg('mood', this.MOODS) + '</div>' +
+        '</div>' +
+        '<div>' + label('Motion', this.MOTIONS[l.motion]) +
+          '<div style="display:flex;gap:6px">' + seg('motion', this.MOTIONS) + '</div>' +
+          '<div style="font-size:10px;color:#9c86ab;line-height:1.45;margin-top:5px">Easy stills the room but keeps the dancer. Still freezes everything.</div>' +
+        '</div>' +
+        '<button data-lk="reset:1" style="background:#170e22;border:1px solid #311d44;border-radius:6px;color:#9c86ab;padding:8px;cursor:pointer;font-size:10.5px;font-family:inherit;font-weight:700">Reset look</button>' +
+      '</div>';
+  }
+
   bind(fn) {
     this.handlers.push(fn);
     return this.handlers.length - 1;
-  }
-
-  dancerHTML(g, cap) {
-    const onStage = g.jobs.stage > 0;
-    // Empty stage: bare pole only. A grayed-out idle body read as "someone is
-    // stuck" while the badge said nobody — confusing. Body appears once crew
-    // is actually assigned to Main Stage.
-    if (!onStage) {
-      return '<div class="performer empty"><div class="pole"></div></div>';
-    }
-    const crowd = g.patrons >= 3 ? ' crowd' : '';
-    const line = '<div class="pbody"><div class="phip"></div><div class="ptorso"></div>' +
-      '<div class="pneck"></div><div class="phead"><div class="phair"></div></div>' +
-      '<div class="parm pole"></div><div class="parm free"></div>' +
-      '<div class="pleg l"></div><div class="pleg r"></div></div>';
-    return '<div class="performer' + crowd + '"><div class="pole"></div>' + line + '</div>';
   }
 
   render() {
@@ -1650,7 +1760,6 @@ class Game {
     this.root.querySelectorAll('[data-scroll]').forEach(el => {
       this.scrollSave[el.getAttribute('data-scroll')] = [el.scrollTop, el.scrollLeft];
     });
-    const existingStage = this.root.querySelector('#performer-stage');
     const v = this.renderVals();
 
     const resourceRows = v.resources.map(r => `
@@ -1665,7 +1774,7 @@ class Game {
           </div>
           <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6f5885;min-width:56px;text-align:right">${r.rate}</span>
         </div>
-        <div style="font-size:10px;color:#5c4470;margin-top:3px">${r.note}</div>
+        <div style="font-size:10px;color:#9c86ab;margin-top:3px">${r.note}</div>
       </div>`).join('');
 
     const statRows = v.stats.map(s => `
@@ -1700,7 +1809,7 @@ class Game {
       <div style="display:flex;align-items:center;gap:9px;border:1px solid #1a1228;border-radius:7px;background:#0c0814;padding:8px 9px;opacity:0.88">
         <div style="flex:1;min-width:0">
           <div style="font-size:12px;font-weight:700;color:#9c86ab">${j.name}</div>
-          <div style="font-size:10px;color:#5c4470">${j.desc}</div>
+          <div style="font-size:10px;color:#9c86ab">${j.desc}</div>
         </div>
         <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#6f5885;min-width:20px;text-align:center;font-weight:600">${j.n}</span>
       </div>` : `
@@ -1735,7 +1844,7 @@ class Game {
               <div>
                 <div style="display:flex;align-items:baseline;gap:9px;margin-bottom:6px">
                   <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;color:#ff2d78">v${c.v}</span>
-                  <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#5c4470">${c.date}</span>
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#9c86ab">${c.date}</span>
                   <span style="font-size:10px;letter-spacing:1.6px;text-transform:uppercase;color:#7b5f90;font-weight:700">${c.codename}</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:4px">
@@ -1763,8 +1872,9 @@ class Game {
             <button data-h="${this.bind(v.importSaveFile)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Load save from file…</button>
             <button data-h="${this.bind(v.exportSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Copy save to clipboard</button>
             <button data-h="${this.bind(v.importSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Restore save from clipboard</button>
+            <button data-h="${this.bind(v.openLook)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Look &amp; feel…  <span style="color:#6f5885;font-weight:400">(L)</span></button>
             <button data-h="${this.bind(v.hardReset)}" style="${css(v.resetStyle)}">${v.resetLabel}</button>
-            <div style="font-size:10.5px;color:#5c4470;line-height:1.5;font-family:'IBM Plex Mono',monospace">${v.resetHint} Files and clipboard saves are the same format — either restores either way. ${v.verFull} · save format v${v.saveVer}</div>
+            <div style="font-size:10.5px;color:#9c86ab;line-height:1.5;font-family:'IBM Plex Mono',monospace">${v.resetHint} Files and clipboard saves are the same format — either restores either way. ${v.verFull} · save format v${v.saveVer}</div>
           </div>
         </div>
       </div>` : '';
@@ -1781,9 +1891,9 @@ class Game {
     <button data-h="${this.bind(v.toggleChangelog)}" title="Version history" class="hv-pink" style="display:flex;align-items:center;gap:9px;background:#170e22;border:1px solid #3a2350;border-radius:6px;padding:6px 11px;cursor:pointer;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#d6c2e6">
       <span style="width:6px;height:6px;border-radius:50%;background:#22d3ee;box-shadow:0 0 7px #22d3ee;animation:pulseDot 2.2s infinite"></span>
       <span style="color:#ffc94a;font-weight:600">${v.verLabel}</span>
-      <span style="color:#5c4470">|</span>
+      <span style="color:#9c86ab">|</span>
       <span>build ${v.verBuild}</span>
-      <span style="color:#5c4470">|</span>
+      <span style="color:#9c86ab">|</span>
       <span style="text-transform:uppercase;letter-spacing:1px;color:#ff2d78">${v.verChannel}</span>
     </button>
 
@@ -1807,7 +1917,7 @@ class Game {
     </div>
   </header>
 
-  <main data-scroll="main" style="display:grid;grid-template-columns:262px minmax(420px,1fr) 352px;min-height:0;overflow:auto">
+  <main data-scroll="main" style="display:grid;grid-template-columns:minmax(232px,268px) minmax(320px,1fr) minmax(320px,392px);min-height:0;overflow:auto">
 
     <aside data-scroll="ledger" style="border-right:1px solid #2a1738;background:#0a0611;overflow-y:auto;padding:14px 12px">
       <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700;margin-bottom:10px">Ledger</div>
@@ -1817,7 +1927,7 @@ class Game {
       <div style="border:1px solid #221434;border-radius:7px;background:#0f0a18;padding:9px">${statRows}</div>
     </aside>
 
-    <section style="display:grid;grid-template-rows:minmax(300px,1fr) auto 146px;min-height:0;min-width:0">
+    <section style="display:grid;grid-template-rows:minmax(190px,1fr) auto 132px;min-height:0;min-width:0">
 
       <div id="stage" style="position:relative;overflow:hidden;min-height:0;background:linear-gradient(180deg,#12081c 0%,#1a0b26 55%,#0d0715 100%);border-bottom:1px solid #2a1738">
         <div style="position:absolute;inset:0;background:repeating-linear-gradient(90deg,rgba(255,45,120,.05) 0 2px,transparent 2px 62px)"></div>
@@ -1832,7 +1942,7 @@ class Game {
           <span style="width:5px;height:5px;border-radius:50%;background:#ffc94a;animation:bulb 1.6s infinite 1.4s"></span>
         </div>
 
-        <div style="position:absolute;top:25px;left:50%;transform:translateX(-50%);white-space:nowrap;font-family:'Monoton',cursive;font-size:13px;color:#22d3ee;letter-spacing:2px;text-shadow:0 0 10px rgba(34,211,238,.8),0 0 30px rgba(34,211,238,.4);animation:neonFlicker 9s infinite;opacity:.9">girls girls girls</div>
+        <div class="stage-neon" style="position:absolute;top:25px;left:50%;transform:translateX(-50%);white-space:nowrap;font-family:'Monoton',cursive;font-size:13px;color:#22d3ee;letter-spacing:2px;text-shadow:0 0 10px rgba(34,211,238,.8),0 0 30px rgba(34,211,238,.4);animation:neonFlicker 9s infinite;opacity:.9">girls girls girls</div>
 
         <div style="position:absolute;top:-10%;left:26%;width:120px;height:78%;transform-origin:50% 0;background:linear-gradient(180deg,rgba(255,45,120,.42),rgba(255,45,120,0));filter:blur(14px);animation:sweepL 9s ease-in-out infinite"></div>
         <div style="position:absolute;top:-10%;right:26%;width:120px;height:78%;transform-origin:50% 0;background:linear-gradient(180deg,rgba(34,211,238,.34),rgba(34,211,238,0));filter:blur(14px);animation:sweepR 11s ease-in-out infinite"></div>
@@ -1850,10 +1960,6 @@ class Game {
           <span style="width:28px;height:46px;border-radius:14px 14px 0 0;background:#150c1f;animation:crowdBob 2.9s ease-in-out infinite .2s"></span>
           <span style="width:32px;height:56px;border-radius:16px 16px 0 0;background:#110919;animation:crowdBob 3.3s ease-in-out infinite .9s"></span>
           <span style="width:25px;height:40px;border-radius:12px 12px 0 0;background:#170d21;animation:crowdBob 2.4s ease-in-out infinite .5s"></span>
-        </div>
-
-        <div id="performer-stage" style="${css(v.perfStyle)}">
-          ${v.dancerHTML}
         </div>
 
         <div style="position:absolute;left:14px;top:14px;display:flex;flex-direction:column;gap:5px">
@@ -1927,7 +2033,7 @@ class Game {
     ${v.tabStale ? (v.saveState === 'checking ownership…'
       ? `<div style="display:block;width:100%;border:0;border-top:1px solid #3a2350;background:linear-gradient(180deg,#1a1028,#120c1c);color:#c4a8e0;font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:.3px;padding:9px 14px;text-align:center">Checking for another open tab…</div>`
       : `<button data-h="${this.bind(v.takeOverTab)}" class="cta" style="display:block;width:100%;border:0;border-top:1px solid #6b1130;background:linear-gradient(180deg,#3a0f1e,#22060f);color:#ffc94a;font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:700;letter-spacing:.3px;padding:9px 14px;cursor:pointer;text-align:center">Another tab owns this save — click to reload and take over</button>`) : ''}
-    <footer style="display:flex;align-items:center;gap:16px;height:28px;padding:0 14px;border-top:1px solid #2a1738;background:#0b0712;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#5c4470">
+    <footer style="display:flex;align-items:center;gap:16px;height:28px;padding:0 14px;border-top:1px solid #2a1738;background:#0b0712;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#9c86ab">
       <span style="color:#ffc94a">${v.verFull}</span>
       <span>save v${v.saveVer}</span>
       <span>${v.saveState}</span>
@@ -1941,26 +2047,6 @@ class Game {
   ${settingsModal}
 </div>`;
 
-    const newStage = this.root.querySelector('#performer-stage');
-    if (existingStage && newStage) {
-      newStage.replaceWith(existingStage);
-      existingStage.setAttribute('style', css(v.perfStyle));
-      // Swap performer markup when occupancy flips so we don't keep a stale
-      // body (or empty pole) after hire/assign. Class-only updates cover the
-      // common on-stage crowd/energy path without restarting CSS animations.
-      if (this.state.g) {
-        const onStage = this.state.g.jobs.stage > 0;
-        const perf = existingStage.querySelector('.performer');
-        const wantEmpty = !onStage;
-        const isEmpty = perf && perf.classList.contains('empty');
-        if (!perf || isEmpty !== wantEmpty) {
-          existingStage.innerHTML = v.dancerHTML;
-        } else if (perf) {
-          perf.className = 'performer' + (onStage && this.state.g.patrons >= 3 ? ' crowd' : '');
-        }
-      }
-    }
-
     this.root.querySelectorAll('[data-scroll]').forEach(el => {
       const saved = this.scrollSave[el.getAttribute('data-scroll')];
       if (saved) { el.scrollTop = saved[0]; el.scrollLeft = saved[1]; }
@@ -1973,3 +2059,4 @@ class Game {
 // --- boot ---
 const game = new Game(document.getElementById('app'));
 game.init();
+game.mountLook();

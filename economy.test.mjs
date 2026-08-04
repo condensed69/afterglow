@@ -105,7 +105,7 @@ globalThis.sessionStorage = {
 // setInterval timers. Strip that boot so the process can exit cleanly.
 const src = readFileSync(new URL('./game.js', import.meta.url), 'utf8');
 const stripped = src
-  .replace(/\nconst game = new Game\(document\.getElementById\('app'\)\);\s*\ngame\.init\(\);\s*$/, '\n');
+  .replace(/\nconst game = new Game\(document\.getElementById\('app'\)\);\s*\ngame\.init\(\);\s*(?:\ngame\.mountLook\(\);\s*)?$/, '\n');
 if (stripped === src) {
   console.error('economy.test.mjs: failed to strip game.js boot lines — process may hang');
   process.exit(2);
