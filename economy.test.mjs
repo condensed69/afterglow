@@ -1384,6 +1384,46 @@ test('successful import clears tabStale and restarts autosave', () => {
   }
 });
 
+// AAR-67 / PR #14 Codex P2: setItem throw must not claim import success or ownership
+test('import setItem throw fails closed without claiming ownership', () => {
+  const game = newGame(25);
+  if (game.saver) {
+    clearInterval(game.saver);
+    game.saver = null;
+  }
+  game.state.tabStale = true;
+  game.state.saveState = 'paused (other tab)';
+  const priorCash = game.state.g.cash;
+  const priorG = game.state.g;
+  const priorRaw = localStorage.getItem(game.KEY);
+  const origSet = localStorage.setItem.bind(localStorage);
+  localStorage.setItem = () => { throw new Error('quota'); };
+  const g = {
+    cash: 999, hype: 2, buzz: 0, patrons: 0, regulars: 0, clout: 0, crew: 0,
+    jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+    b: {}, u: {}, r: {},
+    elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: Date.now()
+  };
+  let okImport;
+  try {
+    okImport = game.importSaveFromText(JSON.stringify({
+      saveVer: game.SAVE_VER,
+      ver: game.VERSION.num,
+      build: game.VERSION.build,
+      g
+    }));
+  } finally {
+    localStorage.setItem = origSet;
+  }
+  strictEqual(okImport, false);
+  strictEqual(game.state.saveState, 'import failed');
+  strictEqual(game.state.tabStale, true, 'must not clear tabStale when persist fails');
+  ok(!game.saver, 'must not restart autosave when persist fails');
+  strictEqual(game.state.g, priorG, 'live club reference unchanged');
+  strictEqual(game.state.g.cash, priorCash, 'live club cash unchanged');
+  strictEqual(localStorage.getItem(game.KEY), priorRaw, 'disk blob unchanged');
+});
+
 // ── Unknown building keys / Structures XSS (AAR-63) ──────────────────────────
 console.log('\nUnknown building keys stripped on import (AAR-63)');
 

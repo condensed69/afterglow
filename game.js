@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.5.7', build: 165, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.5.8', build: 166, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 4;
   KEY = 'afterglow.save';
 
@@ -40,6 +40,9 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.5.8', date: '2026-08-04', codename: 'Neon Zero', notes: [
+      'Import persists before replacing the live club: setItem failure surfaces import failed, leaves the prior club, and does not clear tabStale or restart autosave.'
+    ]},
     { v: '0.5.7', date: '2026-08-04', codename: 'Neon Zero', notes: [
       'Import strips unknown keys under buildings/upgrades/research/jobs so crafted extras cannot reach Structures (or other Object.values paths) unescaped.'
     ]},
@@ -370,8 +373,9 @@ class Game {
     return true;
   }
 
-  // Parse + validate + migrate + sanitize a save blob. On success replaces state.g and persists.
-  // On any failure: saveState 'import failed', current club unchanged.
+  // Parse + validate + migrate + sanitize a save blob. On success persists then replaces state.g.
+  // On any failure (including setItem throw): saveState 'import failed', current club unchanged.
+  // Ownership (tabStale clear + autosave restart) only after a successful disk write.
   importSaveFromText(text) {
     try {
       const p = JSON.parse(text);
@@ -392,15 +396,21 @@ class Game {
       }
       // Stamp now so the next tick does not treat export age as offline progress.
       g.ts = Date.now();
-      this._onStrike = false;
-      this.state.g = g;
       // Source-neutral: file and clipboard both use this path (PLAN-NEXT §A).
+      // Log on the candidate g before write so disk and memory share the restore line.
       this.push(g, 'Save restored.', '#22d3ee');
       try {
         localStorage.setItem(this.KEY, JSON.stringify({
           saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
         }));
-      } catch (e) { /* state already replaced; footer still shows imported */ }
+      } catch (e) {
+        // Persist failed: leave live club, tabStale, and autosave ownership untouched.
+        this.setState({ saveState: 'import failed' });
+        return false;
+      }
+      // Disk write succeeded — only now replace live state and take ownership.
+      this._onStrike = false;
+      this.state.g = g;
       // Explicit restore takes ownership: clear foreign-tab pause and resume autosave.
       if (!this.saver) {
         this.saver = setInterval(() => this.save('auto'), 10000);
