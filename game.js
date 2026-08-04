@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.6.0', build: 162, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.6.0', build: 163, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
   SAVE_VER = 5;
   KEY = 'afterglow.save';
 
@@ -67,7 +67,8 @@ class Game {
       'Study/builtin goals check only catalog research/upgrades (orphan r.franchise does not complete study).',
       'Init persists migrate + offline catch-up immediately so a reload cannot double-count elapsed time.',
       'Current-format (v5) saves require sane goals/clicks/rounds; missing fields fail closed (v4 still migrates).',
-      'Goal checks after step, catch-up, and player actions so offline progress can complete goals.'
+      'Goal checks after step, catch-up, and player actions so offline progress can complete goals.',
+      'Catch-up evaluates goals each offline slice so threshold goals (patrons/hype) complete if crossed mid-window then decay.'
     ]},
     { v: '0.5.3', date: '2026-08-04', codename: 'Neon Zero', notes: [
       'Clipboard restore now completes and validates every simulation field before replacing the live club.',
@@ -791,6 +792,10 @@ class Game {
         g.shiftIdx = (g.shiftIdx + 1) % 4;
         if (g.shiftIdx === 0) g.night++;
       }
+      // Per-slice goal check: threshold goals (patrons/hype) may peak mid-window
+      // then decay before catch-up ends — post-only noteGoals would miss them.
+      // live:false keeps peak-hour hero offline-ineligible.
+      this.noteGoals(g, { live: false });
     }
     return { earned, wagesPaid, struck };
   }
