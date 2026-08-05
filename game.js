@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.7.0', build: 176, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.7.5', build: 181, channel: 'alpha', date: '2026-08-05', codename: 'Neon Zero' };
   SAVE_VER = 5;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -81,6 +81,9 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.7.5', date: '2026-08-05', codename: 'Neon Zero', notes: [
+      'Added disabled visual states (dimmed text/background, not-allowed cursor) and tooltips to Crew assignment + and - buttons to improve UX when no crew are available or assignable.',
+    ] },
     { v: '0.7.0', date: '2026-08-04', codename: 'Neon Zero', notes: [
       'Removed the CSS/DOM dancer and pole — the stage is now lighting, haze, crowd silhouettes and the stage lip.',
       'Dropped dancerHTML(), perfStyle, the #performer-stage preservation path, and the stageH ResizeObserver that existed only to fit the figure.',
