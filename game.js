@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.7.2', build: 178, channel: 'alpha', date: '2026-08-05', codename: 'Neon Zero' };
+  VERSION = { num: '0.7.3', build: 179, channel: 'alpha', date: '2026-08-05', codename: 'Neon Zero' };
   SAVE_VER = 5;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -81,6 +81,10 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.7.3', date: '2026-08-05', codename: 'Neon Zero', notes: [
+      'Narrow-stage crowd no longer overflows: container-query rules reduce gap/padding and hide later silhouettes below 420/600px stage widths.',
+      'DESIGN.md and IMPLEMENTATION_PLAN.md updated to match shipped stage behavior.'
+    ]},
     { v: '0.7.2', date: '2026-08-05', codename: 'Neon Zero', notes: [
       'Stage now reflects room state: crowd grows with patrons, beams/spotlight scale with room energy, neon sign dims when the stage has no crew.',
       'Clicking "Work the room" spawns a +$ floater at the cursor and gives the stage a brief brightness pulse.'
@@ -2005,13 +2009,13 @@ class Game {
         <div style="position:absolute;left:0;right:0;bottom:24%;height:1px;background:linear-gradient(90deg,transparent,#ff2d78,transparent);opacity:${Math.max(0.25, v.beamOpacity * 0.75).toFixed(2)}"></div>
         <div style="position:absolute;left:0;right:0;bottom:0;height:24%;background:linear-gradient(180deg,#1b1027,#0a0611);border-top:1px solid #38204d"></div>
 
-        <div style="position:absolute;left:0;right:0;bottom:0;height:74px;display:flex;align-items:flex-end;justify-content:center;gap:22px;opacity:.85;padding:0 20px">
+        <div class="crowd-row">
           ${Array.from({ length: v.crowdN }, (_, i) => {
             const h = 34 + (i % 5) * 6;
             const w = 22 + (i % 4) * 3;
             const del = (i * 0.31) % 1.4;
             const cols = ['#160d20','#120a1b','#180e23','#150c1f','#110919','#170d21'];
-            return `<span style="width:${w}px;height:${h}px;border-radius:${Math.round(w/2)}px ${Math.round(w/2)}px 0 0;background:${cols[i % cols.length]};animation:crowdBob ${v.crowdBobDur} ease-in-out infinite ${del.toFixed(2)}s"></span>`;
+            return `<span class="crowd-sil" style="--crowd-dur:${v.crowdBobDur};--crowd-del:${del.toFixed(2)}s;width:${w}px;height:${h}px;background:${cols[i % cols.length]}"></span>`;
           }).join('')}
         </div>
 

@@ -64,6 +64,29 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
 #look-panel input[type="range"] { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 3px; background: #2a1738; }
 #look-panel input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #ffc94a; box-shadow: 0 0 8px rgba(255,201,74,.6); cursor: pointer; }
 
+/* Crowd row and silhouettes. The row is absolutely positioned at the bottom of
+   #stage and sized with flex. On narrow stages it shrinks gaps/padding and
+   hides the later silhouettes so the row never overflow the container. */
+.crowd-row {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 74px;
+  display: flex; align-items: flex-end; justify-content: center;
+  gap: 22px; opacity: .85; padding: 0 20px;
+}
+.crowd-sil {
+  flex: 0 0 auto;
+  border-radius: 999px 999px 0 0;
+  animation: crowdBob var(--crowd-dur, 2.4s) ease-in-out infinite var(--crowd-del, 0s);
+}
+@container (max-width: 600px) {
+  .crowd-row { gap: 14px; padding: 0 12px; }
+  .crowd-sil:nth-child(n+11) { display: none; }
+}
+@container (max-width: 420px) {
+  .crowd-row { gap: 8px; padding: 0 8px; }
+  .crowd-sil:nth-child(n+7) { display: none; }
+  .crowd-sil { transform: scale(0.9); transform-origin: bottom center; }
+}
+
 /* Click floater spawned by workCrowd. Lives outside #app so the 1s render loop
    does not kill it mid-flight. */
 .tip-floater {

@@ -431,7 +431,7 @@ Typography (loaded in `index.html`): **Monoton** (wordmark), **Space Grotesk** (
 - Marquee bulbs, sweeping spotlight cones, haze, crowd silhouettes, stage lip, neon *girls girls girls* sign  
 - `#stage` is a CSS **size container**: neon sign drops under 660px stage width and **hides under 300px**  
 - Empty-stage badge text still routes crew assignment: hire / assign / nobody on stage (badge → Crew tab)  
-- `patrons >= 3` still adds `.crowd` glow on the set  
+- The crowd silhouette row grows from a pair of wallflowers up to 14 bodies as `patrons` increases, bobbing faster as `hype` rises  
 
 **Removed (do not restore without an explicit ask):** `dancerHTML()`, `perfStyle`, `#performer-stage` preservation, `state.stageH` / ResizeObserver fit, `.performer` / `.pole` / `dn*` CSS.
 

@@ -1,8 +1,7 @@
-# Implementation Plan — Stage Improvements (Tasks 2 & 3)
+# Stage Improvements — shipped notes + remaining runner-up
 
-Written 2026-08-05. Task 1 (cap stage width, v0.7.1) is **done** — see `CHANGELOG` in `game.js`.
-This document is a complete brief for implementing the remaining two suggestions. It assumes
-no prior context: follow it top to bottom.
+Written 2026-08-05. Tasks 1–3 (stage width cap, state-driven stage, click feedback) are **shipped** in this branch.  
+This document now serves as a brief for the one remaining runner-up: small-screen stacking.
 
 ## 0. Repo rules (from AGENTS.md — obey all of them)
 
