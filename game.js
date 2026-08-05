@@ -11,6 +11,7 @@ function css(o) {
 }
 
 class Game {
+  VERSION = { num: '0.7.5', build: 181, channel: 'alpha', date: '2026-08-05', codename: 'Neon Zero' };
   VERSION = { num: '0.7.3', build: 179, channel: 'alpha', date: '2026-08-05', codename: 'Neon Zero' };
   SAVE_VER = 5;
   KEY = 'afterglow.save';
@@ -81,6 +82,9 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.7.5', date: '2026-08-05', codename: 'Neon Zero', notes: [
+      'Added disabled visual states (dimmed text/background, not-allowed cursor) and tooltips to Crew assignment + and - buttons to improve UX when no crew are available or assignable.',
+    ] },
     { v: '0.7.3', date: '2026-08-05', codename: 'Neon Zero', notes: [
       'Narrow-stage crowd no longer overflows: container-query rules reduce gap/padding and hide later silhouettes below 420/600px stage widths.',
       'DESIGN.md and IMPLEMENTATION_PLAN.md updated to match shipped stage behavior.'
@@ -1547,7 +1551,7 @@ class Game {
         inc: () => this.moveJob(j.id, 1), dec: () => this.moveJob(j.id, -1),
         incLocked: g.jobs.off < 1,
         decLocked: g.jobs[j.id] < 1,
-        stepStyle: { width: '26px', height: '26px', border: '1px solid #3a2350', borderRadius: '5px', background: '#170e22', color: '#e7d8f2', cursor: 'pointer', fontSize: '14px', lineHeight: 1 }
+        stepStyle: (locked) => ({ width: '26px', height: '26px', border: '1px solid ' + (locked ? '#1f1430' : '#3a2350'), borderRadius: '5px', background: locked ? '#120c1c' : '#170e22', color: locked ? '#4a3860' : '#e7d8f2', cursor: locked ? 'not-allowed' : 'pointer', fontSize: '14px', lineHeight: 1 })
       };
     });
 
@@ -1875,9 +1879,9 @@ class Game {
           <div style="font-size:12px;font-weight:700;color:#e7d8f2">${j.name}</div>
           <div style="font-size:10px;color:#6f5885">${j.desc}</div>
         </div>
-        <button data-h="${this.bind(j.dec)}" ${j.decLocked ? 'disabled' : ''} style="${css(j.stepStyle)}">−</button>
+        <button data-h="${this.bind(j.dec)}" ${j.decLocked ? 'disabled' : ''} title="${j.decLocked ? 'No crew assigned here' : `Remove crew from ${j.name}`}" style="${css(j.stepStyle(j.decLocked))}">−</button>
         <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#ffc94a;min-width:20px;text-align:center;font-weight:600">${j.n}</span>
-        <button data-h="${this.bind(j.inc)}" ${j.incLocked ? 'disabled' : ''} style="${css(j.stepStyle)}">+</button>
+        <button data-h="${this.bind(j.inc)}" ${j.incLocked ? 'disabled' : ''} title="${j.incLocked ? 'No free crew available' : `Assign crew to ${j.name}`}" style="${css(j.stepStyle(j.incLocked))}">+</button>
       </div>`).join('');
 
     const assignments = v.crewOpen ? `
