@@ -12,7 +12,10 @@ This is a dependency-free static website.
 
 - This is an incremental/idle nightclub-management game using plain HTML, CSS, and JavaScript.
 - Saves use `localStorage`; offline progress and existing saves must remain reliable.
-- Preserve the neon-noir visual language and the CSS/DOM performer implementation unless a task explicitly changes them.
+- Preserve the neon-noir visual language unless a task explicitly changes it.
+- The stage carries no performer figure. The CSS/DOM dancer and pole were removed in v0.7.0 by
+  operator decision; do not reintroduce them. The stage is lighting, haze, crowd silhouettes and
+  the stage lip.
 
 ## Code review rules
 

@@ -411,51 +411,33 @@ Brand-new / wiped clubs stamp `ts` via `fresh()` and skip offline entirely (`res
 ### 10.1 Shell
 
 Three-row grid: **header (62px) · main · footer (28px)**.  
-Main: three columns **`262px | minmax(420px,1fr) | 352px`** — Ledger · Stage · Systems.
+Main: three columns **`minmax(232px,268px) | minmax(320px,1fr) | minmax(320px,392px)`** — Ledger · Stage · Systems (v0.6.4+ density; side maxes from Look-era grid).
 
 | Region | Contents |
 |--------|----------|
 | Header | Afterglow wordmark, version badge (opens changelog), shift name + bar + night/mult, settings ☰ |
 | Ledger | Cash/Hype/Buzz/Patrons/Regulars/Clout with rates + notes; Floor stats (crew, on stage, structures, night time) |
-| Stage | CSS stage set, performer, Main Stage line, Room energy %, Work the room + Buy a round, Night log |
+| Stage | CSS stage set only (lighting, haze, crowd silhouettes, marquee, lip) — **no performer figure**; Main Stage line, Room energy %, Work the room + Buy a round, Night log |
 | Systems | Tabs Club / Crew / Upgrades / Research; **Owner's List** under tabs; scrollable cards + crew assignments |
 | Footer | full version string, save format, saveState, tick count; multi-tab takeover banner above when stale |
-| Modals | Changelog history; Settings (save I/O + wipe) |
+| Modals | Changelog history; Settings (save I/O + wipe + Look & feel) |
 
 Typography (loaded in `index.html`): **Monoton** (wordmark), **Space Grotesk** (UI), **IBM Plex Mono** (numbers). Palette is magenta `#ff2d78`, cyan `#22d3ee`, gold `#ffc94a` on near-black `#07050c`.
 
-### 10.2 CSS/DOM performer
+### 10.2 Main Stage (environment only — v0.7.0)
 
-Not canvas. Markup from `dancerHTML(g, cap)` inside `#performer-stage`:
+**No CSS/DOM performer, pole, or undressing progression.** Operator removed the figure in v0.7.0 (“gimmicky”). Stage art is environmental only:
 
-| Class | Part |
-|-------|------|
-| `.pole` | Cyan metallic pole |
-| `.pbody` | Root motion group |
-| `.ptorso` / `.pneck` / `.phead` / `.phair` | Body |
-| `.parm.pole` / `.parm.free` | Arms |
-| `.phip` | Hips |
-| `.pleg.l` / `.pleg.r` | Legs |
+- Marquee bulbs, sweeping spotlight cones, haze, crowd silhouettes, stage lip, neon *girls girls girls* sign  
+- `#stage` is a CSS **size container**: neon sign drops under 660px stage width and **hides under 300px**  
+- Empty-stage badge text still routes crew assignment: hire / assign / nobody on stage (badge → Crew tab)  
+- `patrons >= 3` still adds `.crowd` glow on the set  
 
-**Bindings from `renderVals` → `perfStyle`**
+**Removed (do not restore without an explicit ask):** `dancerHTML()`, `perfStyle`, `#performer-stage` preservation, `state.stageH` / ResizeObserver fit, `.performer` / `.pole` / `dn*` CSS.
 
-```
---bpm    = max(0.55, 2.3 − (hype/cap.hype)×1.6) + 's'   // faster as room heats
---energy = round(hype/cap.hype × 100) + '%'
-opacity  = stage crew > 0 ? 1 : 0.55
-filter   = stage crew > 0 ? none : grayscale(.6)
-scale    = f(stageH) clamped
-```
+**Look prefs** (`localStorage['afterglow.look']`, chrome only — not in the save): House lights, Room mood, Motion (Full / Easy / Still). Panel mounts outside `#app` so the 10 Hz render loop does not destroy it.
 
-**Empty stage:** only `.performer.empty` + pole (no gray idle body). Badge text:
-
-- no crew → “hire crew to open the stage”  
-- crew but none on stage → “assign crew · Crew tab” / “nobody on stage”  
-- badge click → Crew tab  
-
-**Crowd class:** `patrons >= 3` adds `.crowd` (stronger glow).  
-
-**Render hygiene:** `#performer-stage` DOM is preserved across full re-renders when possible so CSS animations do not restart; occupancy flips rebuild performer HTML. Scroll positions restored via `data-scroll`. Pointer-down defers re-render so buttons receive real clicks under 10 Hz paint.
+**Render hygiene:** Scroll positions restored via `data-scroll`. Pointer-down defers re-render so buttons receive real clicks under 10 Hz paint.
 
 ---
 
@@ -468,7 +450,7 @@ scale    = f(stageH) clamped
 | Version discipline | `VERSION.num`, `VERSION.build`, and in-game `CHANGELOG` advance together on behavior changes |
 | Save version | Bump `SAVE_VER` only when persisted shape changes; ship a migration step |
 | Compatibility | Preserve offline correctness; no double-count of elapsed time; fail closed on bad imports |
-| Visual invariant | Neon-noir language and CSS/DOM performer unless a task explicitly redesigns them |
+| Visual invariant | Neon-noir language; Main Stage is environment-only (no performer figure) unless a task explicitly redesigns the stage |
 | Tests | `economy.test.mjs` boots Game without `game.init()` (boot line stripped); `pacing.mjs` same prelude |
 | Balance process | Tune costs/rates against `pacing.mjs` reference bot; SHIFTS lengths/mults, 50% offline, 8h cap, walk-in 0.02, strike structure are off-limits knobs unless re-planned |
 
