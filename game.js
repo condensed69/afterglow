@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.7.0', build: 176, channel: 'alpha', date: '2026-08-04', codename: 'Neon Zero' };
+  VERSION = { num: '0.7.2', build: 178, channel: 'alpha', date: '2026-08-05', codename: 'Neon Zero' };
   SAVE_VER = 5;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -81,6 +81,15 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.7.2', date: '2026-08-05', codename: 'Neon Zero', notes: [
+      'Stage now reflects room state: crowd grows with patrons, beams/spotlight scale with room energy, neon sign dims when the stage has no crew.',
+      'Clicking "Work the room" spawns a +$ floater at the cursor and gives the stage a brief brightness pulse.'
+    ]},
+    { v: '0.7.1', date: '2026-08-05', codename: 'Neon Zero', notes: [
+      'Stage column capped at 720px so the stage stops stretching into dead space on wide monitors.',
+      'Shell centers via max-width (1460px) with wider side maxes (ledger 300 / systems 440) than the reverted 0.6.5 cap, so desktop gutters stay modest.',
+      'Centering uses margin-inline:auto, not justify-content:center, so narrow screens keep left-anchored overflow scrolling.'
+    ]},
     { v: '0.7.0', date: '2026-08-04', codename: 'Neon Zero', notes: [
       'Removed the CSS/DOM dancer and pole — the stage is now lighting, haze, crowd silhouettes and the stage lip.',
       'Dropped dancerHTML(), perfStyle, the #performer-stage preservation path, and the stageH ResizeObserver that existed only to fit the figure.',
@@ -1564,14 +1573,21 @@ class Game {
       // Empty-stage badge jumps to Crew so the next action is one click away.
       stageLineAct: g.jobs.stage > 0 ? null : () => this.setState({ tab: 'crew' }),
       energyPct: Math.round(g.hype / cap.hype * 100) + '%',
+      // Stage visuals derived from live state (Task 2).
+      crowdN: Math.min(14, 2 + Math.floor(g.patrons / 2)),
+      crowdBobDur: (2.4 + 1.2 * (1 - Math.min(1, g.hype / cap.hype))).toFixed(2) + 's',
+      beamOpacity: (0.25 + 0.55 * Math.min(1, g.hype / cap.hype)).toFixed(2),
+      spotOpacity: (0.14 + 0.46 * Math.min(1, g.hype / cap.hype)).toFixed(2),
+      signLit: g.jobs.stage > 0,
       clickValue: '$' + this.fmt(clickVal),
-      workCrowd: () => {
+      workCrowd: (e) => {
         if (this.state.tabStale) return;
         g.cash += clickVal;
         g.buzz = Math.min(cap.buzz, g.buzz + 0.12);
         g.clicks = (g.clicks || 0) + 1;
         this.noteGoals(g);
         this.forceUpdate();
+        this.spawnTipFloater(e, clickVal);
       },
       roundLabel: 'Buy a round $' + this.fmt(roundPrice),
       roundLocked: !roundOk || this.state.tabStale,
@@ -1750,6 +1766,42 @@ class Game {
       '</div>';
   }
 
+  mountFxLayer() {
+    const fx = document.createElement('div');
+    // Lives outside #app so the 1s innerHTML render cannot destroy transient floaters.
+    fx.id = 'fx-layer';
+    fx.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:80;overflow:hidden;';
+    document.body.appendChild(fx);
+    this.fxLayer = fx;
+  }
+
+  spawnTipFloater(e, clickVal) {
+    if (!this.fxLayer) return;
+    const f = document.createElement('span');
+    f.className = 'tip-floater';
+    f.textContent = '+$' + this.fmt(clickVal);
+    if (e && e.clientX) {
+      f.style.left = (e.clientX - 10) + 'px';
+      f.style.top = (e.clientY - 24) + 'px';
+    } else {
+      // Keyboard activation (Enter/Space): clientX may be 0 — anchor to the CTA button.
+      const btn = document.querySelector('[data-h] .cta') || document.getElementById('stage');
+      const r = (btn && btn.getBoundingClientRect()) || { left: innerWidth / 2, top: innerHeight / 2, width: 0 };
+      f.style.left = (r.left + r.width / 2) + 'px';
+      f.style.top = (r.top - 8) + 'px';
+    }
+    f.addEventListener('animationend', () => f.remove());
+    this.fxLayer.appendChild(f);
+
+    const stage = document.getElementById('stage');
+    if (stage && stage.animate) {
+      stage.animate(
+        [{ filter: 'brightness(1.35)' }, { filter: 'brightness(1)' }],
+        { duration: 140, easing: 'ease-out' }
+      );
+    }
+  }
+
   bind(fn) {
     this.handlers.push(fn);
     return this.handlers.length - 1;
@@ -1918,7 +1970,7 @@ class Game {
     </div>
   </header>
 
-  <main data-scroll="main" style="display:grid;grid-template-columns:minmax(232px,268px) minmax(320px,1fr) minmax(320px,392px);min-height:0;overflow:auto">
+  <main data-scroll="main" style="display:grid;grid-template-columns:minmax(232px,300px) minmax(320px,720px) minmax(320px,440px);width:100%;max-width:1460px;margin-inline:auto;min-height:0;overflow:auto">
 
     <aside data-scroll="ledger" style="border-right:1px solid #2a1738;background:#0a0611;overflow-y:auto;padding:14px 12px">
       <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700;margin-bottom:10px">Ledger</div>
@@ -1931,36 +1983,36 @@ class Game {
     <section style="display:grid;grid-template-rows:minmax(190px,1fr) auto 132px;min-height:0;min-width:0">
 
       <div id="stage" style="position:relative;overflow:hidden;min-height:0;background:linear-gradient(180deg,#12081c 0%,#1a0b26 55%,#0d0715 100%);border-bottom:1px solid #2a1738">
-        <div style="position:absolute;inset:0;background:repeating-linear-gradient(90deg,rgba(255,45,120,.05) 0 2px,transparent 2px 62px)"></div>
-        <div style="position:absolute;top:0;left:0;right:0;height:22px;display:flex;justify-content:center;gap:16px;align-items:center;background:linear-gradient(180deg,#1e1029,transparent)">
-          <span style="width:5px;height:5px;border-radius:50%;background:#ffc94a;animation:bulb 1.6s infinite 0s"></span>
-          <span style="width:5px;height:5px;border-radius:50%;background:#ffc94a;animation:bulb 1.6s infinite .2s"></span>
-          <span style="width:5px;height:5px;border-radius:50%;background:#ffc94a;animation:bulb 1.6s infinite .4s"></span>
-          <span style="width:5px;height:5px;border-radius:50%;background:#ffc94a;animation:bulb 1.6s infinite .6s"></span>
-          <span style="width:5px;height:5px;border-radius:50%;background:#ffc94a;animation:bulb 1.6s infinite .8s"></span>
-          <span style="width:5px;height:5px;border-radius:50%;background:#ffc94a;animation:bulb 1.6s infinite 1s"></span>
-          <span style="width:5px;height:5px;border-radius:50%;background:#ffc94a;animation:bulb 1.6s infinite 1.2s"></span>
-          <span style="width:5px;height:5px;border-radius:50%;background:#ffc94a;animation:bulb 1.6s infinite 1.4s"></span>
+        <div style="position:absolute;inset:0;background:repeating-linear-gradient(90deg,rgba(255,45,120,.05) 0 2px,transparent 2px 62px);opacity:${v.beamOpacity}"></div>
+        <div style="position:absolute;top:0;left:0;right:0;height:22px;display:flex;justify-content:center;gap:16px;align-items:center;background:linear-gradient(180deg,#1e1029,transparent);opacity:${v.signLit ? 1 : 0.35}">
+          <span style="width:5px;height:5px;border-radius:50%;background:#ffc94a;animation:bulb 1.6s infinite 0s;opacity:${v.signLit ? 1 : 0.45}"></span>
+          <span style="width:5px;height:5px;border-radius:50%;background:#ffc94a;animation:bulb 1.6s infinite .2s;opacity:${v.signLit ? 1 : 0.45}"></span>
+          <span style="width:5px;height:5px;border-radius:50%;background:#ffc94a;animation:bulb 1.6s infinite .4s;opacity:${v.signLit ? 1 : 0.45}"></span>
+          <span style="width:5px;height:5px;border-radius:50%;background:#ffc94a;animation:bulb 1.6s infinite .6s;opacity:${v.signLit ? 1 : 0.45}"></span>
+          <span style="width:5px;height:5px;border-radius:50%;background:#ffc94a;animation:bulb 1.6s infinite .8s;opacity:${v.signLit ? 1 : 0.45}"></span>
+          <span style="width:5px;height:5px;border-radius:50%;background:#ffc94a;animation:bulb 1.6s infinite 1s;opacity:${v.signLit ? 1 : 0.45}"></span>
+          <span style="width:5px;height:5px;border-radius:50%;background:#ffc94a;animation:bulb 1.6s infinite 1.2s;opacity:${v.signLit ? 1 : 0.45}"></span>
+          <span style="width:5px;height:5px;border-radius:50%;background:#ffc94a;animation:bulb 1.6s infinite 1.4s;opacity:${v.signLit ? 1 : 0.45}"></span>
         </div>
 
-        <div class="stage-neon" style="position:absolute;top:25px;left:50%;transform:translateX(-50%);white-space:nowrap;font-family:'Monoton',cursive;font-size:13px;color:#22d3ee;letter-spacing:2px;text-shadow:0 0 10px rgba(34,211,238,.8),0 0 30px rgba(34,211,238,.4);animation:neonFlicker 9s infinite;opacity:.9">girls girls girls</div>
+        <div class="stage-neon" style="position:absolute;top:25px;left:50%;transform:translateX(-50%);white-space:nowrap;font-family:'Monoton',cursive;font-size:13px;color:${v.signLit ? '#22d3ee' : '#5c3a52'};letter-spacing:2px;text-shadow:${v.signLit ? '0 0 10px rgba(34,211,238,.8),0 0 30px rgba(34,211,238,.4)' : 'none'};animation:${v.signLit ? 'neonFlicker 9s infinite' : 'none'};opacity:${v.signLit ? .9 : .55};transition:color .4s,opacity .4s,text-shadow .4s">girls girls girls</div>
 
-        <div style="position:absolute;top:-10%;left:26%;width:120px;height:78%;transform-origin:50% 0;background:linear-gradient(180deg,rgba(255,45,120,.42),rgba(255,45,120,0));filter:blur(14px);animation:sweepL 9s ease-in-out infinite"></div>
-        <div style="position:absolute;top:-10%;right:26%;width:120px;height:78%;transform-origin:50% 0;background:linear-gradient(180deg,rgba(34,211,238,.34),rgba(34,211,238,0));filter:blur(14px);animation:sweepR 11s ease-in-out infinite"></div>
+        <div style="position:absolute;top:-10%;left:26%;width:120px;height:78%;transform-origin:50% 0;background:linear-gradient(180deg,rgba(255,45,120,.42),rgba(255,45,120,0));filter:blur(14px);animation:sweepL 9s ease-in-out infinite;opacity:${v.beamOpacity}"></div>
+        <div style="position:absolute;top:-10%;right:26%;width:120px;height:78%;transform-origin:50% 0;background:linear-gradient(180deg,rgba(34,211,238,.34),rgba(34,211,238,0));filter:blur(14px);animation:sweepR 11s ease-in-out infinite;opacity:${v.beamOpacity}"></div>
 
-        <div style="position:absolute;left:50%;bottom:26%;transform:translateX(-50%);width:230px;height:56px;border-radius:50%;background:radial-gradient(closest-side,rgba(255,232,180,.34),rgba(255,232,180,0));filter:blur(6px)"></div>
+        <div style="position:absolute;left:50%;bottom:26%;transform:translateX(-50%);width:230px;height:56px;border-radius:50%;background:radial-gradient(closest-side,rgba(255,232,180,.34),rgba(255,232,180,0));filter:blur(6px);opacity:${v.spotOpacity}"></div>
 
-        <div style="position:absolute;left:0;right:0;bottom:24%;height:1px;background:linear-gradient(90deg,transparent,#ff2d78,transparent);opacity:.6"></div>
+        <div style="position:absolute;left:0;right:0;bottom:24%;height:1px;background:linear-gradient(90deg,transparent,#ff2d78,transparent);opacity:${Math.max(0.25, v.beamOpacity * 0.75).toFixed(2)}"></div>
         <div style="position:absolute;left:0;right:0;bottom:0;height:24%;background:linear-gradient(180deg,#1b1027,#0a0611);border-top:1px solid #38204d"></div>
 
-        <div style="position:absolute;left:0;right:0;bottom:0;height:74px;display:flex;align-items:flex-end;justify-content:center;gap:22px;opacity:.85">
-          <span style="width:26px;height:44px;border-radius:13px 13px 0 0;background:#160d20;animation:crowdBob 3.1s ease-in-out infinite"></span>
-          <span style="width:30px;height:52px;border-radius:15px 15px 0 0;background:#120a1b;animation:crowdBob 2.6s ease-in-out infinite .3s"></span>
-          <span style="width:24px;height:38px;border-radius:12px 12px 0 0;background:#180e23;animation:crowdBob 3.6s ease-in-out infinite .7s"></span>
-          <span style="width:200px"></span>
-          <span style="width:28px;height:46px;border-radius:14px 14px 0 0;background:#150c1f;animation:crowdBob 2.9s ease-in-out infinite .2s"></span>
-          <span style="width:32px;height:56px;border-radius:16px 16px 0 0;background:#110919;animation:crowdBob 3.3s ease-in-out infinite .9s"></span>
-          <span style="width:25px;height:40px;border-radius:12px 12px 0 0;background:#170d21;animation:crowdBob 2.4s ease-in-out infinite .5s"></span>
+        <div style="position:absolute;left:0;right:0;bottom:0;height:74px;display:flex;align-items:flex-end;justify-content:center;gap:22px;opacity:.85;padding:0 20px">
+          ${Array.from({ length: v.crowdN }, (_, i) => {
+            const h = 34 + (i % 5) * 6;
+            const w = 22 + (i % 4) * 3;
+            const del = (i * 0.31) % 1.4;
+            const cols = ['#160d20','#120a1b','#180e23','#150c1f','#110919','#170d21'];
+            return `<span style="width:${w}px;height:${h}px;border-radius:${Math.round(w/2)}px ${Math.round(w/2)}px 0 0;background:${cols[i % cols.length]};animation:crowdBob ${v.crowdBobDur} ease-in-out infinite ${del.toFixed(2)}s"></span>`;
+          }).join('')}
         </div>
 
         <div style="position:absolute;left:14px;top:14px;display:flex;flex-direction:column;gap:5px">
@@ -2061,3 +2113,4 @@ class Game {
 const game = new Game(document.getElementById('app'));
 game.init();
 game.mountLook();
+game.mountFxLayer();

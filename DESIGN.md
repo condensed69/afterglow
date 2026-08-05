@@ -411,7 +411,7 @@ Brand-new / wiped clubs stamp `ts` via `fresh()` and skip offline entirely (`res
 ### 10.1 Shell
 
 Three-row grid: **header (62px) · main · footer (28px)**.  
-Main: three columns **`minmax(232px,268px) | minmax(320px,1fr) | minmax(320px,392px)`** — Ledger · Stage · Systems (v0.6.4+ density; side maxes from Look-era grid).
+Main: three columns **`minmax(232px,300px) | minmax(320px,720px) | minmax(320px,440px)`** — Ledger · Stage · Systems. The stage column is hard-capped at 720px (v0.7.1) so it no longer stretches into dead space on wide monitors; the shell centers via `max-width:1460px; margin-inline:auto` (not `justify-content:center`, which would clip the left edge when narrow screens overflow). This replaces the reverted v0.6.5 660px cap whose small side maxes (268/392) left oversized gutters.
 
 | Region | Contents |
 |--------|----------|
