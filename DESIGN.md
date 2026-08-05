@@ -411,7 +411,7 @@ Brand-new / wiped clubs stamp `ts` via `fresh()` and skip offline entirely (`res
 ### 10.1 Shell
 
 Three-row grid: **header (62px) · main · footer (28px)**.  
-Main: three columns **`minmax(232px,268px) | minmax(320px,1fr) | minmax(320px,392px)`** — Ledger · Stage · Systems (v0.6.4+ density; side maxes from Look-era grid).
+Main: three columns **`minmax(232px,300px) | minmax(320px,720px) | minmax(320px,440px)`** — Ledger · Stage · Systems. The stage column is hard-capped at 720px (v0.7.1) so it no longer stretches into dead space on wide monitors; the shell centers via `max-width:1460px; margin-inline:auto` (not `justify-content:center`, which would clip the left edge when narrow screens overflow). This replaces the reverted v0.6.5 660px cap whose small side maxes (268/392) left oversized gutters.
 
 | Region | Contents |
 |--------|----------|
@@ -431,7 +431,7 @@ Typography (loaded in `index.html`): **Monoton** (wordmark), **Space Grotesk** (
 - Marquee bulbs, sweeping spotlight cones, haze, crowd silhouettes, stage lip, neon *girls girls girls* sign  
 - `#stage` is a CSS **size container**: neon sign drops under 660px stage width and **hides under 300px**  
 - Empty-stage badge text still routes crew assignment: hire / assign / nobody on stage (badge → Crew tab)  
-- `patrons >= 3` still adds `.crowd` glow on the set  
+- The crowd silhouette row grows from a pair of wallflowers up to 14 bodies as `patrons` increases, bobbing faster as `hype` rises  
 
 **Removed (do not restore without an explicit ask):** `dancerHTML()`, `perfStyle`, `#performer-stage` preservation, `state.stageH` / ResizeObserver fit, `.performer` / `.pole` / `dn*` CSS.
 
