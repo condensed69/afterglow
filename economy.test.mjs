@@ -58,6 +58,7 @@ globalThis.document = {
   },
   createElement: () => ({ ...root, click: () => {}, files: null }),
   createTextNode: () => ({}),
+  documentElement: { style: {} },
 };
 // Blob / object-URL / FileReader shims for PLAN-NEXT §A download + load-file paths.
 // Keep the real URL constructor (Node uses it for import.meta.url); only add blob helpers.
