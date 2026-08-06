@@ -208,6 +208,169 @@ test('fresh() respects startingCash prop', () => {
   strictEqual(game.state.g.cash, 50);
 });
 
+// ── 1b. Prestige meta invariants ─────────────────────────────────────────────
+
+console.log('\n1b. Prestige meta');
+
+test('fresh() includes legacy, legacyTotal, perks map, and prestiges', () => {
+  const game = newGame();
+  const g = game.state.g;
+  strictEqual(g.legacy, 0);
+  strictEqual(g.legacyTotal, 0);
+  ok(g.perks && typeof g.perks === 'object' && !Array.isArray(g.perks), 'perks is a plain object');
+  for (const def of game.PRESTIGE_PERKS) strictEqual(g.perks[def.id], 0, `${def.id} starts at 0`);
+  strictEqual(g.prestiges, 0);
+});
+
+test('legacyGain() matches floor(sqrt(regulars) + night / 7)', () => {
+  const game = newGame();
+  const cases = [
+    [{ regulars: 0, night: 1 }, 0],
+    [{ regulars: 25, night: 1 }, 5],
+    [{ regulars: 25, night: 14 }, 7],
+    [{ regulars: 60, night: 30 }, 12],
+    [{ regulars: 100, night: 1 }, 10],
+    [{ regulars: 0, night: 100 }, 14],
+    [{ regulars: 24, night: 7 }, 5],
+    [{ regulars: 49, night: 7 }, 8],
+  ];
+  for (const [input, expected] of cases) {
+    const g = { regulars: input.regulars, night: input.night };
+    strictEqual(game.legacyGain(g), expected, `regulars=${input.regulars}, night=${input.night}`);
+  }
+});
+
+test('cash10 multiplier scales rates().cash and cashIncomeMult()', () => {
+  const game = newGame(1000);
+  const g = game.state.g;
+  g.b.rail = 2;
+  g.b.bar = 1;
+  g.patrons = 10;
+  const base = game.rates(g).cash;
+  const baseMult = game.cashIncomeMult(g);
+  strictEqual(baseMult, 1);
+  g.perks.cash10 = 5;
+  const boosted = game.rates(g).cash;
+  const boostedMult = game.cashIncomeMult(g);
+  strictEqual(boostedMult, 1.5);
+  ok(Math.abs(boosted - base * 1.5) < 0.0001, 'rates().cash scales by 1.5x at cash10 rank 5');
+});
+
+test('clout25 multiplier scales rates().clout', () => {
+  const game = newGame();
+  const g = game.state.g;
+  g.regulars = 100;
+  const base = game.rates(g).clout;
+  g.perks.clout25 = 1;
+  const boosted = game.rates(g).clout;
+  ok(Math.abs(boosted - base * 1.25) < 0.0001, 'clout scales by 1.25x with clout25');
+});
+
+test('offline65 increases catchUp earnings over the same window', () => {
+  const game = newGame(500);
+  const base = game.state.g;
+  base.b.rail = 2;
+  base.b.bar = 1;
+  base.patrons = 10;
+  base.regulars = 5;
+  const baseReport = game.catchUp(base, 60);
+
+  const boosted = game.fresh();
+  boosted.b.rail = 2;
+  boosted.b.bar = 1;
+  boosted.patrons = 10;
+  boosted.regulars = 5;
+  boosted.perks.offline65 = 1;
+  const boostedReport = game.catchUp(boosted, 60);
+  ok(boostedReport.earned > baseReport.earned, 'offline65 earns more over same window');
+});
+
+test('doorPlus raises effective Door Staff max to 7', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  const doorDef = game.BUILDINGS.find(b => b.id === 'door');
+  strictEqual(game.doorMax(g), doorDef.max || 6);
+  g.perks.doorPlus = 1;
+  strictEqual(game.doorMax(g), (doorDef.max || 6) + 1);
+  g.cash = 99999;
+  for (let i = 0; i < 7; i++) game.buyBuilding(doorDef);
+  strictEqual(g.b.door, 7, 'can buy up to 7 Door Staff with doorPlus');
+});
+
+test('confirmPrestige() resets run fields and persists meta', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.cash = 1234;
+  g.hype = 50;
+  g.buzz = 20;
+  g.patrons = 30;
+  g.regulars = 30;
+  g.clout = 10;
+  g.night = 10;
+  g.b.rail = 2;
+  g.b.bar = 1;
+  g.crew = 3;
+  g.jobs.stage = 3;
+  g.perks.cash10 = 2;
+  g.legacy = 5;
+  g.legacyTotal = 12;
+  g.prestiges = 1;
+
+  game.confirmPrestige();
+  const next = game.state.g;
+  const gain = Math.floor(Math.sqrt(30) + 10 / 7);
+  strictEqual(next.cash, game.props.startingCash, 'cash reset');
+  strictEqual(next.hype, 0, 'hype reset');
+  strictEqual(next.buzz, 0, 'buzz reset');
+  strictEqual(next.patrons, 0, 'patrons reset');
+  strictEqual(next.regulars, 0, 'regulars reset');
+  strictEqual(next.clout, 0, 'clout reset');
+  strictEqual(next.night, 1, 'night reset');
+  strictEqual(next.b.rail, 0, 'buildings reset');
+  strictEqual(next.b.bar, 0, 'buildings reset');
+  strictEqual(next.crew, 0, 'crew reset');
+  strictEqual(next.perks.cash10, 2, 'perks preserved');
+  strictEqual(next.legacy, 5 + gain, 'legacy incremented by gain');
+  strictEqual(next.legacyTotal, 12 + gain, 'legacyTotal incremented by gain');
+  strictEqual(next.prestiges, 2, 'prestiges incremented');
+  ok(next.log.some(x => x.msg.includes('franchise deal')), 'prestige logged');
+});
+
+test('confirmPrestige() is no-op below 25 regulars', () => {
+  const game = newGame(500);
+  const g = game.state.g;
+  g.regulars = 10;
+  g.legacy = 3;
+  g.prestiges = 1;
+  const before = game.state.g;
+  game.confirmPrestige();
+  strictEqual(game.state.g, before, 'state.g reference unchanged');
+  strictEqual(game.state.g.legacy, 3);
+  strictEqual(game.state.g.prestiges, 1);
+});
+
+test('MIGRATIONS[5] rejects array perks and clamps out-of-range ranks', () => {
+  const game = newGame();
+  const g = game.fresh();
+  g.legacy = 'bad';
+  g.legacyTotal = null;
+  g.prestiges = NaN;
+  // Array perks must be replaced with a valid map (ranks would vanish on JSON round-trip).
+  g.perks = ['cash10'];
+  game.migrateFrom(g, 5);
+  strictEqual(g.legacy, 0);
+  strictEqual(g.legacyTotal, 0);
+  strictEqual(g.prestiges, 0);
+  ok(typeof g.perks === 'object' && !Array.isArray(g.perks), 'array perks replaced with map');
+  strictEqual(g.perks.cash10, 0, 'array perks lose ranks safely');
+
+  // Out-of-range ranks are clamped.
+  g.perks = { cash10: 99, doorPlus: -3 };
+  game.migrateFrom(g, 5);
+  strictEqual(g.perks.cash10, 5, 'cash10 clamped to max');
+  strictEqual(g.perks.doorPlus, 0, 'negative rank clamped to 0');
+});
+
 // ── 2. Job invariant: sum always equals crew ─────────────────────────────────
 
 console.log('\n2. Job assignments always sum to crew');
@@ -985,11 +1148,12 @@ test('non-numeric saveVer fails closed', () => {
 
 console.log('\nSave migration map (PLAN §2.2)');
 
-test('SAVE_VER is 5', () => {
+test('SAVE_VER is 6', () => {
   const game = newGame();
-  strictEqual(game.SAVE_VER, 5);
+  strictEqual(game.SAVE_VER, 6);
   ok(typeof game.MIGRATIONS[3] === 'function', 'MIGRATIONS[3] must exist');
   ok(typeof game.MIGRATIONS[4] === 'function', 'MIGRATIONS[4] must exist (Owner\'s List)');
+  ok(typeof game.MIGRATIONS[5] === 'function', 'MIGRATIONS[5] must exist (prestige)');
 });
 
 test('migrateFrom(3) applies jobs/crew fixups and preserves club', () => {
@@ -1395,7 +1559,7 @@ test('catchUp mid-window threshold: pulse completes if patrons peak then decay',
   strictEqual(g.goals.filter(id => id === 'pulse').length, 1, 'pulse id once');
 });
 
-test('migration 4→5: v4 save with rail+flyers pre-completes those goals, no reward cash', () => {
+test('migration 4→5→6: v4 save with rail+flyers pre-completes those goals, no reward cash', () => {
   const game = newGame(10);
   const cash = 100;
   const g = {
@@ -1418,10 +1582,10 @@ test('migration 4→5: v4 save with rail+flyers pre-completes those goals, no re
   // Import stamps log with "Save restored"; cash must not include goal rewards
   strictEqual(loaded.cash, cash, 'no back-paid goal rewards on migrate');
   const stored = JSON.parse(localStorage.getItem(game.KEY));
-  strictEqual(stored.saveVer, 5);
+  strictEqual(stored.saveVer, 6);
 });
 
-test('migration 4→5 mid-game: credits non-sequential goals without reward cascade', () => {
+test('migration 4→5→6 mid-game: credits non-sequential goals without reward cascade', () => {
   const game = newGame(10);
   const cash = 500;
   const clout = 4;
@@ -1702,10 +1866,10 @@ test('init post-catchUp setItem throw still claimed ts (reload cannot re-apply g
     `reload must not re-apply offline gap (disk=${cashOnDisk}, second=${game2.state.g.cash})`);
 });
 
-test('v5 import missing goals fails closed; v4 without goals still migrates', () => {
+test('v6 import missing goals fails closed; v5 without prestige still migrates', () => {
   const game = newGame(20);
   game.state.g.cash = 20;
-  const mature = {
+  const matureNoGoals = {
     cash: 500, hype: 30, buzz: 10, patrons: 12, regulars: 5, clout: 4,
     crew: 3, jobs: { stage: 1, vipjob: 1, floor: 1, off: 0 },
     b: { rail: 2, flyers: 1, bar: 1, vip: 1, dress: 1, dj: 2, marquee: 0, door: 0 },
@@ -1715,20 +1879,29 @@ test('v5 import missing goals fails closed; v4 without goals still migrates', ()
   };
   const before = game.state.g;
   const fail = game.importSaveFromText(JSON.stringify({
-    saveVer: 5, ver: '0.6.0', build: 161, g: { ...mature }
+    saveVer: 6, ver: '0.8.0', build: 182, g: { ...matureNoGoals }
   }));
-  strictEqual(fail, false, 'v5 missing goals must fail closed');
+  strictEqual(fail, false, 'v6 missing goals must fail closed');
   strictEqual(game.state.saveState, 'import failed');
   strictEqual(game.state.g, before, 'club reference unchanged');
   strictEqual(game.state.g.cash, 20);
 
-  // v4 path still migrates without those fields.
-  const okV4 = game.importSaveFromText(JSON.stringify({
-    saveVer: 4, ver: '0.5.3', build: 159, g: { ...mature }
+  // v5 path migrates without prestige fields and supplies defaults.
+  const matureV5 = {
+    ...matureNoGoals,
+    goals: ['work', 'rail', 'word', 'pulse', 'contract', 'energy',
+      'backstage', 'regulars', 'study', 'roster', 'builtin'],
+    clicks: 10, rounds: 1
+  };
+  const okV5 = game.importSaveFromText(JSON.stringify({
+    saveVer: 5, ver: '0.6.0', build: 161, g: { ...matureV5 }
   }));
-  strictEqual(okV4, true, 'v4 without goals still migrates');
+  strictEqual(okV5, true, 'v5 without prestige still migrates');
   ok(Array.isArray(game.state.g.goals), 'migration supplies goals');
   strictEqual(game.state.g.cash, 500, 'no reward cascade on migrate');
+  ok(typeof game.state.g.legacy === 'number', 'MIGRATIONS[5] adds legacy');
+  ok(typeof game.state.g.perks === 'object' && !Array.isArray(game.state.g.perks), 'MIGRATIONS[5] adds perks map');
+  strictEqual(game.state.g.prestiges, 0, 'MIGRATIONS[5] adds prestiges');
 });
 
 // ── Import log sanitization + tabStale ownership (AAR-58 / AAR-62) ────────────

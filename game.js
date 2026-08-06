@@ -11,9 +11,8 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.7.5', build: 181, channel: 'alpha', date: '2026-08-05', codename: 'Neon Zero' };
-  VERSION = { num: '0.7.3', build: 179, channel: 'alpha', date: '2026-08-05', codename: 'Neon Zero' };
-  SAVE_VER = 5;
+  VERSION = { num: '0.8.0', build: 182, channel: 'alpha', date: '2026-08-05', codename: 'Neon Zero' };
+  SAVE_VER = 6;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
   // A plain boolean is copied when the browser duplicates a tab, so a duplicate would
@@ -78,10 +77,31 @@ class Game {
       for (const goal of this.GOALS) {
         if (goal.check(g)) g.goals.push(goal.id);
       }
+    },
+    // v5 → v6: prestige meta fields.
+    5(g) {
+      if (typeof g.legacy !== 'number' || !Number.isFinite(g.legacy)) g.legacy = 0;
+      if (typeof g.legacyTotal !== 'number' || !Number.isFinite(g.legacyTotal)) g.legacyTotal = 0;
+      // perks must be a plain object map. Arrays pass typeof === 'object' but
+      // JSON.stringify omits string-keyed properties on arrays, so ranks would
+      // vanish after reload while Legacy spend already stuck — reject/replace.
+      if (!g.perks || typeof g.perks !== 'object' || Array.isArray(g.perks)) g.perks = {};
+      if (typeof g.prestiges !== 'number' || !Number.isFinite(g.prestiges)) g.prestiges = 0;
+      for (const def of this.PRESTIGE_PERKS) {
+        let r = g.perks[def.id];
+        if (typeof r !== 'number' || r < 0) r = 0;
+        g.perks[def.id] = Math.min(def.max, Math.floor(r));
+      }
     }
   };
 
   CHANGELOG = [
+    { v: '0.8.0', date: '2026-08-05', codename: 'Neon Zero', notes: [
+      'Prestige system: sell the club at 25+ Regulars to earn Legacy and reopen with permanent perks.',
+      'Six starting perks: House cut, Seed roster, Street team, Franchise playbook, Extra bouncer slot, Name recognition.',
+      'SAVE_VER bumped to 6; legacy/legacyTotal/perks/prestiges fields migrate in from older saves.',
+      'New Perks tab, Legacy ledger row, and Franchise offer header control once the gate is met.'
+    ] },
     { v: '0.7.5', date: '2026-08-05', codename: 'Neon Zero', notes: [
       'Added disabled visual states (dimmed text/background, not-allowed cursor) and tooltips to Crew assignment + and - buttons to improve UX when no crew are available or assignable.',
     ] },
@@ -266,6 +286,39 @@ class Game {
     { id: 'payroll', name: 'Payroll Software', cost: 32, desc: 'Crew wages drop 40%.' }
   ];
 
+  // Prestige perks (PRESTIGE.md). Legacy cost, max rank, effect applied in rates()/workCrowd()/catchUp()/fresh().
+  PRESTIGE_PERKS = [
+    { id: 'cash10', name: 'House cut', cost: 1, max: 5, desc: '+10% all cash income per rank.' },
+    { id: 'startCrew', name: 'Seed roster', cost: 2, max: 1, desc: 'Start run with 1 crew on Main Stage.' },
+    { id: 'startFlyers', name: 'Street team', cost: 3, max: 1, desc: 'Start run with Flyer Crew ×1 built.' },
+    { id: 'offline65', name: 'Franchise playbook', cost: 4, max: 1, desc: 'Offline / catchUp rate 50% → 65%.' },
+    { id: 'doorPlus', name: 'Extra bouncer slot', cost: 5, max: 1, desc: '+1 max Door Staff.' },
+    { id: 'clout25', name: 'Name recognition', cost: 6, max: 1, desc: '+25% Clout gain.' }
+  ];
+
+  // Current rank of a prestige perk (0 if missing/invalid).
+  perk(g, id) {
+    const p = g && g.perks && g.perks[id];
+    return typeof p === 'number' && p > 0 ? p : 0;
+  }
+
+  // Effective max Door Staff count (base 6 + doorPlus perk).
+  doorMax(g) {
+    return (this.BUILDINGS.find(b => b.id === 'door').max || 6) + this.perk(g, 'doorPlus');
+  }
+
+  // Legacy earned on prestige: floor(sqrt(regulars) + night / 7).
+  legacyGain(g) {
+    const reg = Math.max(0, g.regulars || 0);
+    const nights = Math.max(0, g.night || 0);
+    return Math.floor(Math.sqrt(reg) + nights / 7);
+  }
+
+  // Multiplier applied to all cash income (passive + active clicks) from House cut perk.
+  cashIncomeMult(g) {
+    return 1 + 0.10 * this.perk(g, 'cash10');
+  }
+
   JOBS = [
     { id: 'stage', name: 'Main Stage', desc: '+0.24 Hype/s each' },
     { id: 'vipjob', name: 'VIP Room', desc: '+$1.35/s each' },
@@ -392,7 +445,7 @@ class Game {
   ];
 
   state = {
-    tab: 'club', showChangelog: false, showSettings: false, tick: 0, saveState: 'idle', resetArmed: false,
+    tab: 'club', showChangelog: false, showSettings: false, showPrestige: false, tick: 0, saveState: 'idle', resetArmed: false,
     // true when another tab wrote KEY — autosave is off until reload (PLAN §2.3).
     tabStale: false,
     g: null
@@ -462,17 +515,31 @@ class Game {
   }
 
   fresh() {
-    const b = {}, u = {}, r = {};
+    const b = {}, u = {}, r = {}, perks = {};
     this.BUILDINGS.forEach(x => b[x.id] = 0);
     this.UPGRADES.forEach(x => u[x.id] = false);
     this.RESEARCH.forEach(x => r[x.id] = false);
-    return {
+    this.PRESTIGE_PERKS.forEach(x => perks[x.id] = 0);
+    const g = {
       cash: (this.props && this.props.startingCash) ?? 20, hype: 0, buzz: 0, patrons: 0, regulars: 0, clout: 0,
       crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
       b, u, r, elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: Date.now(),
       // Owner's List (SAVE_VER 5) — not required by isValidSavePayload (v4 imports lack them).
-      goals: [], clicks: 0, rounds: 0
+      goals: [], clicks: 0, rounds: 0,
+      // Prestige meta (SAVE_VER 6) — defaults for first run; perks/prestiges persist.
+      legacy: 0, legacyTotal: 0, perks, prestiges: 0
     };
+    this.applyStartPerks(g);
+    return g;
+  }
+
+  // Apply start-of-run perks (seed crew / flyers) after a fresh candidate is built.
+  applyStartPerks(g) {
+    if (this.perk(g, 'startFlyers')) g.b.flyers = 1;
+    if (this.perk(g, 'startCrew')) {
+      g.crew = 1;
+      g.jobs.stage = 1;
+    }
   }
 
   setState(update, cb) {
@@ -526,6 +593,13 @@ class Game {
         if (!over) break;
       }
     }
+    // Defense: arrays as perks collapse on JSON round-trip.
+    if (!g.perks || typeof g.perks !== 'object' || Array.isArray(g.perks)) g.perks = {};
+    for (const def of this.PRESTIGE_PERKS) {
+      let r = g.perks[def.id];
+      if (typeof r !== 'number' || r < 0) r = 0;
+      g.perks[def.id] = Math.min(def.max, Math.floor(r));
+    }
     return g;
   }
 
@@ -568,7 +642,7 @@ class Game {
     const requireGoals = !!opts.requireGoals;
     const defaults = this.fresh();
     const numeric = ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'clout', 'crew',
-      'elapsed', 'night', 'shiftIdx', 'shiftT', 'ts'];
+      'elapsed', 'night', 'shiftIdx', 'shiftT', 'ts', 'legacy', 'legacyTotal', 'prestiges'];
     for (const k of numeric) {
       if (g[k] === undefined) g[k] = defaults[k];
       if (typeof g[k] !== 'number' || !Number.isFinite(g[k])) return false;
@@ -605,6 +679,18 @@ class Game {
       jobsNext[k] = value;
     }
     g.jobs = jobsNext;
+
+    // Prestige perks map — reject arrays (string-keyed ranks vanish on JSON round-trip).
+    if (!g.perks || typeof g.perks !== 'object' || Array.isArray(g.perks)) g.perks = {};
+    const perksNext = Object.create(null);
+    for (const def of this.PRESTIGE_PERKS) {
+      let value = g.perks[def.id];
+      if (value === undefined) value = 0;
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) value = 0;
+      perksNext[def.id] = Math.min(def.max, Math.floor(value));
+    }
+    g.perks = perksNext;
+
     if (!Array.isArray(g.log)) g.log = [];
     // Keep raw validated t/msg (length-capped) so export→import is idempotent.
     // Escape only at the render() innerHTML boundary; restrict color to hex.
@@ -1090,12 +1176,14 @@ class Game {
     const railCap = g.b.rail * 6;
     // Non-crew cash: base door + tip rail + bar + VIP rooms + regulars loop.
     // Patron tips only via rail (PLAN §1.6); flat 0.08 covers the door.
-    let nonCrewCash = (0.08 + Math.min(g.patrons, railCap) * 0.06 + g.b.bar * 0.45) * cashMult;
-    nonCrewCash += g.b.vip * 1.25 * bottle * cashMult;
-    if (g.r.loop) nonCrewCash += g.regulars * 0.04 * cashMult;
+    // House cut prestige perk multiplies all cash income (not wages).
+    const houseCut = this.cashIncomeMult(g);
+    let nonCrewCash = (0.08 + Math.min(g.patrons, railCap) * 0.06 + g.b.bar * 0.45) * cashMult * houseCut;
+    nonCrewCash += g.b.vip * 1.25 * bottle * cashMult * houseCut;
+    if (g.r.loop) nonCrewCash += g.regulars * 0.04 * cashMult * houseCut;
 
     let wage = (g.crew - g.jobs.off) * 0.20 * (g.r.payroll ? 0.6 : 1);
-    let vipCrewCash = g.jobs.vipjob * 1.35 * crewMult * bottle * cashMult;
+    let vipCrewCash = g.jobs.vipjob * 1.35 * crewMult * bottle * cashMult * houseCut;
     let stageHype = g.jobs.stage * 0.24 * crewMult;
     let floorBuzz = g.jobs.floor * 0.035 * crewMult;
 
@@ -1130,7 +1218,7 @@ class Game {
     const patrons = admitted - g.patrons * 0.008;
     // Regulars / Clout paced for first-research ~25 min under the §C reference bot.
     const regulars = g.patrons * 0.00045 * (1 + g.b.vip * 0.18) * sm;
-    const clout = g.regulars * 0.0011;
+    const clout = g.regulars * 0.0011 * (1 + 0.25 * this.perk(g, 'clout25'));
     return { cash, hype, buzz, patrons, regulars, clout, wage, cap, shift, sm, pull, buzzSpent, strike };
   }
 
@@ -1168,7 +1256,7 @@ class Game {
       const cap = rates.cap;
       const left = rates.shift.len - g.shiftT;
       const wall = Math.min(remaining, left, this.OFFLINE_STEP);
-      const dt = wall * 0.5;
+      const dt = wall * (this.perk(g, 'offline65') ? 0.65 : 0.5);
       // rates.cash is net of wage; reconstruct gross for reporting.
       earned += (rates.cash + rates.wage) * dt;
       wagesPaid += rates.wage * dt;
@@ -1288,7 +1376,8 @@ class Game {
     if (this.state.tabStale) return;
     const g = this.state.g;
     const n = g.b[def.id];
-    if (def.max != null && n >= def.max) return;
+    const max = def.id === 'door' ? this.doorMax(g) : def.max;
+    if (max != null && n >= max) return;
     const price = Math.floor(def.cost * Math.pow(def.growth, n));
     if (g.cash < price) return;
     g.cash -= price;
@@ -1319,6 +1408,59 @@ class Game {
     this.push(g, 'Researched ' + def.name + '.', '#a855f7');
     this.noteGoals(g);
     this.forceUpdate();
+  }
+  buyPerk(def) {
+    if (this.state.tabStale) return;
+    const g = this.state.g;
+    const rank = this.perk(g, def.id);
+    if (rank >= def.max || g.legacy < def.cost) return;
+    g.legacy -= def.cost;
+    g.perks[def.id] = rank + 1;
+    this.push(g, 'Perk: ' + def.name + ' rank ' + (rank + 1) + '/' + def.max + '.', '#ffc94a');
+    this.forceUpdate();
+  }
+  // Confirm prestige: candidate → setItem must succeed → live replace (fail-closed).
+  confirmPrestige() {
+    if (this.state.tabStale) return;
+    const g = this.state.g;
+    if ((g.regulars || 0) < 25) return;
+    const gain = this.legacyGain(g);
+
+    // Snapshot meta that persists.
+    const snapshot = {
+      legacy: (g.legacy || 0),
+      legacyTotal: (g.legacyTotal || 0),
+      perks: {},
+      prestiges: (g.prestiges || 0)
+    };
+    for (const def of this.PRESTIGE_PERKS) snapshot.perks[def.id] = this.perk(g, def.id);
+
+    // Build post-prestige candidate from fresh() defaults.
+    const next = this.fresh();
+    next.legacy = snapshot.legacy + gain;
+    next.legacyTotal = snapshot.legacyTotal + gain;
+    next.perks = snapshot.perks;
+    next.prestiges = snapshot.prestiges + 1;
+    this.applyStartPerks(next);
+
+    // Push the franchise line onto the candidate so disk/memory share it.
+    this.push(next, 'Signed the franchise deal: +' + gain + ' Legacy.', '#ffc94a');
+
+    // Persist before replacing live state.
+    try {
+      localStorage.setItem(this.KEY, JSON.stringify({
+        saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g: next
+      }));
+    } catch (e) {
+      this.setState({ saveState: 'prestige failed' });
+      return;
+    }
+
+    this._onStrike = false;
+    this.state.g = next;
+    this.markTabOwner();
+    this.startAutosave();
+    this.setState({ tab: 'club', saveState: 'prestige saved' });
   }
   hireCrew() {
     if (this.state.tabStale) return;
@@ -1370,7 +1512,7 @@ class Game {
       verLabel: 'v' + V.num, verBuild: V.build, verChannel: V.channel,
       verFull: 'v' + V.num + ' · build ' + V.build + ' · ' + V.channel + ' · ' + V.codename + ' · ' + V.date,
       saveVer: this.SAVE_VER, changelog: this.CHANGELOG.map(c => ({ ...c })),
-      showChangelog: this.state.showChangelog, showSettings: this.state.showSettings,
+      showChangelog: this.state.showChangelog, showSettings: this.state.showSettings, showPrestige: this.state.showPrestige,
       resetHint: this.state.resetArmed ? '⚠ Click "Wipe save and restart" again to confirm — this is permanent.' : '',
       resetLabel: this.state.resetArmed ? '⚠ Confirm — click again to wipe' : 'Wipe save and restart',
       resetStyle: {
@@ -1380,6 +1522,7 @@ class Game {
       },
       toggleChangelog: () => this.setState(s => ({ showChangelog: !s.showChangelog })),
       toggleSettings: () => this.setState(s => ({ showSettings: !s.showSettings, resetArmed: false })),
+      togglePrestige: () => this.setState(s => ({ showPrestige: !s.showPrestige })),
       saveNow: () => this.save('manual'),
       openLook: () => { this.setState({ showSettings: false }); this.toggleLook(true); },
       // File + clipboard share one payload shape so either restore path accepts either export.
@@ -1464,7 +1607,13 @@ class Game {
       { name: 'Patrons', val: this.fmt(Math.floor(g.patrons)), rate: sign(r.patrons), pct: g.patrons / cap.patrons * 100, color: '#a855f7', note: 'floor cap ' + cap.patrons },
       { name: 'Regulars', val: this.fmt(g.regulars), rate: sign(r.regulars), pct: Math.min(100, g.regulars), color: '#4ade80', note: g.r.loop ? '$0.04/s each' : 'unlock Reputation Loop' },
       { name: 'Clout', val: this.fmt(g.clout), rate: sign(r.clout), pct: Math.min(100, g.clout * 2), color: '#e879f9', note: 'spent on research' }
-    ].map(x => ({
+    ];
+    // Legacy appears in the ledger only once meta is unlocked (first prestige or any lifetime Legacy).
+    const metaUnlocked = (g.prestiges || 0) > 0 || (g.legacyTotal || 0) > 0 || Object.values(g.perks || {}).some(r => r > 0);
+    if (metaUnlocked) {
+      resources.push({ name: 'Legacy', val: this.fmt(Math.floor(g.legacy || 0)), rate: 'perk shop', pct: Math.min(100, (g.legacy || 0) / 25 * 100), color: '#d4af37', note: 'spent on permanent perks' });
+    }
+    const resourcesOut = resources.map(x => ({
       name: x.name, val: x.val, rate: x.rate, note: x.note,
       valStyle: { fontFamily: "'IBM Plex Mono',monospace", fontSize: '15px', fontWeight: 600, color: x.color },
       barStyle: this.bar(x.pct, x.color)
@@ -1482,6 +1631,7 @@ class Game {
       { id: 'club', label: 'Club' }, { id: 'crew', label: 'Crew' },
       { id: 'up', label: 'Upgrades' }, { id: 'res', label: 'Research' }
     ];
+    if (metaUnlocked) tabDefs.push({ id: 'perks', label: 'Perks' });
     const tabs = tabDefs.map(t => ({
       label: t.label, go: () => this.setState({ tab: t.id }),
       style: {
@@ -1504,9 +1654,12 @@ class Game {
       tabHint = 'Structures are permanent and scale in price. Everything on this tab is bought with cash. A few regulars wander in on their own; Buzz fills the floor faster.';
       cards = this.BUILDINGS.map(d => {
         const n = g.b[d.id], price = Math.floor(d.cost * Math.pow(d.growth, n));
-        const maxed = d.max != null && n >= d.max;
+        const max = d.id === 'door' ? this.doorMax(g) : d.max;
+        const maxed = max != null && n >= max;
         const ok = !maxed && g.cash >= price;
-        return { name: d.name, desc: d.desc, owned: n > 0 ? '×' + n : '—',
+        let desc = d.desc;
+        if (d.id === 'door') desc = desc.replace('(max 6)', '(max ' + max + ')');
+        return { name: d.name, desc: desc, owned: n > 0 ? '×' + n : '—',
           btn: maxed ? 'Maxed' : 'Build $' + this.fmt(price),
           meta: maxed ? 'maxed' : (ok ? 'affordable' : 'need $' + this.fmt(price - g.cash)),
           locked: !ok, wrapStyle: cardWrap(!maxed), btnStyle: btn(ok), act: () => this.buyBuilding(d) };
@@ -1529,6 +1682,17 @@ class Game {
           btn: bought ? 'Installed' : 'Buy $' + this.fmt(d.cost),
           meta: bought ? '' : (have ? (ok ? 'affordable' : 'need $' + this.fmt(d.cost - g.cash)) : 'requires ' + rn + ' ×' + need),
           locked: !ok, wrapStyle: cardWrap(have && !bought), btnStyle: btn(ok, '#ffc94a'), act: () => this.buyUpgrade(d) };
+      });
+    } else if (this.state.tab === 'perks') {
+      tabHint = 'Perks are bought with Legacy and persist across franchise deals. Total Legacy earned: ' + this.fmt(g.legacyTotal || 0) + '.';
+      cards = this.PRESTIGE_PERKS.map(d => {
+        const rank = this.perk(g, d.id);
+        const maxed = rank >= d.max;
+        const ok = !maxed && g.legacy >= d.cost;
+        return { name: d.name, desc: d.desc, owned: rank > 0 ? rank + '/' + d.max : '—',
+          btn: maxed ? 'Maxed' : d.cost + ' Legacy',
+          meta: maxed ? 'maxed' : (ok ? 'ready' : this.fmt(d.cost - g.legacy) + ' Legacy short'),
+          locked: !ok, wrapStyle: cardWrap(!maxed), btnStyle: btn(ok, '#d4af37'), act: () => this.buyPerk(d) };
       });
     } else {
       tabHint = 'Research is paid in Clout, which accrues slowly from Regulars. Permanent, global effects.';
@@ -1562,9 +1726,17 @@ class Game {
     const roundGain = Math.min(14, hypeRoom);
     const roundOk = g.cash >= roundPrice && roundGain > 0;
 
+    // Prestige gate and preview data.
+    const prestigeGate = (g.regulars || 0) >= 25;
+    const prestigeGain = prestigeGate ? this.legacyGain(g) : 0;
+
     return {
       ...base,
-      resources, stats, tabs, cards, tabHint, jobs, crewOpen: this.state.tab === 'crew' && g.crew > 0,
+      resources: resourcesOut, stats, tabs, cards, tabHint, jobs, crewOpen: this.state.tab === 'crew' && g.crew > 0,
+      metaUnlocked,
+      prestigeGate,
+      prestigeGain,
+      confirmPrestige: () => this.confirmPrestige(),
       // Escape t/msg at the HTML boundary only (g.log stays raw for save round-trips).
       log: g.log.map(l => ({
         t: this.escapeHtml(l.t),
@@ -1590,12 +1762,13 @@ class Game {
       clickValue: '$' + this.fmt(clickVal),
       workCrowd: (e) => {
         if (this.state.tabStale) return;
-        g.cash += clickVal;
+        const val = clickVal * this.cashIncomeMult(g);
+        g.cash += val;
         g.buzz = Math.min(cap.buzz, g.buzz + 0.12);
         g.clicks = (g.clicks || 0) + 1;
         this.noteGoals(g);
         this.forceUpdate();
-        this.spawnTipFloater(e, clickVal);
+        this.spawnTipFloater(e, val);
       },
       roundLabel: 'Buy a round $' + this.fmt(roundPrice),
       roundLocked: !roundOk || this.state.tabStale,
@@ -1920,6 +2093,36 @@ class Game {
         </div>
       </div>` : '';
 
+    const prestigeModal = v.showPrestige ? `
+      <div style="position:fixed;inset:0;background:rgba(5,3,9,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:32px">
+        <div style="width:480px;background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #241536">
+            <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700">Franchise offer</div>
+            <button data-h="${this.bind(v.togglePrestige)}" class="hv-pink" style="width:30px;height:30px;border:1px solid #3a2350;border-radius:6px;background:#160d22;color:#9c86ab;cursor:pointer;font-size:14px">✕</button>
+          </div>
+          <div style="padding:16px 18px;display:flex;flex-direction:column;gap:12px">
+            <div style="font-size:12px;color:#b9a5c9;line-height:1.5">Sign the club over. Keep the know-how as <strong style="color:#d4af37">Legacy</strong>. Reopen under the banner.</div>
+            <div style="border:1px solid #2f1c42;border-radius:8px;background:#100a1a;padding:12px;display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline">
+                <span style="font-size:11px;color:#9c86ab">You will earn</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:16px;color:#d4af37;font-weight:700">+${v.prestigeGain} Legacy</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline">
+                <span style="font-size:11px;color:#9c86ab">You keep</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#e7d8f2">Legacy bank, perks, prestige count</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline">
+                <span style="font-size:11px;color:#9c86ab">You reset</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#e7d8f2">cash, room, buildings, upgrades, research, crew, goals</span>
+              </div>
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6f5885;margin-top:2px">regulars ${this.fmt(g.regulars)} · night ${g.night}</div>
+            </div>
+            <button data-h="${this.bind(v.confirmPrestige)}" ${v.tabStale ? 'disabled' : ''} style="background:${v.tabStale ? '#1a1226' : 'linear-gradient(180deg,#ff3d85,#d81259)'};border:0;border-radius:8px;color:${v.tabStale ? '#9c86ab' : '#fff'};font-weight:700;font-size:13px;letter-spacing:1px;text-transform:uppercase;padding:13px 16px;cursor:${v.tabStale ? 'not-allowed' : 'pointer'}">${v.tabStale ? 'Reload to adopt fresh save before signing' : 'Sign the deal'}</button>
+            <button data-h="${this.bind(v.togglePrestige)}" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700">Not yet</button>
+          </div>
+        </div>
+      </div>` : '';
+
     const settingsModal = v.showSettings ? `
       <div style="position:fixed;inset:0;background:rgba(5,3,9,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:32px">
         <div style="width:420px;background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
@@ -1959,6 +2162,9 @@ class Game {
     </button>
 
     <div style="flex:1"></div>
+
+    ${v.prestigeGate ? `
+    <button data-h="${this.bind(v.togglePrestige)}" class="cta" style="background:linear-gradient(180deg,#a855f7,#7c3aed);border:0;border-radius:8px;color:#fff;font-weight:700;font-size:12px;letter-spacing:1px;text-transform:uppercase;padding:8px 14px;cursor:pointer;box-shadow:0 0 18px rgba(168,85,247,.35)">Franchise offer</button>` : ''}
 
     <div style="display:flex;align-items:center;gap:14px">
       <div style="text-align:right;line-height:1.15">
@@ -2106,6 +2312,7 @@ class Game {
 
   ${changelogModal}
   ${settingsModal}
+  ${prestigeModal}
 </div>`;
 
     this.root.querySelectorAll('[data-scroll]').forEach(el => {
