@@ -104,3 +104,36 @@ DESIGN.md, PLAN.md, PRESTIGE.md copied into the project; VERSION/CHANGELOG read 
 ## Sync history
 - 2026-08-02T18:04:00Z — read index.html + README.md at main (tree d2ae312a4acf); built the
   now-superseded design-component version.
+
+## GitHub authentication (3 layers) — read before touching push auth
+
+Pushing from the hermes-agent container involves THREE independent credential
+layers. Every past "token is broken" loop came from fixing one layer while
+diagnosing from a shell that reads a different one. Check all three before
+changing anything:
+
+1. **TrueNAS app `additional_envs` → container env.** Visible to
+   `docker exec ix-hermes-agent-hermes-agent-1 printenv GITHUB_TOKEN`.
+   The hermes server process (PID 1) does NOT inherit it; agent/Terminal
+   shells never see this layer.
+2. **`/opt/data/.env`** (edited via the hermes web UI `:30433/env`). This is
+   the environment hermes agent shells and `!` bang-shells actually get.
+   A valid token here is what makes agent-driven `git push` work.
+3. **Repo remote URL** (`.git/config`, persistent on the data mount). If the
+   URL embeds credentials (e.g. `https://x-access-token:@github.com/...` with
+   an empty password), it overrides layers 1-2 and every push 401s. Keep the
+   URL clean: `https://github.com/condensed69/stripper-dance.git`. The
+   `GIT_CONFIG_*` credential helper then injects `$GITHUB_TOKEN` from layer 2.
+
+Canonical token: a classic PAT (`ghp_`) stored in Bitwarden item
+"AI API Keys (Homelab)" as `GITHUB_TOKEN` (exported on .54 as
+`HERMES_GITHUB_TOKEN` by `homelab-bw-cache-refresh`). Layers 1 and 2 both
+hold this same value. Do NOT substitute a workstation gh CLI OAuth token
+(`gho_`) — it dies on re-auth, which caused the original 2026-08 outage.
+
+Rotation: update the BW field, then write the new value into layer 2 (hermes
+UI /env) and layer 1 (TrueNAS app `additional_envs` via full-values
+`midclt call app.update` — partial updates blank write-only secrets).
+
+Bang-shell gotcha: `!` shells in the hermes UI start in `/opt`, not the repo.
+`cd /opt/data/stripper-dance` first or git reports "not a git repository".

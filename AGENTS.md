@@ -23,3 +23,10 @@ This is a dependency-free static website.
 - Bump `SAVE_VER` only when the persisted save shape changes.
 - Preserve backward compatibility with existing `localStorage` saves unless the change explicitly requires a reset.
 - Preserve offline progression correctness and prevent elapsed-time double counting.
+
+## GitHub push auth
+
+Push auth from the hermes container has three independent credential layers
+(container env, `/opt/data/.env`, and the repo remote URL). Read the
+"GitHub authentication" section in `github.md` before changing any token or
+remote URL — fixing one layer while testing another is a known loop.
