@@ -287,18 +287,20 @@ function botSecond(game) {
   buyRoundIfWanted(game);
 }
 
-function run() {
+function newGame() {
   const game = new Game(root);
   game.forceUpdate = () => {};
   game.state.g = game.fresh();
+  return game;
+}
 
+function simulate(game, stopCondition, maxSec = SIM_HOURS * 3600, opts = {}) {
+  const stopOnMilestones = opts.stopOnMilestones !== false;
   const hit = Object.create(null);
   for (const m of MILESTONES) hit[m.id] = null;
 
-  const totalSec = SIM_HOURS * 3600;
   let wall = 0;
-
-  while (wall < totalSec) {
+  while (wall < maxSec) {
     // One bot decision per simulated second, then advance 1s of sim so
     // income/resource changes precede the next decision (not 5 decisions then +5s).
     botSecond(game);
@@ -309,11 +311,13 @@ function run() {
     for (const m of MILESTONES) {
       if (hit[m.id] == null && m.check(g)) hit[m.id] = wall;
     }
-    if (MILESTONES.every((m) => hit[m.id] != null)) break;
+    if (stopCondition && stopCondition(g, wall)) break;
+    if (stopOnMilestones && MILESTONES.every((m) => hit[m.id] != null)) break;
   }
+  return { wall, hit, g: game.state.g };
+}
 
-  // ── Report ─────────────────────────────────────────────────────────────────
-  console.log('\n=== pacing.mjs — PLAN-NEXT §C reference bot ===\n');
+function reportMilestones(hit) {
   console.log(
     'Milestone'.padEnd(28) +
       'Hit'.padStart(10) +
@@ -347,9 +351,18 @@ function run() {
     );
     rows.push({ id: m.id, label: m.label, hit: t, target: m.targetLabel, lo, hi, status });
   }
+  return { failed, rows };
+}
+
+function run() {
+  const game = newGame();
+  const { wall, hit, g } = simulate(game);
+
+  // ── Report ─────────────────────────────────────────────────────────────────
+  console.log('\n=== pacing.mjs — PLAN-NEXT §C reference bot ===\n');
+  const { failed } = reportMilestones(hit);
 
   console.log('-'.repeat(72));
-  const g = game.state.g;
   console.log(
     `\nFinal @ ${fmtMin(wall)}: cash=$${g.cash.toFixed(0)} crew=${g.crew} ` +
       `patrons=${g.patrons.toFixed(1)} regulars=${g.regulars.toFixed(1)} clout=${g.clout.toFixed(2)} ` +
@@ -366,7 +379,68 @@ function run() {
     process.exit(1);
   }
   console.log('\n✅ All milestones within band.\n');
-  process.exit(0);
+}
+
+function prestigeRun() {
+  const totalSec = SIM_HOURS * 3600;
+
+  // Run 1: bot plays until prestige gate or wall cap (do not stop at milestones).
+  const game1 = newGame();
+  const ledMilestone = MILESTONES.find((m) => m.id === 'upgrade');
+  let t1 = null;
+  const { g: g1, hit: hit1 } = simulate(game1, (g, wall) => {
+    if (t1 == null && ledMilestone.check(g)) t1 = wall;
+    return g.regulars >= 25 && g.night >= 10;
+  }, totalSec, { stopOnMilestones: false });
+
+  console.log('\n=== Prestige scenario (PRESTIGE.md §7) ===\n');
+
+  if (g1.regulars < 25) {
+    console.log(`FAIL: prestige gate not reached (regulars=${g1.regulars.toFixed(1)} < 25 at wall cap ${fmtMin(totalSec)})`);
+    console.log('  run2 skipped — gate is locked.\n');
+    process.exit(1);
+  }
+
+  const gateRegulars = g1.regulars;
+  if (t1 == null) t1 = hit1.upgrade; // fallback if LED happened before we started tracking
+
+  // Prestige and buy cash10 rank 1.
+  game1.confirmPrestige();
+  const g2 = game1.state.g;
+  if (g2.legacy < 1) {
+    console.log(`FAIL: prestige yielded ${g2.legacy} Legacy, need >= 1 to buy cash10.`);
+    process.exit(1);
+  }
+  const cash10Def = game1.PRESTIGE_PERKS.find((d) => d.id === 'cash10');
+  game1.buyPerk(cash10Def);
+  if (game1.perk(g2, 'cash10') !== 1) {
+    console.log('FAIL: failed to purchase cash10 rank 1 after prestige.');
+    process.exit(1);
+  }
+
+  // Run 2: same bot from post-prestige start state.
+  let t2 = null;
+  const { hit: hit2 } = simulate(game1, (g, wall) => {
+    if (t2 == null && ledMilestone.check(g)) {
+      t2 = wall;
+      return true;
+    }
+    return false;
+  }, totalSec);
+  if (t2 == null) t2 = hit2.upgrade;
+
+  const delta = (t2 != null && t1 != null) ? t2 - t1 : null;
+  console.log(`  run1 gate regulars: ${gateRegulars.toFixed(1)} (need >= 25)`);
+  console.log(`  run1 first LED:     ${fmtMin(t1)}`);
+  console.log(`  run2 first LED (+10% cash perk): ${fmtMin(t2)}`);
+  console.log(`  delta:              ${delta != null ? (delta / 60).toFixed(2) + 'm' : '—'} (must be < 0 wall for run2 − run1)`);
+
+  if (delta == null || delta >= 0) {
+    console.log('\n❌ Prestige scenario failed: run2 did not reach first LED faster than run1.\n');
+    process.exit(1);
+  }
+  console.log('\n✅ Prestige scenario passed: run2 first LED is faster.\n');
 }
 
 run();
+prestigeRun();
