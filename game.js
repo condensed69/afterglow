@@ -11,8 +11,8 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.8.0', build: 182, channel: 'alpha', date: '2026-08-05', codename: 'Neon Zero' };
-  SAVE_VER = 6;
+  VERSION = { num: '0.8.1', build: 183, channel: 'alpha', date: '2026-08-06', codename: 'Neon Zero' };
+  SAVE_VER = 7;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
   // A plain boolean is copied when the browser duplicates a tab, so a duplicate would
@@ -92,10 +92,22 @@ class Game {
         if (typeof r !== 'number' || r < 0) r = 0;
         g.perks[def.id] = Math.min(def.max, Math.floor(r));
       }
+    },
+    // v6 → v7: achievements field; backfill already-earned unlocks.
+    6(g) {
+      if (!Array.isArray(g.achievements)) g.achievements = [];
+      this.checkAchievements(g);
     }
   };
 
   CHANGELOG = [
+    { v: '0.8.1', date: '2026-08-06', codename: 'Neon Zero', notes: [
+      'Achievements: 22 permanent unlocks with Clout/Legacy rewards and a modal in Settings.',
+      'Number formatting extended to Decillion (Dc, 1e33).',
+      'Whale patron burst event: random high-roller spawns when hype is positive.',
+      'Shift-click any building card to buy the maximum affordable count.',
+      'SAVE_VER bumped to 7; v6 saves migrate and backfill already-earned achievements.'
+    ] },
     { v: '0.8.0', date: '2026-08-05', codename: 'Neon Zero', notes: [
       'Prestige system: sell the club at 25+ Regulars to earn Legacy and reopen with permanent perks.',
       'Six starting perks: House cut, Seed roster, Street team, Franchise playbook, Extra bouncer slot, Name recognition.',
@@ -471,7 +483,7 @@ class Game {
   ];
 
   state = {
-    tab: 'club', showChangelog: false, showSettings: false, showPrestige: false, tick: 0, saveState: 'idle', resetArmed: false,
+    tab: 'club', showChangelog: false, showSettings: false, showPrestige: false, showAchievements: false, tick: 0, saveState: 'idle', resetArmed: false,
     // true when another tab wrote KEY — autosave is off until reload (PLAN §2.3).
     tabStale: false,
     g: null
@@ -965,6 +977,7 @@ class Game {
         if (offline > 60) this.push(g, this.awayMsg(offline, report), '#ffc94a');
         // Offline: peak (goal 12) must not complete here — live-only.
         this.noteGoals(g, { live: false });
+        this.checkAchievements(g);
         try {
           localStorage.setItem(this.KEY, JSON.stringify({
             saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
@@ -980,6 +993,7 @@ class Game {
       const report = this.catchUp(g, offline);
       if (offline > 60) this.push(g, this.awayMsg(offline, report), '#ffc94a');
       this.noteGoals(g, { live: false });
+      this.checkAchievements(g);
       g.ts = Date.now();
     }
 
@@ -1001,6 +1015,7 @@ class Game {
         if (dt > 60) this.push(g, this.awayMsg(gap, report), '#ffc94a');
         // Large-gap catchUp is offline rate — peak stays live-only.
         this.noteGoals(g, { live: false });
+        this.checkAchievements(g);
         g.ts = Date.now();
         this.setState(s => ({ tick: s.tick + 1 }));
       } else {
@@ -1332,6 +1347,8 @@ class Game {
       // then decay before catch-up ends — post-only noteGoals would miss them.
       // live:false keeps peak-hour hero offline-ineligible.
       this.noteGoals(g, { live: false });
+      // Per-slice achievement check for stat/night thresholds reached offline.
+      this.checkAchievements(g);
     }
     return { earned, wagesPaid, struck };
   }
@@ -1361,6 +1378,8 @@ class Game {
       // Per-slice goals before shift rollover: a live tick (dt ≤ 2) can finish Peak
       // Hours mid-loop; post-loop noteGoals would see the next shift and miss peak.
       this.noteGoals(g, { live: true });
+      // Per-slice achievement check so stat/night thresholds reached mid-window unlock.
+      this.checkAchievements(g);
       // Whale event: ~1 per 3 min at base, scales with hype (live only, requires hype > 0)
       if (!g._whaleCooldown) g._whaleCooldown = 0;
       g._whaleCooldown -= chunk;
@@ -1460,6 +1479,7 @@ class Game {
     g.b[def.id] = n + 1;
     this.push(g, 'Built ' + def.name + ' #' + (n + 1) + ' for $' + this.fmt(price) + '.', '#22d3ee');
     this.noteGoals(g);
+    this.checkAchievements(g);
     this.forceUpdate();
   }
   buyBuildingMax(def) {
@@ -1541,7 +1561,10 @@ class Game {
     next.legacyTotal = snapshot.legacyTotal + gain;
     next.perks = snapshot.perks;
     next.prestiges = snapshot.prestiges + 1;
+    next.achievements = Array.isArray(g.achievements) ? g.achievements.slice() : [];
     this.applyStartPerks(next);
+    // Start-perk state can satisfy building achievements.
+    this.checkAchievements(next);
 
     // Push the franchise line onto the candidate so disk/memory share it.
     this.push(next, 'Signed the franchise deal: +' + gain + ' Legacy.', '#ffc94a');
@@ -2100,7 +2123,6 @@ class Game {
     const mult = 1 + g.hype / 100;
     const bonus = Math.floor(50 * mult * this.cashIncomeMult(g));
     g.cash += bonus;
-    g.clicks = (g.clicks || 0) + 1;
     this.push(g, '\uD83D\uDC0B Whale spotted! +$' + this.fmt(bonus), '#ffd700');
     this.noteGoals(g);
     this.checkAchievements(g);
@@ -2272,6 +2294,7 @@ class Game {
             <button data-h="${this.bind(v.exportSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Copy save to clipboard</button>
             <button data-h="${this.bind(v.importSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Restore save from clipboard</button>
             <button data-h="${this.bind(v.openLook)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Look &amp; feel…  <span style="color:#6f5885;font-weight:400">(L)</span></button>
+            <button data-h="${this.bind(v.toggleAchievements)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Achievements… <span style="color:#6f5885;font-weight:400">${v.achievements.filter(a => a.unlocked).length}/${v.achievements.length}</span></button>
             <button data-h="${this.bind(v.hardReset)}" style="${css(v.resetStyle)}">${v.resetLabel}</button>
             <div style="font-size:10.5px;color:#9c86ab;line-height:1.5;font-family:'IBM Plex Mono',monospace">${v.resetHint} Files and clipboard saves are the same format — either restores either way. ${v.verFull} · save format v${v.saveVer}</div>
           </div>
