@@ -444,3 +444,7 @@ function prestigeRun() {
 
 run();
 prestigeRun();
+// Force exit on success: confirmPrestige() starts an autosave setInterval that
+// keeps the event loop alive. On the pre-existing failure path process.exit(1)
+// is called; on the success path node otherwise hangs indefinitely.
+process.exit(0);

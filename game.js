@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.9.0', build: 184, channel: 'alpha', date: '2026-08-07', codename: 'Neon Zero' };
+  VERSION = { num: '0.9.0', build: 185, channel: 'alpha', date: '2026-08-07', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -112,6 +112,7 @@ class Game {
       'Managers (auto-buyers): one per building type (rail, bar, dj, marquee, flyers, vip, door, dress), purchasable with Legacy from the Perks tab, max 1 each.',
       'Hired managers auto-buy their building the instant cash >= cost, routed through buyBuilding — respects the strike rule (no auto-buy at cash=0 or on strike).',
       'Away-report gains a line when managers bought buildings during a gap: "Managers bought N buildings while you were away."',
+      'Special shifts: low-frequency event shifts (Bachelorette Rush, Midweek Surge, Slow Tuesday) occasionally substitute one shift instance — a pure modifier over the 4-shift rotation, same {name,mult,len,tint} render shape, never two in a row.',
       'SAVE_VER bumped to 8; v7 saves migrate and default g.managers to all false.'
     ] },
     { v: '0.8.1', date: '2026-08-06', codename: 'Neon Zero', notes: [
@@ -283,6 +284,18 @@ class Game {
     { name: 'After Hours', mult: 0.45, len: 30, tint: '#a855f7' }
   ];
 
+  // Special shifts (PLAN.md §4.2) — low-frequency event shifts that occasionally
+  // substitute one instance of the 4-shift rotation. Each entry is shaped exactly
+  // like a SHIFTS entry ({name, mult, len, tint}) plus a `weight` for weighted
+  // selection. Purely a modifier layer over shift.mult/shift.len: g.shiftIdx keeps
+  // advancing the base rotation underneath, so a special never corrupts it.
+  SPECIAL_CHANCE = 0.10; // per rollover chance to trigger a special (8-12% band)
+  SPECIAL_SHIFTS = [
+    { name: 'Bachelorette Rush', mult: 1.9, len: 26, tint: '#ff2d78', weight: 4 },
+    { name: 'Midweek Surge', mult: 1.3, len: 34, tint: '#22d3ee', weight: 3 },
+    { name: 'Slow Tuesday', mult: 0.55, len: 40, tint: '#9c86ab', weight: 3 }
+  ];
+
   BUILDINGS = [
     // Costs/growth retuned for PLAN-NEXT §C pacing bands (numbers only).
     { id: 'rail', name: 'Tip Rail', cost: 140, growth: 1.16, desc: 'Brass rail along the stage. Up to 6 patrons per rail tip +$0.06/s.' },
@@ -305,7 +318,7 @@ class Game {
   ];
 
   RESEARCH = [
-    { id: 'loop', name: 'Reputation Loop', cost: 6, desc: 'Regulars each add $0.04/s on their own.' },
+    { id: 'loop', name: 'Reputation Loop', cost: 8, desc: 'Regulars each add $0.04/s on their own.' },
     { id: 'latemenu', name: 'Late Kitchen', cost: 12, desc: 'After Hours multiplier 0.45 → 0.95.' },
     { id: 'promo', name: 'Promoter Network', cost: 20, desc: 'Buzz converts to patrons 60% faster.' },
     { id: 'payroll', name: 'Payroll Software', cost: 32, desc: 'Crew wages drop 40%.' }
@@ -1274,11 +1287,56 @@ class Game {
     };
   }
 
+  // Effective shift for the current instance: a triggered special overrides the
+  // base SHIFTS[g.shiftIdx] entry (same {name,mult,len,tint} shape) so the render
+  // path needs zero changes beyond reading this override. g._specialShift is a
+  // transient index into SPECIAL_SHIFTS (null/undefined = normal shift). g.shiftIdx
+  // keeps advancing the base 4-shift rotation regardless, so a special never
+  // corrupts it. Bad/foreign values fall through to the base shift (fail-closed).
+  effectiveShift(g) {
+    if (g._specialShift != null && Number.isInteger(g._specialShift) && this.SPECIAL_SHIFTS[g._specialShift]) {
+      return this.SPECIAL_SHIFTS[g._specialShift];
+    }
+    return this.SHIFTS[g.shiftIdx];
+  }
+
+  // Weighted pick from SPECIAL_SHIFTS using each entry's `weight` (default 1).
+  pickSpecialShift(g) {
+    const table = this.SPECIAL_SHIFTS;
+    let total = 0;
+    for (const s of table) total += (s.weight || 1);
+    let roll = Math.random() * total;
+    for (let i = 0; i < table.length; i++) {
+      roll -= (table[i].weight || 1);
+      if (roll < 0) return i;
+    }
+    return table.length - 1;
+  }
+
+  // Advance to the next base shift at a shift boundary. Shared by live step() and
+  // offline catchUp() so the special-shift trigger follows one code path. Handles
+  // the night increment and the special-shift trigger:
+  // - A special that just ended is cleared and never re-rolls → no two in a row.
+  // - A normal shift that just ended rolls SPECIAL_CHANCE to start a special on the
+  //   next instance. g.shiftIdx advances (mod 4) in both cases, so the base 4-shift
+  //   rotation resumes exactly where it would have been without the special.
+  advanceShift(g) {
+    const specialJustEnded = g._specialShift != null;
+    g.shiftT = 0;
+    g.shiftIdx = (g.shiftIdx + 1) % 4;
+    if (g.shiftIdx === 0) g.night++;
+    g._specialShift = null;
+    if (!specialJustEnded && Math.random() < this.SPECIAL_CHANCE) {
+      g._specialShift = this.pickSpecialShift(g);
+    }
+    return this.effectiveShift(g);
+  }
+
   rates(g) {
     const cap = this.caps(g);
-    const shift = this.SHIFTS[g.shiftIdx];
+    const shift = this.effectiveShift(g);
     let sm = shift.mult;
-    if (g.shiftIdx === 3 && g.r.latemenu) sm = 0.95;
+    if (g._specialShift == null && g.shiftIdx === 3 && g.r.latemenu) sm = 0.95;
     const hypeMult = 1 + g.hype / 140;
     const crewMult = g.u.residency ? 1.4 : 1;
     const cashMult = (g.u.twodrink ? 1.35 : 1) * hypeMult * sm;
@@ -1383,9 +1441,8 @@ class Game {
       g.elapsed += wall;
       remaining -= wall;
       if (g.shiftT >= rates.shift.len) {
-        g.shiftT = 0;
-        g.shiftIdx = (g.shiftIdx + 1) % 4;
-        if (g.shiftIdx === 0) g.night++;
+        // Silent rollover (special-shift trigger uses the same path as live step()).
+        this.advanceShift(g);
       }
       // Managers auto-buy buildings (PLAN.md §4.1) — respects strike rule (§1.3).
       managerBought += this.autoBuyManagers(g, { strike: rates.strike });
@@ -1440,14 +1497,13 @@ class Game {
         g._whaleCooldown = 120 + Math.random() * 180; // 2-5 min
       }
       if (g.shiftT >= r.shift.len) {
-        g.shiftT = 0;
-        g.shiftIdx = (g.shiftIdx + 1) % 4;
-        if (g.shiftIdx === 0) g.night++;
+        this.advanceShift(g);
         if (chatty) {
           if (g.shiftIdx === 0) this.push(g, 'Night ' + g.night + ' begins.', '#a855f7');
           else {
-            const effMult = (g.shiftIdx === 3 && g.r.latemenu) ? 0.95 : this.SHIFTS[g.shiftIdx].mult;
-            this.push(g, this.SHIFTS[g.shiftIdx].name + ' — x' + effMult.toFixed(2) + ' take.', this.SHIFTS[g.shiftIdx].tint);
+            const eff = this.effectiveShift(g);
+            const logMult = (g._specialShift == null && g.shiftIdx === 3 && g.r.latemenu) ? 0.95 : eff.mult;
+            this.push(g, eff.name + ' — x' + logMult.toFixed(2) + ' take.', eff.tint);
           }
         }
       }
