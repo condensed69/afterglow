@@ -103,3 +103,18 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
   0% { transform: translateY(0); opacity: 1; }
   100% { transform: translateY(-72px); opacity: 0; }
 }
+
+/* Whale floater — rare big catch animation */
+.whale-floater {
+  position: fixed;
+  pointer-events: none;
+  z-index: 95;
+  animation: whaleFloat 2.5s ease-out forwards;
+  text-shadow: 0 0 8px #ffd700, 0 0 16px #ff8c00;
+  filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5));
+}
+@keyframes whaleFloat {
+  0% { transform: translateY(0) scale(1); opacity: 1; }
+  50% { transform: translateY(-60px) scale(1.1); opacity: 1; }
+  100% { transform: translateY(-140px) scale(0.9); opacity: 0; }
+}

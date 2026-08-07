@@ -11,8 +11,8 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.8.0', build: 182, channel: 'alpha', date: '2026-08-05', codename: 'Neon Zero' };
-  SAVE_VER = 6;
+  VERSION = { num: '0.8.1', build: 183, channel: 'alpha', date: '2026-08-06', codename: 'Neon Zero' };
+  SAVE_VER = 7;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
   // A plain boolean is copied when the browser duplicates a tab, so a duplicate would
@@ -92,10 +92,22 @@ class Game {
         if (typeof r !== 'number' || r < 0) r = 0;
         g.perks[def.id] = Math.min(def.max, Math.floor(r));
       }
+    },
+    // v6 → v7: achievements field; backfill already-earned unlocks.
+    6(g) {
+      if (!Array.isArray(g.achievements)) g.achievements = [];
+      this.checkAchievements(g);
     }
   };
 
   CHANGELOG = [
+    { v: '0.8.1', date: '2026-08-06', codename: 'Neon Zero', notes: [
+      'Achievements: 22 permanent unlocks with Clout/Legacy rewards and a modal in Settings.',
+      'Number formatting extended to Decillion (Dc, 1e33).',
+      'Whale patron burst event: random high-roller spawns when hype is positive.',
+      'Shift-click any building card to buy the maximum affordable count.',
+      'SAVE_VER bumped to 7; v6 saves migrate and backfill already-earned achievements.'
+    ] },
     { v: '0.8.0', date: '2026-08-05', codename: 'Neon Zero', notes: [
       'Prestige system: sell the club at 25+ Regulars to earn Legacy and reopen with permanent perks.',
       'Six starting perks: House cut, Seed roster, Street team, Franchise playbook, Extra bouncer slot, Name recognition.',
@@ -285,7 +297,6 @@ class Game {
     { id: 'promo', name: 'Promoter Network', cost: 20, desc: 'Buzz converts to patrons 60% faster.' },
     { id: 'payroll', name: 'Payroll Software', cost: 32, desc: 'Crew wages drop 40%.' }
   ];
-
   // Prestige perks (PRESTIGE.md). Legacy cost, max rank, effect applied in rates()/workCrowd()/catchUp()/fresh().
   PRESTIGE_PERKS = [
     { id: 'cash10', name: 'House cut', cost: 1, max: 5, desc: '+10% all cash income per rank.' },
@@ -294,6 +305,33 @@ class Game {
     { id: 'offline65', name: 'Franchise playbook', cost: 4, max: 1, desc: 'Offline / catchUp rate 50% → 65%.' },
     { id: 'doorPlus', name: 'Extra bouncer slot', cost: 5, max: 1, desc: '+1 max Door Staff.' },
     { id: 'clout25', name: 'Name recognition', cost: 6, max: 1, desc: '+25% Clout gain.' }
+  ];
+
+  // Achievements — permanent unlocks with small rewards (Clout/Legacy).
+  ACHIEVEMENTS = [
+    { id: 'first_rail', name: 'Brass Tax', desc: 'Own 1 Tip Rail', check: g => g.b.rail >= 1, reward: { clout: 1 } },
+    { id: 'rail_5', name: 'Rail Yard', desc: 'Own 5 Tip Rails', check: g => g.b.rail >= 5, reward: { clout: 2 } },
+    { id: 'rail_10', name: 'Rail Baron', desc: 'Own 10 Tip Rails', check: g => g.b.rail >= 10, reward: { clout: 3 } },
+    { id: 'first_vip', name: 'Velvet Rope', desc: 'Build your first VIP Booth', check: g => g.b.vip >= 1, reward: { clout: 2 } },
+    { id: 'vip_5', name: 'High Roller Haven', desc: 'Own 5 VIP Booths', check: g => g.b.vip >= 5, reward: { clout: 5 } },
+    { id: 'hype_50', name: 'Buzzing', desc: 'Reach 50 Hype', check: g => g.hype >= 50, reward: { clout: 1 } },
+    { id: 'hype_100', name: 'Electric', desc: 'Reach 100 Hype', check: g => g.hype >= 100, reward: { clout: 3 } },
+    { id: 'patrons_25', name: 'Packed House', desc: '25 patrons on floor', check: g => g.patrons >= 25, reward: { clout: 2 } },
+    { id: 'patrons_50', name: 'Standing Room Only', desc: '50 patrons on floor', check: g => g.patrons >= 50, reward: { clout: 3 } },
+    { id: 'regulars_5', name: 'Regulars', desc: '5 Regulars', check: g => g.regulars >= 5, reward: { clout: 1 } },
+    { id: 'regulars_10', name: 'Locals', desc: '10 Regulars', check: g => g.regulars >= 10, reward: { clout: 2 } },
+    { id: 'regulars_25', name: 'Pillars', desc: '25 Regulars', check: g => g.regulars >= 25, reward: { clout: 5 } },
+    { id: 'prestige_1', name: 'Franchisee', desc: 'Sign your first franchise deal', check: g => g.prestiges >= 1, reward: { legacy: 1 } },
+    { id: 'prestige_5', name: 'Mogul', desc: '5 franchise deals', check: g => g.prestiges >= 5, reward: { legacy: 5 } },
+    { id: 'legacy_50', name: 'Legacy Builder', desc: 'Accumulate 50 Legacy', check: g => g.legacyTotal >= 50, reward: { legacy: 2 } },
+    { id: 'click_100', name: 'Busy Hands', desc: 'Work the room 100 times', check: g => g.clicks >= 100, reward: { clout: 1 } },
+    { id: 'click_1000', name: 'Wrist Action', desc: 'Work the room 1,000 times', check: g => g.clicks >= 1000, reward: { clout: 3 } },
+    { id: 'night_5', name: 'Week One', desc: 'Survive 5 nights', check: g => g.night >= 5, reward: { clout: 1 } },
+    { id: 'night_10', name: 'Ten Nights', desc: 'Survive 10 nights', check: g => g.night >= 10, reward: { clout: 2 } },
+    { id: 'all_buildings', name: 'Empire', desc: 'Own every structure at least once', check: g => this.BUILDINGS.every(b => g.b[b.id] >= 1), reward: { legacy: 3 } },
+    { id: 'all_upgrades', name: 'Fully Loaded', desc: 'Buy every upgrade', check: g => this.UPGRADES.every(u => g.u[u.id]), reward: { legacy: 3 } },
+    { id: 'all_research', name: 'Scholar', desc: 'Complete all research', check: g => this.RESEARCH.every(r => g.r[r.id]), reward: { legacy: 2 } },
+    { id: 'max_perks', name: 'Perfectionist', desc: 'Max all prestige perks', check: g => this.PRESTIGE_PERKS.every(p => this.perk(g, p.id) >= p.max), reward: { legacy: 10 } }
   ];
 
   // Current rank of a prestige perk (0 if missing/invalid).
@@ -445,7 +483,7 @@ class Game {
   ];
 
   state = {
-    tab: 'club', showChangelog: false, showSettings: false, showPrestige: false, tick: 0, saveState: 'idle', resetArmed: false,
+    tab: 'club', showChangelog: false, showSettings: false, showPrestige: false, showAchievements: false, tick: 0, saveState: 'idle', resetArmed: false,
     // true when another tab wrote KEY — autosave is off until reload (PLAN §2.3).
     tabStale: false,
     g: null
@@ -498,7 +536,16 @@ class Game {
       const el = e.target.closest && e.target.closest('[data-h]');
       if (!el || el.disabled || !this.root.contains(el)) return;
       const fn = this.handlers[Number(el.getAttribute('data-h'))];
-      if (fn) fn(e);
+      if (fn) {
+        // Shift-click on building card = buy max
+        if (e.shiftKey && el.dataset.buildingId) {
+          e.preventDefault();
+          const def = this.BUILDINGS.find(b => b.id === el.dataset.buildingId);
+          if (def) this.buyBuildingMax(def);
+        } else {
+          fn(e);
+        }
+      }
     });
     // Prefer flushing after click (bubble). mouseup alone is only a fallback
     // because some paths (CDP, trackpads) deliver click on a later task.
@@ -527,7 +574,9 @@ class Game {
       // Owner's List (SAVE_VER 5) — not required by isValidSavePayload (v4 imports lack them).
       goals: [], clicks: 0, rounds: 0,
       // Prestige meta (SAVE_VER 6) — defaults for first run; perks/prestiges persist.
-      legacy: 0, legacyTotal: 0, perks, prestiges: 0
+      legacy: 0, legacyTotal: 0, perks, prestiges: 0,
+      // Achievements
+      achievements: []
     };
     this.applyStartPerks(g);
     return g;
@@ -728,6 +777,16 @@ class Game {
       if (typeof g.rounds !== 'number' || !Number.isFinite(g.rounds) || g.rounds < 0) g.rounds = 0;
     }
 
+    // Achievements field (new in this version) — filter to known ids.
+    const knownAchievementIds = new Set(this.ACHIEVEMENTS.map(x => x.id));
+    if (!Array.isArray(g.achievements)) g.achievements = [];
+    else {
+      g.achievements = g.achievements.filter(id => {
+        if (typeof id !== 'string' || !knownAchievementIds.has(id)) return false;
+        return true;
+      });
+    }
+
     this.sanitizeG(g);
     return true;
   }
@@ -918,6 +977,7 @@ class Game {
         if (offline > 60) this.push(g, this.awayMsg(offline, report), '#ffc94a');
         // Offline: peak (goal 12) must not complete here — live-only.
         this.noteGoals(g, { live: false });
+        this.checkAchievements(g);
         try {
           localStorage.setItem(this.KEY, JSON.stringify({
             saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
@@ -933,6 +993,7 @@ class Game {
       const report = this.catchUp(g, offline);
       if (offline > 60) this.push(g, this.awayMsg(offline, report), '#ffc94a');
       this.noteGoals(g, { live: false });
+      this.checkAchievements(g);
       g.ts = Date.now();
     }
 
@@ -954,6 +1015,7 @@ class Game {
         if (dt > 60) this.push(g, this.awayMsg(gap, report), '#ffc94a');
         // Large-gap catchUp is offline rate — peak stays live-only.
         this.noteGoals(g, { live: false });
+        this.checkAchievements(g);
         g.ts = Date.now();
         this.setState(s => ({ tick: s.tick + 1 }));
       } else {
@@ -1144,6 +1206,13 @@ class Game {
   fmt(n) {
     if (n === undefined || n === null || isNaN(n)) return '0';
     const a = Math.abs(n);
+    if (a >= 1e33) return (n / 1e33).toFixed(2) + 'Dc';
+    if (a >= 1e30) return (n / 1e30).toFixed(2) + 'No';
+    if (a >= 1e27) return (n / 1e27).toFixed(2) + 'Oc';
+    if (a >= 1e24) return (n / 1e24).toFixed(2) + 'Sp';
+    if (a >= 1e21) return (n / 1e21).toFixed(2) + 'Sx';
+    if (a >= 1e18) return (n / 1e18).toFixed(2) + 'Qi';
+    if (a >= 1e15) return (n / 1e15).toFixed(2) + 'Qa';
     if (a >= 1e12) return (n / 1e12).toFixed(2) + 'T';
     if (a >= 1e9) return (n / 1e9).toFixed(2) + 'B';
     if (a >= 1e6) return (n / 1e6).toFixed(2) + 'M';
@@ -1278,6 +1347,8 @@ class Game {
       // then decay before catch-up ends — post-only noteGoals would miss them.
       // live:false keeps peak-hour hero offline-ineligible.
       this.noteGoals(g, { live: false });
+      // Per-slice achievement check for stat/night thresholds reached offline.
+      this.checkAchievements(g);
     }
     return { earned, wagesPaid, struck };
   }
@@ -1307,6 +1378,15 @@ class Game {
       // Per-slice goals before shift rollover: a live tick (dt ≤ 2) can finish Peak
       // Hours mid-loop; post-loop noteGoals would see the next shift and miss peak.
       this.noteGoals(g, { live: true });
+      // Per-slice achievement check so stat/night thresholds reached mid-window unlock.
+      this.checkAchievements(g);
+      // Whale event: ~1 per 3 min at base, scales with hype (live only, requires hype > 0)
+      if (!g._whaleCooldown) g._whaleCooldown = 0;
+      g._whaleCooldown -= chunk;
+      if (g.hype > 0 && g._whaleCooldown <= 0 && Math.random() < 0.0008 * chunk * (1 + g.hype / 200)) {
+        this.spawnWhale(g);
+        g._whaleCooldown = 120 + Math.random() * 180; // 2-5 min
+      }
       if (g.shiftT >= r.shift.len) {
         g.shiftT = 0;
         g.shiftIdx = (g.shiftIdx + 1) % 4;
@@ -1353,6 +1433,21 @@ class Game {
     this.push(g, "Owner's list: " + goal.title + ' — ' + (parts.join(', ') || 'done') + '.', '#4ade80');
   }
 
+  // Check achievements after any goal evaluation
+  checkAchievements(g) {
+    if (!Array.isArray(g.achievements)) return;
+    for (const ach of this.ACHIEVEMENTS) {
+      if (!g.achievements.includes(ach.id) && ach.check(g)) {
+        g.achievements.push(ach.id);
+        if (ach.reward) {
+          if (ach.reward.clout) g.clout = (g.clout || 0) + ach.reward.clout;
+          if (ach.reward.legacy) g.legacy = (g.legacy || 0) + ach.reward.legacy;
+        }
+        this.push(g, 'Achievement: ' + ach.name + ' — ' + ach.desc, '#ffd700');
+      }
+    }
+  }
+
   save(kind) {
     const g = this.state.g;
     if (!g) return;
@@ -1384,7 +1479,29 @@ class Game {
     g.b[def.id] = n + 1;
     this.push(g, 'Built ' + def.name + ' #' + (n + 1) + ' for $' + this.fmt(price) + '.', '#22d3ee');
     this.noteGoals(g);
+    this.checkAchievements(g);
     this.forceUpdate();
+  }
+  buyBuildingMax(def) {
+    if (this.state.tabStale) return;
+    const g = this.state.g;
+    let bought = 0;
+    while (true) {
+      const n = g.b[def.id];
+      const max = def.id === 'door' ? this.doorMax(g) : def.max;
+      if (max != null && n >= max) break;
+      const price = Math.floor(def.cost * Math.pow(def.growth, n));
+      if (g.cash < price) break;
+      g.cash -= price;
+      g.b[def.id] = n + 1;
+      bought++;
+    }
+    if (bought > 0) {
+      this.push(g, 'Built ' + def.name + ' \u00d7' + bought + '.', '#22d3ee');
+      this.noteGoals(g);
+      this.checkAchievements(g);
+      this.forceUpdate();
+    }
   }
   buyUpgrade(def) {
     if (this.state.tabStale) return;
@@ -1397,6 +1514,7 @@ class Game {
     g.u[def.id] = true;
     this.push(g, 'Installed ' + def.name + '.', '#ffc94a');
     this.noteGoals(g);
+    this.checkAchievements(g);
     this.forceUpdate();
   }
   buyResearch(def) {
@@ -1407,6 +1525,7 @@ class Game {
     g.r[def.id] = true;
     this.push(g, 'Researched ' + def.name + '.', '#a855f7');
     this.noteGoals(g);
+    this.checkAchievements(g);
     this.forceUpdate();
   }
   buyPerk(def) {
@@ -1417,6 +1536,7 @@ class Game {
     g.legacy -= def.cost;
     g.perks[def.id] = rank + 1;
     this.push(g, 'Perk: ' + def.name + ' rank ' + (rank + 1) + '/' + def.max + '.', '#ffc94a');
+    this.checkAchievements(g);
     this.forceUpdate();
   }
   // Confirm prestige: candidate → setItem must succeed → live replace (fail-closed).
@@ -1441,7 +1561,10 @@ class Game {
     next.legacyTotal = snapshot.legacyTotal + gain;
     next.perks = snapshot.perks;
     next.prestiges = snapshot.prestiges + 1;
+    next.achievements = Array.isArray(g.achievements) ? g.achievements.slice() : [];
     this.applyStartPerks(next);
+    // Start-perk state can satisfy building achievements.
+    this.checkAchievements(next);
 
     // Push the franchise line onto the candidate so disk/memory share it.
     this.push(next, 'Signed the franchise deal: +' + gain + ' Legacy.', '#ffc94a');
@@ -1475,6 +1598,7 @@ class Game {
     g.jobs.stage++;
     this.push(g, 'Hired crew member #' + g.crew + ' for $' + this.fmt(price) + ' — on Main Stage.', '#ff2d78');
     this.noteGoals(g);
+    this.checkAchievements(g);
     this.forceUpdate();
   }
   moveJob(id, d) {
@@ -1492,6 +1616,7 @@ class Game {
       g.jobs.off++;
     }
     this.noteGoals(g);
+    this.checkAchievements(g);
     this.forceUpdate();
   }
 
@@ -1659,11 +1784,11 @@ class Game {
         const ok = !maxed && g.cash >= price;
         let desc = d.desc;
         if (d.id === 'door') desc = desc.replace('(max 6)', '(max ' + max + ')');
-        return { name: d.name, desc: desc, owned: n > 0 ? '×' + n : '—',
-          btn: maxed ? 'Maxed' : 'Build $' + this.fmt(price),
-          meta: maxed ? 'maxed' : (ok ? 'affordable' : 'need $' + this.fmt(price - g.cash)),
-          locked: !ok, wrapStyle: cardWrap(!maxed), btnStyle: btn(ok), act: () => this.buyBuilding(d) };
-      });
+        return { name: d.name, desc: desc, owned: n > 0 ? '\u00d7' + n : '\u2014',
+                  btn: maxed ? 'Maxed' : 'Build $' + this.fmt(price),
+                  meta: maxed ? 'maxed' : (ok ? 'affordable' : 'need $' + this.fmt(price - g.cash)),
+                  locked: !ok, wrapStyle: cardWrap(!maxed), btnStyle: btn(ok), act: () => this.buyBuilding(d), buildingId: d.id };
+              });
     } else if (this.state.tab === 'crew') {
       tabHint = 'Hire dancers, then assign them to Main Stage (Hype), VIP, or Floor. Wages tick every second — park extras Off Shift when the room is dead.';
       const price = Math.floor(280 * Math.pow(1.38, g.crew));
@@ -1767,6 +1892,7 @@ class Game {
         g.buzz = Math.min(cap.buzz, g.buzz + 0.12);
         g.clicks = (g.clicks || 0) + 1;
         this.noteGoals(g);
+        this.checkAchievements(g);
         this.forceUpdate();
         this.spawnTipFloater(e, val);
       },
@@ -1784,6 +1910,7 @@ class Game {
         g.rounds = (g.rounds || 0) + 1;
         this.push(g, 'Bought the room a round. +' + this.fmt(roundGain) + ' Hype.', '#ffc94a');
         this.noteGoals(g);
+        this.checkAchievements(g);
         this.forceUpdate();
       },
       debugLine: (this.props.showDebug ?? false) ? 'cash ' + r.cash.toFixed(3) + '/s · hype ' + r.hype.toFixed(3) + '/s · buzz ' + r.buzz.toFixed(3) + '/s · pull ' + r.pull.toFixed(2) : '',
@@ -1818,7 +1945,16 @@ class Game {
           progress,
           flash: done > 0 && this.state.tick > 0
         };
-      })()
+      })(),
+      achievements: this.ACHIEVEMENTS.map(a => ({
+        id: a.id,
+        name: a.name,
+        desc: a.desc,
+        unlocked: (g.achievements || []).includes(a.id),
+        reward: a.reward ? (a.reward.clout ? '+' + a.reward.clout + ' Clout' : '') + (a.reward.legacy ? ' +' + a.reward.legacy + ' Legacy' : '') : ''
+      })),
+      showAchievements: this.state.showAchievements,
+      toggleAchievements: () => this.setState(s => ({ showAchievements: !s.showAchievements })),
     };
   }
 
@@ -1983,6 +2119,27 @@ class Game {
     }
   }
 
+  spawnWhale(g) {
+    const mult = 1 + g.hype / 100;
+    const bonus = Math.floor(50 * mult * this.cashIncomeMult(g));
+    g.cash += bonus;
+    this.push(g, '\uD83D\uDC0B Whale spotted! +$' + this.fmt(bonus), '#ffd700');
+    this.noteGoals(g);
+    this.checkAchievements(g);
+    // Visual: reuse fxLayer with whale emoji
+    if (this.fxLayer) {
+      const f = document.createElement('span');
+      f.className = 'whale-floater';
+      f.textContent = '\uD83D\uDC0B +$' + this.fmt(bonus);
+      f.style.left = (innerWidth / 2 - 40) + 'px';
+      f.style.top = (innerHeight / 2 - 100) + 'px';
+      f.style.fontSize = '28px';
+      f.addEventListener('animationend', () => f.remove());
+      this.fxLayer.appendChild(f);
+    }
+    this.forceUpdate();
+  }
+
   bind(fn) {
     this.handlers.push(fn);
     return this.handlers.length - 1;
@@ -2137,8 +2294,32 @@ class Game {
             <button data-h="${this.bind(v.exportSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Copy save to clipboard</button>
             <button data-h="${this.bind(v.importSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Restore save from clipboard</button>
             <button data-h="${this.bind(v.openLook)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Look &amp; feel…  <span style="color:#6f5885;font-weight:400">(L)</span></button>
+            <button data-h="${this.bind(v.toggleAchievements)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Achievements… <span style="color:#6f5885;font-weight:400">${v.achievements.filter(a => a.unlocked).length}/${v.achievements.length}</span></button>
             <button data-h="${this.bind(v.hardReset)}" style="${css(v.resetStyle)}">${v.resetLabel}</button>
             <div style="font-size:10.5px;color:#9c86ab;line-height:1.5;font-family:'IBM Plex Mono',monospace">${v.resetHint} Files and clipboard saves are the same format — either restores either way. ${v.verFull} · save format v${v.saveVer}</div>
+          </div>
+        </div>
+      </div>` : '';
+
+    const achievementsModal = v.showAchievements ? `
+      <div style="position:fixed;inset:0;background:rgba(5,3,9,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:32px">
+        <div style="width:560px;max-height:78vh;overflow-y:auto;background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #241536;position:sticky;top:0;background:#0e0918">
+            <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700">Achievements</div>
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#ffd700">${v.achievements.filter(a => a.unlocked).length} / ${v.achievements.length}</div>
+            <button data-h="${this.bind(v.toggleAchievements)}" class="hv-pink" style="width:30px;height:30px;border:1px solid #3a2350;border-radius:6px;background:#160d22;color:#9c86ab;cursor:pointer;font-size:14px">✕</button>
+          </div>
+          <div style="padding:16px 18px;display:flex;flex-direction:column;gap:8px">
+            ${v.achievements.map(a => `
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid ${a.unlocked ? '#2f1c42' : '#1c1129'};border-radius:8px;background:${a.unlocked ? '#100a1a' : '#0c0714'};opacity:${a.unlocked ? 1 : 0.55}">
+                <span style="font-size:20px">${a.unlocked ? '🏆' : '🔒'}</span>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:12px;font-weight:700;color:${a.unlocked ? '#ffd700' : '#9c86ab'}">${a.name}</div>
+                  <div style="font-size:10.5px;color:#6f5885">${a.desc}</div>
+                  ${a.reward ? `<div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#ffc94a;margin-top:2px">${a.reward}</div>` : ''}
+                </div>
+              </div>
+            `).join('')}
           </div>
         </div>
       </div>` : '';
@@ -2313,6 +2494,7 @@ class Game {
   ${changelogModal}
   ${settingsModal}
   ${prestigeModal}
+  ${achievementsModal}
 </div>`;
 
     this.root.querySelectorAll('[data-scroll]').forEach(el => {
