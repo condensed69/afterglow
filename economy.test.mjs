@@ -2949,6 +2949,31 @@ test('special shifts are a pure modifier — base SHIFTS shape untouched', () =>
   }
 });
 
+test('special announced even on a night-wrap rollover (review nit fix)', () => {
+  const game = newGame();
+  const g = game.state.g;
+  g.b.bar = 2;
+  g.cash = 500;
+  g.patrons = 20;
+  // No stage worker → hype stays 0 → whale check never consumes Math.random.
+  g.crew = 1;
+  g.jobs = { stage: 0, vipjob: 0, floor: 0, off: 1 };
+  // After Hours (len 30) is the last shift; rolling over wraps to a new night AND
+  // triggers a special. Crossing the boundary in a ≤0.5s chunk makes the rollover
+  // chatty. Previously the "Night begins." line swallowed the special announcement.
+  g.shiftIdx = 3;
+  g.shiftT = 29.6; // 0.4s from the end of After Hours
+  withRandom([0.01, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99], () => {
+    game.step(0.5); // wraps to a new night with a special active, chatty rollover
+  });
+  strictEqual(g.shiftIdx, 0, 'wrapped to Early Doors (new night)');
+  strictEqual(g.night, 2, 'night incremented');
+  ok(g._specialShift != null, 'special active on the night-wrap rollover');
+  const specialName = game.SPECIAL_SHIFTS[g._specialShift].name;
+  ok(g.log.some(e => e.msg.includes(specialName)), 'special is announced in the log on night wrap');
+  ok(g.log.some(e => e.msg.startsWith('Night ')), 'night-begin line still present');
+});
+
 // ── Results ──────────────────────────────────────────────────────────────────
 
 console.log('\n───────────────────────────────────────');

@@ -113,6 +113,7 @@ class Game {
       'Hired managers auto-buy their building the instant cash >= cost, routed through buyBuilding — respects the strike rule (no auto-buy at cash=0 or on strike).',
       'Away-report gains a line when managers bought buildings during a gap: "Managers bought N buildings while you were away."',
       'Special shifts: low-frequency event shifts (Bachelorette Rush, Midweek Surge, Slow Tuesday) occasionally substitute one shift instance — a pure modifier over the 4-shift rotation, same {name,mult,len,tint} render shape, never two in a row.',
+      'Research tune: Reputation Loop cost 6 → 8 Clout to bring "First research" into its ~25 min pacing band (was running ~16.5 m, below the band floor).',
       'SAVE_VER bumped to 8; v7 saves migrate and default g.managers to all false.'
     ] },
     { v: '0.8.1', date: '2026-08-06', codename: 'Neon Zero', notes: [
@@ -1289,10 +1290,12 @@ class Game {
 
   // Effective shift for the current instance: a triggered special overrides the
   // base SHIFTS[g.shiftIdx] entry (same {name,mult,len,tint} shape) so the render
-  // path needs zero changes beyond reading this override. g._specialShift is a
-  // transient index into SPECIAL_SHIFTS (null/undefined = normal shift). g.shiftIdx
-  // keeps advancing the base 4-shift rotation regardless, so a special never
-  // corrupts it. Bad/foreign values fall through to the base shift (fail-closed).
+  // path needs zero changes beyond reading this override. g._specialShift is an
+  // index into SPECIAL_SHIFTS (null/undefined = normal shift). Like _whaleCooldown
+  // it lives on g and therefore round-trips through disk saves — a save mid-special
+  // resumes it correctly via catchUp()/rates(). g.shiftIdx keeps advancing the base
+  // 4-shift rotation regardless, so a special never corrupts it. Bad/foreign values
+  // fall through to the base shift (fail-closed).
   effectiveShift(g) {
     if (g._specialShift != null && Number.isInteger(g._specialShift) && this.SPECIAL_SHIFTS[g._specialShift]) {
       return this.SPECIAL_SHIFTS[g._specialShift];
@@ -1499,10 +1502,16 @@ class Game {
       if (g.shiftT >= r.shift.len) {
         this.advanceShift(g);
         if (chatty) {
+          const eff = this.effectiveShift(g);
+          const isSpecial = g._specialShift != null;
+          // Always announce a special even on a night-wrap rollover; otherwise the
+          // special would be silently swallowed by the "Night N begins." line.
+          if (isSpecial) {
+            this.push(g, eff.name + ' — x' + eff.mult.toFixed(2) + ' take.', eff.tint);
+          }
           if (g.shiftIdx === 0) this.push(g, 'Night ' + g.night + ' begins.', '#a855f7');
-          else {
-            const eff = this.effectiveShift(g);
-            const logMult = (g._specialShift == null && g.shiftIdx === 3 && g.r.latemenu) ? 0.95 : eff.mult;
+          else if (!isSpecial) {
+            const logMult = (g.shiftIdx === 3 && g.r.latemenu) ? 0.95 : eff.mult;
             this.push(g, eff.name + ' — x' + logMult.toFixed(2) + ' take.', eff.tint);
           }
         }
