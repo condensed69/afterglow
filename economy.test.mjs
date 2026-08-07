@@ -1139,6 +1139,22 @@ test('buyPerk succeeds once the prerequisite rank is met', () => {
   strictEqual(g.legacy, legacyBefore - offline65.cost, 'Legacy must drop by offline65 cost');
 });
 
+test('buyPerk checks the immediate req, not a transitive walk', () => {
+  const game = newGame(1e9);
+  const g = game.state.g;
+  g.legacy = 100;
+  // clout25 requires offline65 (which itself requires cash10). Ranking cash10 satisfies
+  // the ancestor, but offline65 is clout25's *immediate* req — clout25 must stay blocked.
+  const cash10 = game.PRESTIGE_PERKS.find(p => p.id === 'cash10');
+  const clout25 = game.PRESTIGE_PERKS.find(p => p.id === 'clout25');
+  game.buyPerk(cash10);
+  strictEqual(game.perk(g, 'cash10'), 1, 'cash10 must be ranked first');
+  const legacyBefore = g.legacy;
+  game.buyPerk(clout25);
+  strictEqual(game.perk(g, 'clout25'), 0, 'clout25 must not buy until its immediate req offline65 is ranked');
+  strictEqual(g.legacy, legacyBefore, 'Legacy must not change when the immediate req is unmet');
+});
+
 test('buyPerk chain startCrew -> doorPlus requires the Seed roster first', () => {
   const game = newGame(1e9);
   const g = game.state.g;
