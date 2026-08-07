@@ -290,7 +290,7 @@ class Game {
   // like a SHIFTS entry ({name, mult, len, tint}) plus a `weight` for weighted
   // selection. Purely a modifier layer over shift.mult/shift.len: g.shiftIdx keeps
   // advancing the base rotation underneath, so a special never corrupts it.
-  SPECIAL_CHANCE = 0.10; // per rollover chance to trigger a special (8-12% band)
+  SPECIAL_CHANCE = 0.10; // per rollover chance to trigger a special (fixed 10%)
   SPECIAL_SHIFTS = [
     { name: 'Bachelorette Rush', mult: 1.9, len: 26, tint: '#ff2d78', weight: 4 },
     { name: 'Midweek Surge', mult: 1.3, len: 34, tint: '#22d3ee', weight: 3 },
@@ -745,7 +745,17 @@ class Game {
       if (typeof g[k] !== 'number' || !Number.isFinite(g[k])) return false;
     }
     if (!Number.isInteger(g.shiftIdx) || !this.SHIFTS[g.shiftIdx]) return false;
-    if (g.shiftT < 0 || g.shiftT >= this.SHIFTS[g.shiftIdx].len) return false;
+    // A special shift may be longer than the base shift it overrides (e.g. Slow
+    // Tuesday len 40 over Last Call len 35). Validate shiftT against the ACTIVE
+    // shift's length (the special if one is set, else the base), so a legitimate
+    // in-progress special past the base length isn't rejected and wiped. Also drop
+    // any _specialShift that isn't a valid SPECIAL_SHIFTS index (fail-closed).
+    if (Number.isInteger(g._specialShift) && this.SPECIAL_SHIFTS[g._specialShift]) {
+      if (g.shiftT < 0 || g.shiftT >= this.SPECIAL_SHIFTS[g._specialShift].len) return false;
+    } else {
+      g._specialShift = null;
+      if (g.shiftT < 0 || g.shiftT >= this.SHIFTS[g.shiftIdx].len) return false;
+    }
     if (g.elapsed < 0 || g.night < 1) return false;
 
     // Rebuild from known IDs only — unknown keys (e.g. string-valued XSS bait under

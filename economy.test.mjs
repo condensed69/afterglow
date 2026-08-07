@@ -2974,7 +2974,49 @@ test('special announced even on a night-wrap rollover (review nit fix)', () => {
   ok(g.log.some(e => e.msg.startsWith('Night ')), 'night-begin line still present');
 });
 
-// ── Results ──────────────────────────────────────────────────────────────────
+test('save with an active special shift past the base length round-trips (blocking review fix)', () => {
+  const game = newGame();
+  const base = game.state.g;
+  // After Hours (base len 30) overridden by Midweek Surge (len 34) — shiftT 32 is
+  // past the base length but valid for the special. Previously completeImportedG
+  // validated against the base length only, so this save was rejected and wiped.
+  const g = game.fresh();
+  g.shiftIdx = 3;
+  g.shiftT = 32;
+  g._specialShift = 1; // Midweek Surge
+  const payload = {
+    saveVer: game.SAVE_VER,
+    ver: game.VERSION.num,
+    build: game.VERSION.build,
+    g
+  };
+  game.state.g = base;
+  const ok = game.importSaveFromText(JSON.stringify(payload));
+  strictEqual(ok, true, 'save with a longer active special imports');
+  strictEqual(game.state.g._specialShift, 1, 'special index preserved');
+  strictEqual(game.state.g.shiftT, 32, 'shiftT past base length preserved');
+  strictEqual(game.state.g.shiftIdx, 3, 'base shift index preserved');
+});
+
+test('save with an invalid special index is sanitized, not rejected (fail-closed)', () => {
+  const game = newGame();
+  const base = game.state.g;
+  const g = game.fresh();
+  g.shiftIdx = 1;
+  g.shiftT = 10; // within Peak Hours (len 55)
+  g._specialShift = 99; // not a valid SPECIAL_SHIFTS index
+  const payload = {
+    saveVer: game.SAVE_VER,
+    ver: game.VERSION.num,
+    build: game.VERSION.build,
+    g
+  };
+  game.state.g = base;
+  const ok = game.importSaveFromText(JSON.stringify(payload));
+  strictEqual(ok, true, 'save with a bad special index still imports');
+  strictEqual(game.state.g._specialShift, null, 'invalid special index cleared');
+  strictEqual(game.state.g.shiftT, 10, 'shiftT preserved against base length');
+});
 
 console.log('\n───────────────────────────────────────');
 console.log(`Results: ${passed} passed, ${skipped} skipped, ${failed} failed`);
