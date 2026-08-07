@@ -11,8 +11,8 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.8.1', build: 183, channel: 'alpha', date: '2026-08-06', codename: 'Neon Zero' };
-  SAVE_VER = 7;
+  VERSION = { num: '0.9.0', build: 184, channel: 'alpha', date: '2026-08-07', codename: 'Neon Zero' };
+  SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
   // A plain boolean is copied when the browser duplicates a tab, so a duplicate would
@@ -97,10 +97,23 @@ class Game {
     6(g) {
       if (!Array.isArray(g.achievements)) g.achievements = [];
       this.checkAchievements(g);
+    },
+    // v7 → v8: managers map (PLAN.md §4.1) — default all to false.
+    7(g) {
+      if (!g.managers || typeof g.managers !== 'object' || Array.isArray(g.managers)) g.managers = {};
+      for (const def of this.MANAGERS) {
+        if (typeof g.managers[def.id] !== 'boolean') g.managers[def.id] = false;
+      }
     }
   };
 
   CHANGELOG = [
+    { v: '0.9.0', date: '2026-08-07', codename: 'Neon Zero', notes: [
+      'Managers (auto-buyers): one per building type (rail, bar, dj, marquee, flyers, vip, door, dress), purchasable with Legacy from the Perks tab, max 1 each.',
+      'Hired managers auto-buy their building the instant cash >= cost, routed through buyBuilding — respects the strike rule (no auto-buy at cash=0 or on strike).',
+      'Away-report gains a line when managers bought buildings during a gap: "Managers bought N buildings while you were away."',
+      'SAVE_VER bumped to 8; v7 saves migrate and default g.managers to all false.'
+    ] },
     { v: '0.8.1', date: '2026-08-06', codename: 'Neon Zero', notes: [
       'Achievements: 22 permanent unlocks with Clout/Legacy rewards and a modal in Settings.',
       'Number formatting extended to Decillion (Dc, 1e33).',
@@ -305,6 +318,19 @@ class Game {
     { id: 'offline65', name: 'Franchise playbook', cost: 4, max: 1, desc: 'Offline / catchUp rate 50% → 65%.' },
     { id: 'doorPlus', name: 'Extra bouncer slot', cost: 5, max: 1, desc: '+1 max Door Staff.' },
     { id: 'clout25', name: 'Name recognition', cost: 6, max: 1, desc: '+25% Clout gain.' }
+  ];
+
+  // Managers — auto-buyers, one per building type (PLAN.md §4.1).
+  // Purchasable with Legacy from the Perks/Prestige panel, max 1 each.
+  MANAGERS = [
+    { id: 'rail',    name: 'Tip Rail Manager',    desc: 'Auto-buys Tip Rails.',    cost: 10 },
+    { id: 'bar',     name: 'Barback Manager',     desc: 'Auto-buys Bars.',         cost: 10 },
+    { id: 'dj',      name: 'DJ Manager',          desc: 'Auto-buys DJ Booths.',    cost: 10 },
+    { id: 'marquee', name: 'Marquee Manager',     desc: 'Auto-buys Marquees.',     cost: 10 },
+    { id: 'flyers',  name: 'Flyer Manager',       desc: 'Auto-buys Flyer Crew.',   cost: 10 },
+    { id: 'vip',     name: 'VIP Manager',         desc: 'Auto-buys VIP Booths.',   cost: 10 },
+    { id: 'door',    name: 'Door Manager',        desc: 'Auto-buys Door Staff.',   cost: 10 },
+    { id: 'dress',   name: 'Dressing Room Manager', desc: 'Auto-buys Dressing Rooms.', cost: 10 }
   ];
 
   // Achievements — permanent unlocks with small rewards (Clout/Legacy).
@@ -562,11 +588,12 @@ class Game {
   }
 
   fresh() {
-    const b = {}, u = {}, r = {}, perks = {};
+    const b = {}, u = {}, r = {}, perks = {}, managers = {};
     this.BUILDINGS.forEach(x => b[x.id] = 0);
     this.UPGRADES.forEach(x => u[x.id] = false);
     this.RESEARCH.forEach(x => r[x.id] = false);
     this.PRESTIGE_PERKS.forEach(x => perks[x.id] = 0);
+    this.MANAGERS.forEach(x => managers[x.id] = false);
     const g = {
       cash: (this.props && this.props.startingCash) ?? 20, hype: 0, buzz: 0, patrons: 0, regulars: 0, clout: 0,
       crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
@@ -575,8 +602,10 @@ class Game {
       goals: [], clicks: 0, rounds: 0,
       // Prestige meta (SAVE_VER 6) — defaults for first run; perks/prestiges persist.
       legacy: 0, legacyTotal: 0, perks, prestiges: 0,
-      // Achievements
-      achievements: []
+      // Achievements (SAVE_VER 7)
+      achievements: [],
+      // Managers (SAVE_VER 8) — auto-buyers, one per building type.
+      managers
     };
     this.applyStartPerks(g);
     return g;
@@ -648,6 +677,11 @@ class Game {
       let r = g.perks[def.id];
       if (typeof r !== 'number' || r < 0) r = 0;
       g.perks[def.id] = Math.min(def.max, Math.floor(r));
+    }
+    // Managers map: reject arrays/bad shapes; clamp known ids to boolean.
+    if (!g.managers || typeof g.managers !== 'object' || Array.isArray(g.managers)) g.managers = {};
+    for (const def of this.MANAGERS) {
+      g.managers[def.id] = g.managers[def.id] === true;
     }
     return g;
   }
@@ -739,6 +773,14 @@ class Game {
       perksNext[def.id] = Math.min(def.max, Math.floor(value));
     }
     g.perks = perksNext;
+
+    // Managers map (SAVE_VER 8) — known ids, boolean values.
+    if (!g.managers || typeof g.managers !== 'object' || Array.isArray(g.managers)) g.managers = {};
+    const managersNext = Object.create(null);
+    for (const def of this.MANAGERS) {
+      managersNext[def.id] = g.managers[def.id] === true;
+    }
+    g.managers = managersNext;
 
     if (!Array.isArray(g.log)) g.log = [];
     // Keep raw validated t/msg (length-capped) so export→import is idempotent.
@@ -1301,8 +1343,9 @@ class Game {
 
   // Format load/live away log from catchUp accumulators (PLAN §1.10).
   // Uses gross earned + wages, not cash-floor delta (which collapsed losses to +$0).
-  awayMsg(seconds, { earned = 0, wagesPaid = 0, struck = false } = {}) {
+  awayMsg(seconds, { earned = 0, wagesPaid = 0, struck = false, managerBought = 0 } = {}) {
     let msg = 'Away ' + Math.round(seconds / 60) + 'm — earned $' + this.fmt(earned) + ', wages −$' + this.fmt(wagesPaid) + '.';
+    if (managerBought > 0) msg += ' Managers bought ' + managerBought + ' buildings while you were away.';
     if (struck) msg += ' Crew struck while you were gone.';
     return msg;
   }
@@ -1312,12 +1355,13 @@ class Game {
   // resource accrual uses dt = wall * 0.5. Silent shift/night rollover.
   // Returns gross cash earned, wages paid, and whether a strike occurred (1.10).
   catchUp(g, seconds) {
-    if (!g || !(seconds > 0)) return { earned: 0, wagesPaid: 0, struck: false };
+    if (!g || !(seconds > 0)) return { earned: 0, wagesPaid: 0, struck: false, managerBought: 0 };
     seconds = Math.min(seconds, 28800);
     let remaining = seconds;
     let earned = 0;
     let wagesPaid = 0;
     let struck = false;
+    let managerBought = 0;
     while (remaining > 0) {
       const rates = this.rates(g);
       if (rates.strike) struck = true;
@@ -1343,6 +1387,8 @@ class Game {
         g.shiftIdx = (g.shiftIdx + 1) % 4;
         if (g.shiftIdx === 0) g.night++;
       }
+      // Managers auto-buy buildings (PLAN.md §4.1) — respects strike rule (§1.3).
+      managerBought += this.autoBuyManagers(g, { strike: rates.strike });
       // Per-slice goal check: threshold goals (patrons/hype) may peak mid-window
       // then decay before catch-up ends — post-only noteGoals would miss them.
       // live:false keeps peak-hour hero offline-ineligible.
@@ -1350,7 +1396,7 @@ class Game {
       // Per-slice achievement check for stat/night thresholds reached offline.
       this.checkAchievements(g);
     }
-    return { earned, wagesPaid, struck };
+    return { earned, wagesPaid, struck, managerBought };
   }
 
   step(dt) {
@@ -1375,6 +1421,12 @@ class Game {
       g.elapsed += chunk;
       g.shiftT += chunk;
       remaining -= chunk;
+      // Managers auto-buy buildings (PLAN.md §4.1) — after cash accrues for this slice,
+      // respects strike rule (no auto-buy at cash=0 or on strike).
+      // Ordered before noteGoals/checkAchievements to match catchUp() slice ordering,
+      // so a building-count achievement completed by a manager auto-buy is picked
+      // up in the same slice (not lagged to the next tick).
+      this.autoBuyManagers(g, { strike: r.strike, log: true });
       // Per-slice goals before shift rollover: a live tick (dt ≤ 2) can finish Peak
       // Hours mid-loop; post-loop noteGoals would see the next shift and miss peak.
       this.noteGoals(g, { live: true });
@@ -1539,6 +1591,51 @@ class Game {
     this.checkAchievements(g);
     this.forceUpdate();
   }
+  buyManager(def) {
+    if (this.state.tabStale) return;
+    const g = this.state.g;
+    if (g.managers[def.id]) return;
+    if (g.legacy < def.cost) return;
+    g.legacy -= def.cost;
+    g.managers[def.id] = true;
+    this.push(g, 'Hired manager: ' + def.name + '.', '#a855f7');
+    this.forceUpdate();
+  }
+
+  // Auto-buy buildings for hired managers (PLAN.md §4.1).
+  // Mutates g directly (does NOT route through buyBuilding, which reads this.state.g).
+  // This keeps auto-buy correct when g is a standalone offline candidate (e.g. catchUp).
+  // Growth/cap logic is replicated inline (same formulas as buyBuilding) so we don't
+  // pay for push/noteGoals/checkAchievements/forceUpdate per slice — the caller's
+  // existing per-slice noteGoals/checkAchievements calls cover bookkeeping.
+  // Respects the strike rule (§1.3): no auto-buy while g.cash <= 0 and crew on strike.
+  // opts.log: when true, push() a log line per purchase (for live step() visibility;
+  // omitted during catchUp to avoid per-slice log spam — catchUp's away-report covers it).
+  // Returns the count of buildings bought on this call.
+  autoBuyManagers(g, opts = {}) {
+    if (!g.managers) return 0;
+    // Strike gate: don't auto-buy while cash is depleted and crew is on strike.
+    const strike = opts.strike != null ? opts.strike : this.rates(g).strike;
+    if (g.cash <= 0 && strike) return 0;
+    let bought = 0;
+    for (const def of this.MANAGERS) {
+      if (!g.managers[def.id]) continue;
+      const bdef = this.BUILDINGS.find(b => b.id === def.id);
+      if (!bdef) continue;
+      const n = g.b[def.id];
+      const max = def.id === 'door' ? this.doorMax(g) : bdef.max;
+      if (max != null && n >= max) continue;
+      const price = Math.floor(bdef.cost * Math.pow(bdef.growth, n));
+      if (g.cash < price) continue;
+      g.cash -= price;
+      g.b[def.id] = n + 1;
+      bought++;
+      if (opts.log) {
+        this.push(g, 'Manager built ' + bdef.name + ' #' + (n + 1) + ' for $' + this.fmt(price) + '.', '#a855f7');
+      }
+    }
+    return bought;
+  }
   // Confirm prestige: candidate → setItem must succeed → live replace (fail-closed).
   confirmPrestige() {
     if (this.state.tabStale) return;
@@ -1551,9 +1648,11 @@ class Game {
       legacy: (g.legacy || 0),
       legacyTotal: (g.legacyTotal || 0),
       perks: {},
-      prestiges: (g.prestiges || 0)
+      prestiges: (g.prestiges || 0),
+      managers: {}
     };
     for (const def of this.PRESTIGE_PERKS) snapshot.perks[def.id] = this.perk(g, def.id);
+    for (const def of this.MANAGERS) snapshot.managers[def.id] = g.managers && g.managers[def.id] === true;
 
     // Build post-prestige candidate from fresh() defaults.
     const next = this.fresh();
@@ -1562,6 +1661,7 @@ class Game {
     next.perks = snapshot.perks;
     next.prestiges = snapshot.prestiges + 1;
     next.achievements = Array.isArray(g.achievements) ? g.achievements.slice() : [];
+    next.managers = snapshot.managers;
     this.applyStartPerks(next);
     // Start-perk state can satisfy building achievements.
     this.checkAchievements(next);
@@ -1809,8 +1909,8 @@ class Game {
           locked: !ok, wrapStyle: cardWrap(have && !bought), btnStyle: btn(ok, '#ffc94a'), act: () => this.buyUpgrade(d) };
       });
     } else if (this.state.tab === 'perks') {
-      tabHint = 'Perks are bought with Legacy and persist across franchise deals. Total Legacy earned: ' + this.fmt(g.legacyTotal || 0) + '.';
-      cards = this.PRESTIGE_PERKS.map(d => {
+      tabHint = 'Perks and Managers are bought with Legacy and persist across franchise deals. Total Legacy earned: ' + this.fmt(g.legacyTotal || 0) + '.';
+      const perkCards = this.PRESTIGE_PERKS.map(d => {
         const rank = this.perk(g, d.id);
         const maxed = rank >= d.max;
         const ok = !maxed && g.legacy >= d.cost;
@@ -1819,6 +1919,20 @@ class Game {
           meta: maxed ? 'maxed' : (ok ? 'ready' : this.fmt(d.cost - g.legacy) + ' Legacy short'),
           locked: !ok, wrapStyle: cardWrap(!maxed), btnStyle: btn(ok, '#d4af37'), act: () => this.buyPerk(d) };
       });
+      const managerCards = this.MANAGERS.map(d => {
+        const hired = g.managers && g.managers[d.id];
+        const bdef = this.BUILDINGS.find(b => b.id === d.id);
+        const n = g.b[d.id];
+        const price = bdef ? Math.floor(bdef.cost * Math.pow(bdef.growth, n)) : 0;
+        const max = bdef && bdef.id === 'door' ? this.doorMax(g) : bdef ? bdef.max : null;
+        const atCap = max != null && n >= max;
+        const ok = !hired && g.legacy >= d.cost;
+        return { name: d.name, desc: d.desc, owned: hired ? 'hired' : '—',
+          btn: hired ? 'Hired' : d.cost + ' Legacy',
+          meta: hired ? (atCap ? 'auto-buys ' + (bdef ? bdef.name : d.id) + ' (capped — no more builds)' : 'auto-buys ' + (bdef ? bdef.name : d.id) + ' (next $' + this.fmt(price) + ')') : (ok ? 'ready' : this.fmt(d.cost - g.legacy) + ' Legacy short'),
+          locked: !ok, wrapStyle: cardWrap(!hired), btnStyle: btn(ok, '#a855f7'), act: () => this.buyManager(d) };
+      });
+      cards = perkCards.concat(managerCards);
     } else {
       tabHint = 'Research is paid in Clout, which accrues slowly from Regulars. Permanent, global effects.';
       cards = this.RESEARCH.map(d => {

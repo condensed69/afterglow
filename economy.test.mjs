@@ -340,6 +340,32 @@ test('confirmPrestige() resets run fields and persists meta', () => {
   ok(next.achievements.includes('prestige_1'), 'prestige_1 achievement credited');
 });
 
+test('confirmPrestige() preserves hired managers across prestige', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.cash = 99999;
+  g.regulars = 30;
+  g.legacy = 50;
+  g.legacyTotal = 60;
+  g.crew = 3;
+  g.jobs.stage = 3;
+  // Hire two managers.
+  g.legacy = 200;
+  game.buyManager(game.MANAGERS.find(m => m.id === 'rail'));
+  game.buyManager(game.MANAGERS.find(m => m.id === 'bar'));
+  ok(g.managers.rail === true, 'rail manager hired');
+  ok(g.managers.bar === true, 'bar manager hired');
+
+  game.confirmPrestige();
+  const next = game.state.g;
+  // Managers survive the franchise deal (like perks).
+  strictEqual(next.managers.rail, true, 'rail manager persists across prestige');
+  strictEqual(next.managers.bar, true, 'bar manager persists across prestige');
+  // Buildings are reset (managers auto-buy next, but starting from 0).
+  strictEqual(next.b.rail, 0, 'buildings reset');
+  strictEqual(next.b.bar, 0, 'buildings reset');
+});
+
 test('confirmPrestige() is no-op below 25 regulars', () => {
   const game = newGame(500);
   const g = game.state.g;
@@ -478,9 +504,9 @@ test('achievements persist through prestige', () => {
 test('init backfills achievements on existing current-format save', () => {
   localStorage.clear();
   localStorage.setItem('afterglow.save', JSON.stringify({
-    saveVer: 7,
-    ver: '0.8.1',
-    build: 183,
+    saveVer: 8,
+    ver: '0.9.0',
+    build: 184,
     g: {
       cash: 500, hype: 0, buzz: 0, patrons: 0, regulars: 0, clout: 0,
       crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
@@ -488,7 +514,8 @@ test('init backfills achievements on existing current-format save', () => {
       u: {}, r: {},
       elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: Date.now(),
       goals: [], clicks: 0, rounds: 0,
-      legacy: 0, legacyTotal: 0, perks: {}, prestiges: 0, achievements: []
+      legacy: 0, legacyTotal: 0, perks: {}, prestiges: 0, achievements: [],
+      managers: { rail: false, bar: false, dj: false, marquee: false, flyers: false, vip: false, door: false, dress: false }
     }
   }));
   const game = new Game(root);
@@ -1278,13 +1305,14 @@ test('non-numeric saveVer fails closed', () => {
 
 console.log('\nSave migration map (PLAN §2.2)');
 
-test('SAVE_VER is 7', () => {
+test('SAVE_VER is 8', () => {
   const game = newGame();
-  strictEqual(game.SAVE_VER, 7);
+  strictEqual(game.SAVE_VER, 8);
   ok(typeof game.MIGRATIONS[3] === 'function', 'MIGRATIONS[3] must exist');
   ok(typeof game.MIGRATIONS[4] === 'function', 'MIGRATIONS[4] must exist (Owner\'s List)');
   ok(typeof game.MIGRATIONS[5] === 'function', 'MIGRATIONS[5] must exist (prestige)');
   ok(typeof game.MIGRATIONS[6] === 'function', 'MIGRATIONS[6] must exist (achievements)');
+  ok(typeof game.MIGRATIONS[7] === 'function', 'MIGRATIONS[7] must exist (managers)');
 });
 
 test('migrateFrom(3) applies jobs/crew fixups and preserves club', () => {
@@ -1716,7 +1744,7 @@ test('migration 4→5→6→7: v4 save with rail+flyers pre-completes those goal
   // Achievements legitimately reward clout for already-earned state.
   strictEqual(loaded.clout, 1, 'first_rail achievement clout credited on migrate');
   const stored = JSON.parse(localStorage.getItem(game.KEY));
-  strictEqual(stored.saveVer, 7);
+  strictEqual(stored.saveVer, 8);
 });
 
 test('migration 4→5→6→7 mid-game: credits non-sequential goals without reward cascade', () => {
@@ -2001,7 +2029,7 @@ test('init post-catchUp setItem throw still claimed ts (reload cannot re-apply g
     `reload must not re-apply offline gap (disk=${cashOnDisk}, second=${game2.state.g.cash})`);
 });
 
-test('v6 migrates to v7 and backfills achievements; v5 without prestige still migrates', () => {
+test('v6 migrates to v8 and backfills achievements; v5 without prestige still migrates', () => {
   const game = newGame(20);
   game.state.g.cash = 20;
   const matureNoGoals = {
@@ -2015,10 +2043,12 @@ test('v6 migrates to v7 and backfills achievements; v5 without prestige still mi
   const okV6 = game.importSaveFromText(JSON.stringify({
     saveVer: 6, ver: '0.8.0', build: 182, g: { ...matureNoGoals }
   }));
-  strictEqual(okV6, true, 'v6 missing goals migrates to v7');
+  strictEqual(okV6, true, 'v6 missing goals migrates to v8');
   strictEqual(game.state.saveState, 'imported');
-  ok(Array.isArray(game.state.g.achievements), 'v6 → v7 adds achievements');
+  ok(Array.isArray(game.state.g.achievements), 'v6 → v8 adds achievements');
   ok(game.state.g.achievements.includes('first_rail'), 'already-earned achievement backfilled');
+  ok(typeof game.state.g.managers === 'object', 'v7 → v8 adds managers map');
+  ok(game.state.g.managers.rail === false, 'new manager defaults to false');
   strictEqual(game.state.g.cash, 500, 'no reward cascade on migrate');
 
   // v5 path migrates without prestige fields and supplies defaults.
@@ -2583,6 +2613,211 @@ test('owner hardReset wipes disk after double-confirm', () => {
   strictEqual(localStorage.getItem(game.KEY), null, 'owner wipe removes KEY');
   strictEqual(game.state.g.cash, game.props.startingCash, 'fresh club after wipe');
   ok(game.isTabOwner(), 'owner remains owner of fresh club');
+});
+
+// ── Managers (PLAN.md §4.1) ──────────────────────────────────────────────────
+console.log('\\nManagers (PLAN.md §4.1)');
+
+test('fresh() includes managers map with all false', () => {
+  const game = newGame();
+  const g = game.fresh();
+  for (const def of game.MANAGERS) {
+    strictEqual(g.managers[def.id], false, def.id + ' defaults to false');
+  }
+  strictEqual(game.MANAGERS.length, 8, 'exactly 8 managers');
+  const buildingIds = new Set(game.BUILDINGS.map(b => b.id));
+  for (const def of game.MANAGERS) {
+    ok(buildingIds.has(def.id), 'manager id matches a building: ' + def.id);
+  }
+});
+
+test('buyManager purchases for Legacy, max 1', () => {
+  const game = newGame(0);
+  const g = game.state.g;
+  g.legacy = 10;
+  const railMgr = game.MANAGERS.find(m => m.id === 'rail');
+  const before = g.managers.rail;
+  game.buyManager(railMgr);
+  strictEqual(g.managers.rail, true, 'manager hired');
+  strictEqual(g.legacy, 0, 'legacy cost deducted');
+  // Cannot hire again
+  game.buyManager(railMgr);
+  strictEqual(g.managers.rail, true, 'cannot hire twice');
+  strictEqual(g.legacy, 0, 'no double charge');
+});
+
+test('buyManager fails on insufficient Legacy', () => {
+  const game = newGame(0);
+  const g = game.state.g;
+  g.legacy = 9;
+  const barMgr = game.MANAGERS.find(m => m.id === 'bar');
+  game.buyManager(barMgr);
+  strictEqual(g.managers.bar, false, 'not hired without enough Legacy');
+  strictEqual(g.legacy, 9, 'legacy unchanged on failure');
+});
+
+test('manager auto-buy respects cash-gate (no buy at cash=0)', () => {
+  const game = newGame(0);
+  const g = game.state.g;
+  // Give the club a rail manager but no cash and no income.
+  g.managers.rail = true;
+  g.cash = 0;
+  const before = g.b.rail;
+  const bought = game.autoBuyManagers(g);
+  strictEqual(bought, 0, 'no auto-buy at cash=0 with no income');
+  strictEqual(g.b.rail, before, 'building count unchanged');
+});
+
+test('manager auto-buy respects strike rule (no buy while on strike)', () => {
+  const game = newGame(0);
+  const g = game.state.g;
+  // Set up strike: crew working, no buildings to cover wages, cash=0.
+  g.crew = 3;
+  g.jobs = { stage: 1, vipjob: 1, floor: 1, off: 0 };
+  g.cash = 0;
+  const r = game.rates(g);
+  strictEqual(r.strike, true, 'precondition: crew on strike at cash=0');
+  // Hire a rail manager — should NOT auto-buy during strike.
+  g.legacy = 10;
+  const railMgr = game.MANAGERS.find(m => m.id === 'rail');
+  game.buyManager(railMgr);
+  g.legacy = 1000; // pile cash for the rail but strike still blocks
+  g.cash = 0;
+  const bought = game.autoBuyManagers(g);
+  strictEqual(bought, 0, 'no auto-buy while on strike even with cash for cost');
+  strictEqual(g.b.rail, 0, 'building not purchased on strike');
+});
+
+test('manager auto-buy respects Door Staff cap (doorMax)', () => {
+  const game = newGame(0);
+  const g = game.state.g;
+  // Hire door manager.
+  g.legacy = 10;
+  const doorMgr = game.MANAGERS.find(m => m.id === 'door');
+  game.buyManager(doorMgr);
+  // Set door to max (base 6) with no doorPlus perk.
+  g.b.door = 6;
+  g.cash = 9999;
+  const bought = game.autoBuyManagers(g);
+  strictEqual(bought, 0, 'no auto-buy when door at cap');
+  strictEqual(g.b.door, 6, 'door count unchanged at cap');
+});
+
+test('manager auto-buy does NOT block when strike is false', () => {
+  const game = newGame(0);
+  const g = game.state.g;
+  // Club with income: bar generates enough to not be on strike.
+  g.b.bar = 5;
+  g.b.dj = 3;
+  g.b.rail = 2;
+  g.cash = 9999;
+  g.patrons = 50;
+  g.crew = 2;
+  g.jobs = { stage: 1, vipjob: 0, floor: 1, off: 0 };
+  g.shiftIdx = 0;
+  g.shiftT = 0;
+  const r = game.rates(g);
+  ok(!r.strike, 'precondition: not on strike with income');
+  // Hire rail manager — should auto-buy during catchUp even though rates.strike is false.
+  g.legacy = 10;
+  const railMgr = game.MANAGERS.find(m => m.id === 'rail');
+  game.buyManager(railMgr);
+  g.legacy = 1000;
+  const railBefore = g.b.rail;
+  const report = game.catchUp(g, 60);
+  ok(report.managerBought > 0, 'manager auto-buys when not on strike');
+  ok(g.b.rail > railBefore, 'rail count increased when not on strike');
+});
+
+test('manager auto-buy fires on live step() when cash is sufficient', () => {
+  const game = newGame(0);
+  const g = game.state.g;
+  // Hire rail + bar managers.
+  g.legacy = 20; // 2 managers × 10 Legacy = 20 (railMgr + barMgr)
+  const railMgr = game.MANAGERS.find(m => m.id === 'rail');
+  const barMgr = game.MANAGERS.find(m => m.id === 'bar');
+  game.buyManager(railMgr);
+  game.buyManager(barMgr);
+  // Give enough cash to buy one rail (base cost 140, growth 1.16, n=0 → 140).
+  g.cash = 1000;
+  g.b.rail = 0;
+  // step() will call autoBuyManagers; rail costs 140 so it should buy.
+  const beforeRail = g.b.rail;
+  game.step(0.1);
+  ok(g.b.rail > beforeRail, 'rail was auto-bought during live step');
+});
+
+test('manager auto-buy fires inside catchUp() slices', () => {
+  const game = newGame(0);
+  const g = game.state.g;
+  // Hire rail manager.
+  g.legacy = 10;
+  const railMgr = game.MANAGERS.find(m => m.id === 'rail');
+  game.buyManager(railMgr);
+  // Seed with buildings to generate income + enough starting cash for at least one rail.
+  g.b.rail = 2;
+  g.b.bar = 5;
+  g.b.dj = 3;
+  g.cash = 50;
+  g.patrons = 50;
+  g.crew = 2;
+  g.jobs = { stage: 1, vipjob: 0, floor: 1, off: 0 };
+  g.shiftIdx = 0;
+  g.shiftT = 0;
+  const cashBefore = g.cash;
+  const railBefore = g.b.rail;
+  const report = game.catchUp(g, 600); // 10 min offline at 50% rate
+  ok(report.managerBought > 0, 'manager bought at least 1 building during catchUp (' + report.managerBought + ')');
+  ok(g.b.rail > railBefore, 'rail count increased during catchUp');
+  // Verify the report includes managerBought.
+  ok('managerBought' in report, 'catchUp report includes managerBought field');
+  ok(typeof report.managerBought === 'number', 'managerBought is a number');
+});
+
+test('catchUp returns managerBought=0 when no managers hired', () => {
+  const game = newGame(0);
+  const g = game.state.g;
+  g.b.bar = 1;
+  g.cash = 500;
+  g.shiftIdx = 0;
+  g.shiftT = 0;
+  const report = game.catchUp(g, 60);
+  strictEqual(report.managerBought, 0, 'no managers means zero auto-buys');
+});
+
+test('awayMsg includes manager line when managerBought > 0', () => {
+  const game = newGame();
+  const msg = game.awayMsg(90 * 60, { earned: 500, wagesPaid: 100, struck: false, managerBought: 3 });
+  ok(/Managers bought 3 buildings while you were away\./.test(msg), 'manager line present: ' + msg);
+});
+
+test('awayMsg omits manager line when managerBought is 0', () => {
+  const game = newGame();
+  const msg = game.awayMsg(90 * 60, { earned: 500, wagesPaid: 100, struck: false, managerBought: 0 });
+  ok(!/Managers bought/.test(msg), 'no manager line when zero: ' + msg);
+});
+
+test('MIGRATIONS[7] defaults managers to false on v7 save', () => {
+  const game = newGame();
+  const g = game.fresh();
+  // Simulate a v7 save shape (no managers field).
+  delete g.managers;
+  game.migrateFrom(g, 7);
+  for (const def of game.MANAGERS) {
+    strictEqual(g.managers[def.id], false, def.id + ' backfilled to false');
+  }
+});
+
+test('sanitizeG backfills managers map from known IDs', () => {
+  const game = newGame();
+  const g = game.fresh();
+  // Corrupt managers into an array (hand-edited save).
+  g.managers = ['rail'];
+  game.sanitizeG(g);
+  strictEqual(Array.isArray(g.managers), false, 'array managers replaced with object');
+  for (const def of game.MANAGERS) {
+    strictEqual(g.managers[def.id], false, def.id + ' clamped to false');
+  }
 });
 
 // ── Results ──────────────────────────────────────────────────────────────────
