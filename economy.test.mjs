@@ -2662,6 +2662,47 @@ test('manager auto-buy respects strike rule (no buy while on strike)', () => {
   strictEqual(g.b.rail, 0, 'building not purchased on strike');
 });
 
+test('manager auto-buy respects Door Staff cap (doorMax)', () => {
+  const game = newGame(0);
+  const g = game.state.g;
+  // Hire door manager.
+  g.legacy = 10;
+  const doorMgr = game.MANAGERS.find(m => m.id === 'door');
+  game.buyManager(doorMgr);
+  // Set door to max (base 6) with no doorPlus perk.
+  g.b.door = 6;
+  g.cash = 9999;
+  const bought = game.autoBuyManagers(g);
+  strictEqual(bought, 0, 'no auto-buy when door at cap');
+  strictEqual(g.b.door, 6, 'door count unchanged at cap');
+});
+
+test('manager auto-buy does NOT block when strike is false', () => {
+  const game = newGame(0);
+  const g = game.state.g;
+  // Club with income: bar generates enough to not be on strike.
+  g.b.bar = 5;
+  g.b.dj = 3;
+  g.b.rail = 2;
+  g.cash = 9999;
+  g.patrons = 50;
+  g.crew = 2;
+  g.jobs = { stage: 1, vipjob: 0, floor: 1, off: 0 };
+  g.shiftIdx = 0;
+  g.shiftT = 0;
+  const r = game.rates(g);
+  ok(!r.strike, 'precondition: not on strike with income');
+  // Hire rail manager — should auto-buy during catchUp even though rates.strike is false.
+  g.legacy = 10;
+  const railMgr = game.MANAGERS.find(m => m.id === 'rail');
+  game.buyManager(railMgr);
+  g.legacy = 1000;
+  const railBefore = g.b.rail;
+  const report = game.catchUp(g, 60);
+  ok(report.managerBought > 0, 'manager auto-buys when not on strike');
+  ok(g.b.rail > railBefore, 'rail count increased when not on strike');
+});
+
 test('manager auto-buy fires on live step() when cash is sufficient', () => {
   const game = newGame(0);
   const g = game.state.g;

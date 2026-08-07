@@ -1387,8 +1387,8 @@ class Game {
         g.shiftIdx = (g.shiftIdx + 1) % 4;
         if (g.shiftIdx === 0) g.night++;
       }
-      // Managers auto-buy buildings (PLAN.md §4.1) — respects strike rule.
-      managerBought += this.autoBuyManagers(g);
+      // Managers auto-buy buildings (PLAN.md §4.1) — respects strike rule (§1.3).
+      managerBought += this.autoBuyManagers(g, { strike: rates.strike });
       // Per-slice goal check: threshold goals (patrons/hype) may peak mid-window
       // then decay before catch-up ends — post-only noteGoals would miss them.
       // live:false keeps peak-hour hero offline-ineligible.
@@ -1428,7 +1428,7 @@ class Game {
       this.checkAchievements(g);
       // Managers auto-buy buildings (PLAN.md §4.1) — after cash accrues for this slice,
       // respects strike rule (no auto-buy at cash=0 or on strike).
-      this.autoBuyManagers(g);
+      this.autoBuyManagers(g, { strike: r.strike });
       // Whale event: ~1 per 3 min at base, scales with hype (live only, requires hype > 0)
       if (!g._whaleCooldown) g._whaleCooldown = 0;
       g._whaleCooldown -= chunk;
@@ -1600,13 +1600,18 @@ class Game {
   }
 
   // Auto-buy buildings for hired managers (PLAN.md §4.1).
-  // Routed through buyBuilding so growth/cap logic is not duplicated.
+  // Mutates g directly (does NOT route through buyBuilding, which reads this.state.g).
+  // This keeps auto-buy correct when g is a standalone offline candidate (e.g. catchUp).
+  // Growth/cap logic is replicated inline (same formulas as buyBuilding) so we don't
+  // pay for push/noteGoals/checkAchievements/forceUpdate per slice — the caller's
+  // existing per-slice noteGoals/checkAchievements calls cover bookkeeping.
   // Respects the strike rule (§1.3): no auto-buy while g.cash <= 0 and crew on strike.
   // Returns the count of buildings bought on this call.
-  autoBuyManagers(g) {
+  autoBuyManagers(g, opts = {}) {
     if (!g.managers) return 0;
     // Strike gate: don't auto-buy while cash is depleted and crew is on strike.
-    if (g.cash <= 0 && this.rates(g).strike) return 0;
+    const strike = opts.strike != null ? opts.strike : this.rates(g).strike;
+    if (g.cash <= 0 && strike) return 0;
     let bought = 0;
     for (const def of this.MANAGERS) {
       if (!g.managers[def.id]) continue;
@@ -1617,11 +1622,9 @@ class Game {
       if (max != null && n >= max) continue;
       const price = Math.floor(bdef.cost * Math.pow(bdef.growth, n));
       if (g.cash < price) continue;
-      // Route through buyBuilding — but buyBuilding reads this.state.g, so call it.
-      // It checks tabStale, max, cash, and deducts. In step/catchUp the tab owns the save.
-      const before = g.b[def.id];
-      this.buyBuilding(bdef);
-      if (g.b[def.id] > before) bought++;
+      g.cash -= price;
+      g.b[def.id] = n + 1;
+      bought++;
     }
     return bought;
   }
@@ -1916,7 +1919,7 @@ class Game {
         const ok = !hired && g.legacy >= d.cost;
         return { name: d.name, desc: d.desc, owned: hired ? 'hired' : '—',
           btn: hired ? 'Hired' : d.cost + ' Legacy',
-          meta: hired ? 'auto-buys ' + (bdef ? bdef.name : d.id) : (ok ? 'ready' : this.fmt(d.cost - g.legacy) + ' Legacy short'),
+          meta: hired ? 'auto-buys ' + (bdef ? bdef.name : d.id) + ' (next $' + this.fmt(price) + ')' : (ok ? 'ready' : this.fmt(d.cost - g.legacy) + ' Legacy short'),
           locked: !ok, wrapStyle: cardWrap(!hired), btnStyle: btn(ok, '#a855f7'), act: () => this.buyManager(d) };
       });
       cards = perkCards.concat(managerCards);
