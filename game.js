@@ -1421,14 +1421,17 @@ class Game {
       g.elapsed += chunk;
       g.shiftT += chunk;
       remaining -= chunk;
+      // Managers auto-buy buildings (PLAN.md §4.1) — after cash accrues for this slice,
+      // respects strike rule (no auto-buy at cash=0 or on strike).
+      // Ordered before noteGoals/checkAchievements to match catchUp() slice ordering,
+      // so a building-count achievement completed by a manager auto-buy is picked
+      // up in the same slice (not lagged to the next tick).
+      this.autoBuyManagers(g, { strike: r.strike });
       // Per-slice goals before shift rollover: a live tick (dt ≤ 2) can finish Peak
       // Hours mid-loop; post-loop noteGoals would see the next shift and miss peak.
       this.noteGoals(g, { live: true });
       // Per-slice achievement check so stat/night thresholds reached mid-window unlock.
       this.checkAchievements(g);
-      // Managers auto-buy buildings (PLAN.md §4.1) — after cash accrues for this slice,
-      // respects strike rule (no auto-buy at cash=0 or on strike).
-      this.autoBuyManagers(g, { strike: r.strike });
       // Whale event: ~1 per 3 min at base, scales with hype (live only, requires hype > 0)
       if (!g._whaleCooldown) g._whaleCooldown = 0;
       g._whaleCooldown -= chunk;

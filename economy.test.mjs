@@ -2707,15 +2707,15 @@ test('manager auto-buy fires on live step() when cash is sufficient', () => {
   const game = newGame(0);
   const g = game.state.g;
   // Hire rail + bar managers.
-  g.legacy = 20;
+  g.legacy = 20; // 2 managers × 10 Legacy = 20 (railMgr + barMgr)
   const railMgr = game.MANAGERS.find(m => m.id === 'rail');
   const barMgr = game.MANAGERS.find(m => m.id === 'bar');
   game.buyManager(railMgr);
   game.buyManager(barMgr);
-  // Give enough cash to buy one rail (cost 20, growth 1.08, n=0 → 20).
+  // Give enough cash to buy one rail (base cost 140, growth 1.16, n=0 → 140).
   g.cash = 1000;
   g.b.rail = 0;
-  // step() will call autoBuyManagers; rail costs 20 so it should buy.
+  // step() will call autoBuyManagers; rail costs 140 so it should buy.
   const beforeRail = g.b.rail;
   game.step(0.1);
   ok(g.b.rail > beforeRail, 'rail was auto-bought during live step');
