@@ -340,6 +340,32 @@ test('confirmPrestige() resets run fields and persists meta', () => {
   ok(next.achievements.includes('prestige_1'), 'prestige_1 achievement credited');
 });
 
+test('confirmPrestige() preserves hired managers across prestige', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.cash = 99999;
+  g.regulars = 30;
+  g.legacy = 50;
+  g.legacyTotal = 60;
+  g.crew = 3;
+  g.jobs.stage = 3;
+  // Hire two managers.
+  g.legacy = 200;
+  game.buyManager(game.MANAGERS.find(m => m.id === 'rail'));
+  game.buyManager(game.MANAGERS.find(m => m.id === 'bar'));
+  ok(g.managers.rail === true, 'rail manager hired');
+  ok(g.managers.bar === true, 'bar manager hired');
+
+  game.confirmPrestige();
+  const next = game.state.g;
+  // Managers survive the franchise deal (like perks).
+  strictEqual(next.managers.rail, true, 'rail manager persists across prestige');
+  strictEqual(next.managers.bar, true, 'bar manager persists across prestige');
+  // Buildings are reset (managers auto-buy next, but starting from 0).
+  strictEqual(next.b.rail, 0, 'buildings reset');
+  strictEqual(next.b.bar, 0, 'buildings reset');
+});
+
 test('confirmPrestige() is no-op below 25 regulars', () => {
   const game = newGame(500);
   const g = game.state.g;

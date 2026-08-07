@@ -1426,7 +1426,7 @@ class Game {
       // Ordered before noteGoals/checkAchievements to match catchUp() slice ordering,
       // so a building-count achievement completed by a manager auto-buy is picked
       // up in the same slice (not lagged to the next tick).
-      this.autoBuyManagers(g, { strike: r.strike });
+      this.autoBuyManagers(g, { strike: r.strike, log: true });
       // Per-slice goals before shift rollover: a live tick (dt ≤ 2) can finish Peak
       // Hours mid-loop; post-loop noteGoals would see the next shift and miss peak.
       this.noteGoals(g, { live: true });
@@ -1609,6 +1609,8 @@ class Game {
   // pay for push/noteGoals/checkAchievements/forceUpdate per slice — the caller's
   // existing per-slice noteGoals/checkAchievements calls cover bookkeeping.
   // Respects the strike rule (§1.3): no auto-buy while g.cash <= 0 and crew on strike.
+  // opts.log: when true, push() a log line per purchase (for live step() visibility;
+  // omitted during catchUp to avoid per-slice log spam — catchUp's away-report covers it).
   // Returns the count of buildings bought on this call.
   autoBuyManagers(g, opts = {}) {
     if (!g.managers) return 0;
@@ -1628,6 +1630,9 @@ class Game {
       g.cash -= price;
       g.b[def.id] = n + 1;
       bought++;
+      if (opts.log) {
+        this.push(g, 'Manager built ' + bdef.name + ' #' + (n + 1) + ' for $' + this.fmt(price) + '.', '#a855f7');
+      }
     }
     return bought;
   }
