@@ -1106,6 +1106,73 @@ test('buyUpgrade is no-op when already owned', () => {
   strictEqual(g.cash, cashAfter, 'second buy must not charge again');
 });
 
+// ── Perk prerequisites (PLAN §4.3) ───────────────────────────────────────────
+
+console.log('\nperk prerequisites (PLAN §4.3)');
+
+test('buyPerk rejects purchase when prerequisite rank unmet', () => {
+  const game = newGame(1e9);
+  const g = game.state.g;
+  // clout25 requires offline65; offline65 requires cash10. Buy clout25 with neither
+  // prerequisite ranked — must be rejected even with ample Legacy.
+  g.legacy = 100;
+  const clout25 = game.PRESTIGE_PERKS.find(p => p.id === 'clout25');
+  strictEqual(game.perk(g, 'offline65'), 0, 'offline65 must start at rank 0');
+  const legacyBefore = g.legacy;
+  game.buyPerk(clout25);
+  strictEqual(game.perk(g, 'clout25'), 0, 'must not buy clout25 without offline65');
+  strictEqual(g.legacy, legacyBefore, 'Legacy must not change when req fails');
+});
+
+test('buyPerk succeeds once the prerequisite rank is met', () => {
+  const game = newGame(1e9);
+  const g = game.state.g;
+  g.legacy = 100;
+  // offline65 requires cash10 — buy cash10 first, then offline65 must succeed.
+  const cash10 = game.PRESTIGE_PERKS.find(p => p.id === 'cash10');
+  const offline65 = game.PRESTIGE_PERKS.find(p => p.id === 'offline65');
+  game.buyPerk(cash10);
+  strictEqual(game.perk(g, 'cash10'), 1, 'tier-1 cash10 must be purchasable with no req');
+  const legacyBefore = g.legacy;
+  game.buyPerk(offline65);
+  strictEqual(game.perk(g, 'offline65'), 1, 'offline65 must buy once cash10 rank >= 1');
+  strictEqual(g.legacy, legacyBefore - offline65.cost, 'Legacy must drop by offline65 cost');
+});
+
+test('buyPerk checks the immediate req, not a transitive walk', () => {
+  const game = newGame(1e9);
+  const g = game.state.g;
+  g.legacy = 100;
+  // clout25 requires offline65 (which itself requires cash10). Ranking cash10 satisfies
+  // the ancestor, but offline65 is clout25's *immediate* req — clout25 must stay blocked.
+  const cash10 = game.PRESTIGE_PERKS.find(p => p.id === 'cash10');
+  const clout25 = game.PRESTIGE_PERKS.find(p => p.id === 'clout25');
+  game.buyPerk(cash10);
+  strictEqual(game.perk(g, 'cash10'), 1, 'cash10 must be ranked first');
+  const legacyBefore = g.legacy;
+  game.buyPerk(clout25);
+  strictEqual(game.perk(g, 'clout25'), 0, 'clout25 must not buy until its immediate req offline65 is ranked');
+  strictEqual(g.legacy, legacyBefore, 'Legacy must not change when the immediate req is unmet');
+});
+
+test('buyPerk chain startCrew -> doorPlus requires the Seed roster first', () => {
+  const game = newGame(1e9);
+  const g = game.state.g;
+  g.legacy = 100;
+  const startCrew = game.PRESTIGE_PERKS.find(p => p.id === 'startCrew');
+  const doorPlus = game.PRESTIGE_PERKS.find(p => p.id === 'doorPlus');
+  // doorPlus requires startCrew — must be rejected while startCrew is rank 0.
+  game.buyPerk(doorPlus);
+  strictEqual(game.perk(g, 'doorPlus'), 0, 'must not buy doorPlus without startCrew');
+  // Buy startCrew (tier-1, no req), then doorPlus must succeed at its cost.
+  const legacyBefore = g.legacy;
+  game.buyPerk(startCrew);
+  strictEqual(game.perk(g, 'startCrew'), 1, 'tier-1 startCrew must be purchasable with no req');
+  game.buyPerk(doorPlus);
+  strictEqual(game.perk(g, 'doorPlus'), 1, 'doorPlus must buy once startCrew rank >= 1');
+  strictEqual(g.legacy, legacyBefore - startCrew.cost - doorPlus.cost, 'Legacy must drop by both costs');
+});
+
 test('hireCrew respects crew cap', () => {
   const game = newGame(50000);
   const g = game.state.g;
