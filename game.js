@@ -109,7 +109,7 @@ class Game {
 
   CHANGELOG = [
     { v: '0.9.1', date: '2026-08-07', codename: 'Neon Zero', notes: [
-      'Perk Tree: PRESTIGE_PERKS now enforce prerequisites via an optional req field (mirrors UPGRADES\' req shape).',
+      'Perk Tree: PRESTIGE_PERKS now enforce prerequisites via an optional req field (a bare perkId, unlike UPGRADES\' {buildingId: count}).',
       'Tier 1 (no req): House cut, Seed roster, Street team. Franchise playbook requires House cut rank 1+; Extra bouncer slot requires Seed roster; Name recognition requires Franchise playbook.',
       'buyPerk blocks purchase until the prerequisite rank is met, same enforcement pattern as buyUpgrade (1.8).',
       'Perks panel shows "requires X" in place of the buy button for locked perks.',
@@ -333,7 +333,8 @@ class Game {
   ];
   // Prestige perks (PRESTIGE.md). Legacy cost, max rank, effect applied in rates()/workCrowd()/catchUp()/fresh().
   // Optional `req: perkId` gates purchase on the prerequisite perk's rank >= 1 (perk tree, PLAN §4.3).
-  // Mirrors UPGRADES' req shape (single prerequisite); reqs gate future purchases only, not past unlocks.
+  // Note: unlike UPGRADES.req ({ buildingId: count }), a perk req is a bare perkId string (existence-based,
+  // rank >= 1). Reqs gate future purchases only, not past unlocks.
   PRESTIGE_PERKS = [
     { id: 'cash10', name: 'House cut', cost: 1, max: 5, desc: '+10% all cash income per rank.' },
     { id: 'startCrew', name: 'Seed roster', cost: 2, max: 1, desc: 'Start run with 1 crew on Main Stage.' },
@@ -2010,7 +2011,7 @@ class Game {
           meta: maxed ? 'maxed' : (!reqMet ? '' : (ok ? 'ready' : this.fmt(d.cost - g.legacy) + ' Legacy short')),
           reqLocked: !reqMet,
           reqName: reqDef ? reqDef.name : (d.req || ''),
-          locked: !ok, wrapStyle: cardWrap(!maxed), btnStyle: btn(ok, '#d4af37'), act: () => this.buyPerk(d) };
+          locked: !ok, wrapStyle: cardWrap(!maxed && reqMet), btnStyle: btn(ok, '#d4af37'), act: () => this.buyPerk(d) };
       });
       const managerCards = this.MANAGERS.map(d => {
         const hired = g.managers && g.managers[d.id];

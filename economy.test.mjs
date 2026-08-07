@@ -1139,6 +1139,24 @@ test('buyPerk succeeds once the prerequisite rank is met', () => {
   strictEqual(g.legacy, legacyBefore - offline65.cost, 'Legacy must drop by offline65 cost');
 });
 
+test('buyPerk chain startCrew -> doorPlus requires the Seed roster first', () => {
+  const game = newGame(1e9);
+  const g = game.state.g;
+  g.legacy = 100;
+  const startCrew = game.PRESTIGE_PERKS.find(p => p.id === 'startCrew');
+  const doorPlus = game.PRESTIGE_PERKS.find(p => p.id === 'doorPlus');
+  // doorPlus requires startCrew — must be rejected while startCrew is rank 0.
+  game.buyPerk(doorPlus);
+  strictEqual(game.perk(g, 'doorPlus'), 0, 'must not buy doorPlus without startCrew');
+  // Buy startCrew (tier-1, no req), then doorPlus must succeed at its cost.
+  const legacyBefore = g.legacy;
+  game.buyPerk(startCrew);
+  strictEqual(game.perk(g, 'startCrew'), 1, 'tier-1 startCrew must be purchasable with no req');
+  game.buyPerk(doorPlus);
+  strictEqual(game.perk(g, 'doorPlus'), 1, 'doorPlus must buy once startCrew rank >= 1');
+  strictEqual(g.legacy, legacyBefore - startCrew.cost - doorPlus.cost, 'Legacy must drop by both costs');
+});
+
 test('hireCrew respects crew cap', () => {
   const game = newGame(50000);
   const g = game.state.g;
