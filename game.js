@@ -1314,6 +1314,8 @@ class Game {
   }
 
   // Weighted pick from SPECIAL_SHIFTS using each entry's `weight` (default 1).
+  // g is currently unused but kept for signature consistency with the other
+  // shift methods, and so future weighting can vary by state (e.g. night/regulars).
   pickSpecialShift(g) {
     const table = this.SPECIAL_SHIFTS;
     let total = 0;
