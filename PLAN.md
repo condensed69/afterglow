@@ -147,10 +147,36 @@ Prepend to `DESIGN.md`: `> **Status: SUPERSEDED (2026-08-03)** — This document
 
 ---
 
+## Phase 4 — Automation & Polish (target v0.9.0, SAVE_VER bumps to 8: new `g.managers` and `g.perkTree` fields)
+
+**Status as of audit (2026-08-07):** Phases 1–3 are shipped (v0.8.1, build 183, SAVE_VER 7) — `catchUp`, `MIGRATIONS`, Door Staff cap+perk, and the `game.js` section headers all exist. Prestige/Legacy/Perks (deferred in the original plan as "0.6.0 candidate") also shipped ahead of schedule — see `PRESTIGE.md`. This phase name was first used loosely in PR #23's description ("Managers, Special Shifts, Away Report, Perk Tree"); this section is the first time it's written down as an actual spec. Away Report already exists (Phase 1 §1.10) — nothing further is planned for it here beyond 4.1's addition below.
+
+### 4.1 Managers (auto-buyers)
+
+New crew role, one per building type (`rail`, `bar`, `dj`, `marquee`, `flyers`, `vip`, `door`, `dress`), purchasable with Legacy from the Perks/Prestige panel (flat cost per manager, similar shape to `PRESTIGE_PERKS`, `max: 1` each). Effect: on each `step()` and `catchUp()` slice, a hired manager auto-buys its building the moment `g.cash >= cost`, using the same `buyBuilding` path so growth/cap logic isn't duplicated. No effect while broke/on strike (respects 1.3's cash gate — a manager cannot spend into a strike). Away-report gains a line when managers bought buildings during the gap (extends 1.10's report, doesn't replace it): `Managers bought 3 buildings while you were away.` New persisted field: `g.managers` (object map `buildingId → bool`), migrated 7→8 with all `false`.
+
+### 4.2 Special Shifts
+
+Random low-frequency event shift (distinct from the four fixed `SHIFTS`) that can trigger at a shift boundary — e.g. "Bachelorette Rush" (+hype, +cash, shorter length) or "Slow Tuesday" (-cash, -patrons, same length as Early Doors). Selection: small chance per shift rollover, weighted table, never two in a row. Purely a modifier layer on top of the existing `shift.mult`/`shift.len` — does not replace the 4-shift rotation, just occasionally substitutes one instance. UI: shift name/tint already renders from `SHIFTS[g.shift]`; special shifts need a temporary override object with the same `{name, mult, len, tint}` shape so no render-path changes beyond reading the override when present.
+
+### 4.3 Perk Tree (restructure `PRESTIGE_PERKS`)
+
+Currently a flat list of 6 perks, all purchasable in any order once unlocked (PRESTIGE.md §7). Add prerequisites: each perk entry gains an optional `req: perkId` (single prerequisite, mirrors `UPGRADES`' `req` shape). Suggested shape — `cash10` and `startCrew` are tier-1 (no req); `offline65` requires `cash10` rank ≥ 1; `doorPlus` requires `startCrew`; `clout25` requires `offline65`; `startFlyers` stays tier-1. Buy-path (`buyPerk`) adds a req check identical in spirit to 1.8's `buyUpgrade` req enforcement. UI: Perks panel groups by tier or draws simple connector lines; locked-by-req perks show "requires X" instead of the buy button. New persisted field is unnecessary — `g.perks` rank map already encodes what's unlocked; add a migration guard only if the tree reshuffles existing perk IDs (current plan doesn't rename any).
+
+### Phase 4 verification
+
+- `node --check game.js` and `node economy.test.mjs` green; new tests: manager auto-buy respects cash-gate/strike, manager auto-buy runs correctly inside `catchUp` slices (not just live `step`), special-shift override doesn't corrupt the base `SHIFTS` rotation on the next boundary, perk req blocks purchase until prerequisite rank met.
+- Manual: hire a manager, let a shift roll over unattended (or simulate via `catchUp`), confirm auto-buy happened and away-report mentions it.
+- Manual: force a special-shift roll (temporarily lower the trigger chance for testing), confirm shift UI shows the override name/tint and reverts next boundary.
+- Manual: existing SAVE_VER 7 save loads unchanged; new fields default correctly (no managers hired, perk tree reflects existing `g.perks` ranks under the new req rules — i.e. a save with `offline65` already ranked stays valid even though `cash10` may be rank 0, since reqs gate future purchases only, not past ones).
+- `VERSION`, build, `CHANGELOG` advance together (0.9.0 entry lists 4.1–4.3).
+
+---
+
 ## Deferred / out of scope
 
-- **Prestige / second location** — its own design pass (0.6.0 candidate); `franchise` removal in 1.9 keeps the door open.
-- **DESIGN.md full rewrite** — after Phase 3, as a writing task.
+- **Second location** — its own design pass beyond 0.9.0; `franchise` removal in 1.9 keeps the door open.
+- **DESIGN.md full rewrite** — after Phase 3, as a writing task. (Phase 3 shipped; rewrite itself remains undone as of this audit.)
 - **Render throttle** (10fps full-innerHTML is wasteful but functional) — only if profiling shows a problem; the performer-node preservation already handles the animation-sensitive part.
 - **Balance tuning** — numbers stay placeholders per AGENTS.md until the mechanics above are stable.
 
