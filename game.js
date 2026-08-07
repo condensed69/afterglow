@@ -1919,10 +1919,12 @@ class Game {
         const bdef = this.BUILDINGS.find(b => b.id === d.id);
         const n = g.b[d.id];
         const price = bdef ? Math.floor(bdef.cost * Math.pow(bdef.growth, n)) : 0;
+        const max = bdef && bdef.id === 'door' ? this.doorMax(g) : bdef ? bdef.max : null;
+        const atCap = max != null && n >= max;
         const ok = !hired && g.legacy >= d.cost;
         return { name: d.name, desc: d.desc, owned: hired ? 'hired' : '—',
           btn: hired ? 'Hired' : d.cost + ' Legacy',
-          meta: hired ? 'auto-buys ' + (bdef ? bdef.name : d.id) + ' (next $' + this.fmt(price) + ')' : (ok ? 'ready' : this.fmt(d.cost - g.legacy) + ' Legacy short'),
+          meta: hired ? (atCap ? 'auto-buys ' + (bdef ? bdef.name : d.id) + ' (capped — no more builds)' : 'auto-buys ' + (bdef ? bdef.name : d.id) + ' (next $' + this.fmt(price) + ')') : (ok ? 'ready' : this.fmt(d.cost - g.legacy) + ' Legacy short'),
           locked: !ok, wrapStyle: cardWrap(!hired), btnStyle: btn(ok, '#a855f7'), act: () => this.buyManager(d) };
       });
       cards = perkCards.concat(managerCards);
