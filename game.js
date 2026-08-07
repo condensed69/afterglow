@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.9.0', build: 185, channel: 'alpha', date: '2026-08-07', codename: 'Neon Zero' };
+  VERSION = { num: '0.9.1', build: 186, channel: 'alpha', date: '2026-08-07', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -108,6 +108,13 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.9.1', date: '2026-08-07', codename: 'Neon Zero', notes: [
+      'Perk Tree: PRESTIGE_PERKS now enforce prerequisites via an optional req field (mirrors UPGRADES\' req shape).',
+      'Tier 1 (no req): House cut, Seed roster, Street team. Franchise playbook requires House cut rank 1+; Extra bouncer slot requires Seed roster; Name recognition requires Franchise playbook.',
+      'buyPerk blocks purchase until the prerequisite rank is met, same enforcement pattern as buyUpgrade (1.8).',
+      'Perks panel shows "requires X" in place of the buy button for locked perks.',
+      'No SAVE_VER bump: g.perks rank map already encodes unlock state; reqs gate future purchases only, so saves with a later perk already ranked stay valid.'
+    ] },
     { v: '0.9.0', date: '2026-08-07', codename: 'Neon Zero', notes: [
       'Managers (auto-buyers): one per building type (rail, bar, dj, marquee, flyers, vip, door, dress), purchasable with Legacy from the Perks tab, max 1 each.',
       'Hired managers auto-buy their building the instant cash >= cost, routed through buyBuilding — respects the strike rule (no auto-buy at cash=0 or on strike).',
@@ -325,13 +332,15 @@ class Game {
     { id: 'payroll', name: 'Payroll Software', cost: 32, desc: 'Crew wages drop 40%.' }
   ];
   // Prestige perks (PRESTIGE.md). Legacy cost, max rank, effect applied in rates()/workCrowd()/catchUp()/fresh().
+  // Optional `req: perkId` gates purchase on the prerequisite perk's rank >= 1 (perk tree, PLAN §4.3).
+  // Mirrors UPGRADES' req shape (single prerequisite); reqs gate future purchases only, not past unlocks.
   PRESTIGE_PERKS = [
     { id: 'cash10', name: 'House cut', cost: 1, max: 5, desc: '+10% all cash income per rank.' },
     { id: 'startCrew', name: 'Seed roster', cost: 2, max: 1, desc: 'Start run with 1 crew on Main Stage.' },
     { id: 'startFlyers', name: 'Street team', cost: 3, max: 1, desc: 'Start run with Flyer Crew ×1 built.' },
-    { id: 'offline65', name: 'Franchise playbook', cost: 4, max: 1, desc: 'Offline / catchUp rate 50% → 65%.' },
-    { id: 'doorPlus', name: 'Extra bouncer slot', cost: 5, max: 1, desc: '+1 max Door Staff.' },
-    { id: 'clout25', name: 'Name recognition', cost: 6, max: 1, desc: '+25% Clout gain.' }
+    { id: 'offline65', name: 'Franchise playbook', cost: 4, max: 1, req: 'cash10', desc: 'Offline / catchUp rate 50% → 65%.' },
+    { id: 'doorPlus', name: 'Extra bouncer slot', cost: 5, max: 1, req: 'startCrew', desc: '+1 max Door Staff.' },
+    { id: 'clout25', name: 'Name recognition', cost: 6, max: 1, req: 'offline65', desc: '+25% Clout gain.' }
   ];
 
   // Managers — auto-buyers, one per building type (PLAN.md §4.1).
@@ -1662,6 +1671,8 @@ class Game {
     const g = this.state.g;
     const rank = this.perk(g, def.id);
     if (rank >= def.max || g.legacy < def.cost) return;
+    // Enforce prerequisite perk rank in the action (mirrors buyUpgrade §1.8; do not trust UI alone).
+    if (def.req && this.perk(g, def.req) < 1) return;
     g.legacy -= def.cost;
     g.perks[def.id] = rank + 1;
     this.push(g, 'Perk: ' + def.name + ' rank ' + (rank + 1) + '/' + def.max + '.', '#ffc94a');
@@ -1990,10 +2001,15 @@ class Game {
       const perkCards = this.PRESTIGE_PERKS.map(d => {
         const rank = this.perk(g, d.id);
         const maxed = rank >= d.max;
-        const ok = !maxed && g.legacy >= d.cost;
+        // Perk tree prerequisite gate (PLAN §4.3): locked until req perk has rank >= 1.
+        const reqMet = !d.req || this.perk(g, d.req) >= 1;
+        const reqDef = d.req ? this.PRESTIGE_PERKS.find(p => p.id === d.req) : null;
+        const ok = !maxed && reqMet && g.legacy >= d.cost;
         return { name: d.name, desc: d.desc, owned: rank > 0 ? rank + '/' + d.max : '—',
           btn: maxed ? 'Maxed' : d.cost + ' Legacy',
-          meta: maxed ? 'maxed' : (ok ? 'ready' : this.fmt(d.cost - g.legacy) + ' Legacy short'),
+          meta: maxed ? 'maxed' : (!reqMet ? '' : (ok ? 'ready' : this.fmt(d.cost - g.legacy) + ' Legacy short')),
+          reqLocked: !reqMet,
+          reqName: reqDef ? reqDef.name : (d.req || ''),
           locked: !ok, wrapStyle: cardWrap(!maxed), btnStyle: btn(ok, '#d4af37'), act: () => this.buyPerk(d) };
       });
       const managerCards = this.MANAGERS.map(d => {
@@ -2382,7 +2398,9 @@ class Game {
         </div>
         <div style="font-size:11px;color:#8b76a0;line-height:1.45;margin:4px 0 8px">${cd.desc}</div>
         <div style="display:flex;align-items:center;gap:8px">
-          <button data-h="${this.bind(cd.act)}" ${cd.locked ? 'disabled' : ''} style="${css(cd.btnStyle)}">${cd.btn}</button>
+          ${cd.reqLocked
+            ? `<span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#6f5885;font-weight:600;min-width:104px;text-align:center;padding:8px 12px">requires ${cd.reqName}</span>`
+            : `<button data-h="${this.bind(cd.act)}" ${cd.locked ? 'disabled' : ''} style="${css(cd.btnStyle)}">${cd.btn}</button>`}
           <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#6f5885;text-align:right;flex:1">${cd.meta}</span>
         </div>
       </div>`).join('');
