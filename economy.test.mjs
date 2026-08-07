@@ -174,6 +174,17 @@ function buildingById(game, id) {
   return game.BUILDINGS.find(b => b.id === id);
 }
 
+// Temporarily stub Math.random to a fixed sequence (cycles). Returns fn()'s result.
+// Used to make the special-shift trigger deterministic. Careful: step()'s whale
+// check also consumes Math.random when hype > 0, so tests that drive step() keep
+// hype at 0 (no stage worker) or supply enough sequence values to cover it.
+function withRandom(values, fn) {
+  const orig = Math.random;
+  let i = 0;
+  Math.random = () => values[i++ % values.length];
+  try { return fn(); } finally { Math.random = orig; }
+}
+
 const SECONDS_PER_NIGHT = 160; // 40+55+35+30
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -769,12 +780,16 @@ console.log('\n5. catchUp offline simulation (PLAN §1.1)');
       const cashLive0 = live.state.g.cash;
       const cashOff0 = off.state.g.cash;
 
-      // Live: full-rate step for 3600s wall
-      live.step(3600);
+      // Live: full-rate step for 3600s wall. Disable random special shifts so both
+      // paths share identical shift alignment — the invariant asserted here is the
+      // half-rate relationship, not specials (those have their own PLAN §4.2 tests).
+      withRandom([0.99], () => {
+        live.step(3600);
+        off.catchUp(off.state.g, 3600);
+      });
       const liveGain = live.state.g.cash - cashLive0;
 
       // Offline: catchUp at 50% rate
-      const result = off.catchUp(off.state.g, 3600);
       const offGain = off.state.g.cash - cashOff0;
 
       // Offline cash delta should be ≈ half of live (same shift alignment)
@@ -782,7 +797,7 @@ console.log('\n5. catchUp offline simulation (PLAN §1.1)');
       const tol = Math.max(Math.abs(expected) * 0.02, 0.01);
       ok(
         Math.abs(offGain - expected) <= tol,
-        `offline cash gain ${offGain} vs 50% live ${expected} (tol ${tol}); catchUp result=${JSON.stringify(result)}`
+        `offline cash gain ${offGain} vs 50% live ${expected} (tol ${tol})`
       );
     });
 
@@ -2820,7 +2835,188 @@ test('sanitizeG backfills managers map from known IDs', () => {
   }
 });
 
-// ── Results ──────────────────────────────────────────────────────────────────
+// ── Special shifts (PLAN §4.2) ───────────────────────────────────────────────
+
+console.log('\nspecial shifts (PLAN §4.2)');
+
+test('special-shift override does not corrupt the base SHIFTS rotation on the next boundary', () => {
+  const game = newGame();
+  const g = game.state.g;
+  g.shiftIdx = 1; // Peak Hours
+  g.shiftT = 0;
+  // Sub-chance roll forces a special on this boundary.
+  withRandom([0.01, 0.0], () => {
+    game.advanceShift(g);
+  });
+  ok(g._specialShift != null, 'a special was triggered on the boundary');
+  const special = game.SPECIAL_SHIFTS[g._specialShift];
+  strictEqual(game.effectiveShift(g), special, 'effective shift is the special');
+  strictEqual(g.shiftIdx, 2, 'base rotation advanced to Last Call underneath the special');
+  // rates() must expose the special as the active shift (len/mult feed the sim).
+  const r = game.rates(g);
+  strictEqual(r.shift, special, 'rates() reports the special shift');
+  strictEqual(r.sm, special.mult, 'sm uses the special mult');
+  // The special instance ends; a high roll so it is not re-triggered (no 2 in a row).
+  withRandom([0.99], () => {
+    game.advanceShift(g);
+  });
+  strictEqual(g._specialShift, null, 'special cleared after its instance');
+  strictEqual(g.shiftIdx, 3, 'base rotation resumed to After Hours');
+  strictEqual(game.effectiveShift(g), game.SHIFTS[3], 'effective shift back to base After Hours');
+  // Next normal boundary wraps to Early Doors and increments the night.
+  withRandom([0.99], () => {
+    game.advanceShift(g);
+  });
+  strictEqual(g.shiftIdx, 0, 'base rotation wraps to Early Doors');
+  strictEqual(g.night, 2, 'night incremented on the wrap to Early Doors');
+});
+
+test('weighted selection respects the no-repeat constraint', () => {
+  const game = newGame();
+  const g = game.state.g;
+  g.shiftIdx = 0;
+  g.shiftT = 0;
+  // Two consecutive sub-chance rolls: the first triggers a special, the second must
+  // NOT re-trigger because a special just ended — even though its roll is < chance.
+  withRandom([0.01, 0.02, 0.03], () => {
+    game.advanceShift(g); // consume 0.01 (trigger) then 0.02 (weighted pick)
+    game.advanceShift(g); // special just ended → no re-roll (0.03 ignored)
+  });
+  strictEqual(g._specialShift, null, 'no second special back-to-back');
+  strictEqual(g.shiftIdx, 2, 'base rotation advanced two boundaries');
+});
+
+test('pickSpecialShift is weighted by each entry weight field', () => {
+  const game = newGame();
+  // Total weight = 4+3+3 = 10. Roll 0.0 → first, 0.45 (=4.5) → second, 0.99 (=9.9) → third.
+  withRandom([0.0], () => strictEqual(game.pickSpecialShift(game.state.g), 0));
+  withRandom([0.45], () => strictEqual(game.pickSpecialShift(game.state.g), 1));
+  withRandom([0.99], () => strictEqual(game.pickSpecialShift(game.state.g), 2));
+});
+
+test('special shifts work inside catchUp() (offline-progress slices)', () => {
+  const game = newGame();
+  const g = game.state.g;
+  g.b.bar = 2;
+  g.patrons = 20;
+  g.crew = 1;
+  g.jobs = { stage: 1, vipjob: 0, floor: 0, off: 0 };
+  g.shiftIdx = 0;
+  g.shiftT = 0;
+  // Activate the first special (Bachelorette Rush) and confirm catchUp accrues
+  // against its len, rolls it over, and clears it — the same path as a live trigger.
+  g._specialShift = 0;
+  const specialLen = game.SPECIAL_SHIFTS[0].len;
+  game.catchUp(g, specialLen + 1);
+  strictEqual(g._specialShift, null, 'special cleared after its length in catchUp');
+  strictEqual(g.shiftIdx, 1, 'base rotation advanced after the special in catchUp');
+});
+
+test('special shifts work inside live step() and resolve on the next boundary', () => {
+  const game = newGame();
+  const g = game.state.g;
+  g.b.bar = 2;
+  g.cash = 500;
+  g.patrons = 20;
+  // No stage worker → hype stays 0 → step()'s whale check never consumes Math.random.
+  g.crew = 1;
+  g.jobs = { stage: 0, vipjob: 0, floor: 0, off: 1 };
+  g.shiftIdx = 0;
+  g.shiftT = 39; // 1s from the end of Early Doors (len 40)
+  // Force a special on the rollover, then high rolls so it is never re-triggered.
+  withRandom([0.01, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99], () => {
+    game.step(2); // crosses the boundary and runs ~1s into the special
+  });
+  ok(g._specialShift != null, 'special is active during live step');
+  strictEqual(g.shiftIdx, 1, 'base rotation advanced but the special overlays Peak Hours');
+  strictEqual(game.effectiveShift(g), game.SPECIAL_SHIFTS[g._specialShift], 'step uses the special');
+  // Run the special to completion, then one more second → base rotation resumes.
+  withRandom([0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99], () => {
+    game.step(game.SPECIAL_SHIFTS[g._specialShift].len + 1);
+  });
+  strictEqual(g._specialShift, null, 'special resolved after its length in step');
+  strictEqual(g.shiftIdx, 2, 'base rotation resumed to Last Call in step');
+});
+
+test('special shifts are a pure modifier — base SHIFTS shape untouched', () => {
+  const game = newGame();
+  for (const s of game.SHIFTS) {
+    ok(['name', 'mult', 'len', 'tint'].every(k => k in s), 'SHIFTS entry has base shape: ' + s.name);
+    ok(!('weight' in s), 'base SHIFTS entry has no weight field: ' + s.name);
+  }
+  for (const s of game.SPECIAL_SHIFTS) {
+    ok(['name', 'mult', 'len', 'tint', 'weight'].every(k => k in s), 'SPECIAL_SHIFTS entry shape: ' + s.name);
+  }
+});
+
+test('special announced even on a night-wrap rollover (review nit fix)', () => {
+  const game = newGame();
+  const g = game.state.g;
+  g.b.bar = 2;
+  g.cash = 500;
+  g.patrons = 20;
+  // No stage worker → hype stays 0 → whale check never consumes Math.random.
+  g.crew = 1;
+  g.jobs = { stage: 0, vipjob: 0, floor: 0, off: 1 };
+  // After Hours (len 30) is the last shift; rolling over wraps to a new night AND
+  // triggers a special. Crossing the boundary in a ≤0.5s chunk makes the rollover
+  // chatty. Previously the "Night begins." line swallowed the special announcement.
+  g.shiftIdx = 3;
+  g.shiftT = 29.6; // 0.4s from the end of After Hours
+  withRandom([0.01, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99, 0.99], () => {
+    game.step(0.5); // wraps to a new night with a special active, chatty rollover
+  });
+  strictEqual(g.shiftIdx, 0, 'wrapped to Early Doors (new night)');
+  strictEqual(g.night, 2, 'night incremented');
+  ok(g._specialShift != null, 'special active on the night-wrap rollover');
+  const specialName = game.SPECIAL_SHIFTS[g._specialShift].name;
+  ok(g.log.some(e => e.msg.includes(specialName)), 'special is announced in the log on night wrap');
+  ok(g.log.some(e => e.msg.startsWith('Night ')), 'night-begin line still present');
+});
+
+test('save with an active special shift past the base length round-trips (blocking review fix)', () => {
+  const game = newGame();
+  const base = game.state.g;
+  // After Hours (base len 30) overridden by Midweek Surge (len 34) — shiftT 32 is
+  // past the base length but valid for the special. Previously completeImportedG
+  // validated against the base length only, so this save was rejected and wiped.
+  const g = game.fresh();
+  g.shiftIdx = 3;
+  g.shiftT = 32;
+  g._specialShift = 1; // Midweek Surge
+  const payload = {
+    saveVer: game.SAVE_VER,
+    ver: game.VERSION.num,
+    build: game.VERSION.build,
+    g
+  };
+  game.state.g = base;
+  const ok = game.importSaveFromText(JSON.stringify(payload));
+  strictEqual(ok, true, 'save with a longer active special imports');
+  strictEqual(game.state.g._specialShift, 1, 'special index preserved');
+  strictEqual(game.state.g.shiftT, 32, 'shiftT past base length preserved');
+  strictEqual(game.state.g.shiftIdx, 3, 'base shift index preserved');
+});
+
+test('save with an invalid special index is sanitized, not rejected (fail-closed)', () => {
+  const game = newGame();
+  const base = game.state.g;
+  const g = game.fresh();
+  g.shiftIdx = 1;
+  g.shiftT = 10; // within Peak Hours (len 55)
+  g._specialShift = 99; // not a valid SPECIAL_SHIFTS index
+  const payload = {
+    saveVer: game.SAVE_VER,
+    ver: game.VERSION.num,
+    build: game.VERSION.build,
+    g
+  };
+  game.state.g = base;
+  const ok = game.importSaveFromText(JSON.stringify(payload));
+  strictEqual(ok, true, 'save with a bad special index still imports');
+  strictEqual(game.state.g._specialShift, null, 'invalid special index cleared');
+  strictEqual(game.state.g.shiftT, 10, 'shiftT preserved against base length');
+});
 
 console.log('\n───────────────────────────────────────');
 console.log(`Results: ${passed} passed, ${skipped} skipped, ${failed} failed`);
