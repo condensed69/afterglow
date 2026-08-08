@@ -267,8 +267,8 @@ test('cash10 multiplier scales rates().cash and cashIncomeMult()', () => {
   g.perks.cash10 = 5;
   const boosted = game.rates(g).cash;
   const boostedMult = game.cashIncomeMult(g);
-  strictEqual(boostedMult, 1.5);
-  ok(Math.abs(boosted - base * 1.5) < 0.0001, 'rates().cash scales by 1.5x at cash10 rank 5');
+  strictEqual(boostedMult, 1.75);
+  ok(Math.abs(boosted - base * 1.75) < 0.0001, 'rates().cash scales by 1.75x at cash10 rank 5 (15%/rank)');
 });
 
 test('clout25 multiplier scales rates().clout', () => {

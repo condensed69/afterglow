@@ -156,7 +156,7 @@ Data-driven table `PRESTIGE_PERKS`. All costs in **Legacy**. First implementatio
 
 | # | id | Name | Effect | Cost | Max rank | Notes |
 |---|-----|------|--------|-----:|---------:|-------|
-| 1 | `cash10` | House cut | +10% all cash income per rank | 1 | 5 | Multiplies **all** cash income: passive `rates()` cash **and** active Work-the-crowd clicks (see apply rules) |
+| 1 | `cash10` | House cut | +15% all cash income per rank | 1 | 5 | Multiplies **all** cash income: passive `rates()` cash **and** active Work-the-crowd clicks (see apply rules) |
 | 2 | `startCrew` | Seed roster | Start run with 1 crew on Main Stage | 2 | 1 | Applied after `fresh()`; `crew = 1`, `jobs.stage = 1` |
 | 3 | `startFlyers` | Street team | Start run with Flyer Crew ×1 built | 3 | 1 | `b.flyers = 1` after fresh; does not refund if player rebuilds |
 | 4 | `offline65` | Franchise playbook | Offline / catchUp rate 50% → 65% | 4 | 1 | Only `catchUp` dt factor; live `step` stays 100% |
@@ -179,9 +179,9 @@ Single helper used everywhere — no scattered `g.perks?.x` copies.
 
 ### Apply rules (locked)
 
-1. **`cash10` (House cut — all cash income, including clicks)** — multiplies **every** cash income source by `(1 + 0.10 * perk(g, 'cash10'))`:
-   - **Passive:** in `rates()`, after existing cash multipliers are composed for income terms, multiply **all cash income components** (non-crew cash and VIP crew cash). Do **not** multiply wages. Net cash = boosted income − wages (same strike structure).
-   - **Active:** `workCrowd` currently adds `clickVal` straight to `g.cash` (bypasses `rates()`). Implementation **must** apply the same House-cut factor to that click grant (e.g. `g.cash += clickVal * (1 + 0.10 * perk(g, 'cash10'))`, or factor through a shared `cashIncomeMult(g)` helper used by both `rates()` and `workCrowd`). The perk copy "+10% all cash income" is **not** passive-only; the prestige pacing bot also uses `workCrowd` while cash is low, so click mult is load-bearing for the §7 scenario.
+1. **`cash10` (House cut — all cash income, including clicks)** — multiplies **every** cash income source by `(1 + 0.15 * perk(g, 'cash10'))`:
+   - **Passive:** `rates().cash` is already multiplied by `houseCut = cashIncomeMult(g)` (line ~1455).
+   - **Active:** `workCrowd` currently adds `clickVal` straight to `g.cash` (bypasses `rates()`). Implementation **must** apply the same House-cut factor to that click grant (e.g. `g.cash += clickVal * (1 + 0.15 * perk(g, 'cash10'))`, or factor through a shared `cashIncomeMult(g)` helper used by both `rates()` and `workCrowd`). The perk copy "+15% all cash income" is **not** passive-only; the prestige pacing bot also uses `workCrowd` while cash is low, so click mult is load-bearing for the §7 scenario.
 2. **`startCrew` / `startFlyers`** — only in prestige reset path and in `fresh()` when loading a meta-save that already has those perks (new club after prestige, and brand-new game with perks should not happen without prestige; `fresh()` still checks perks so a future "new run keep meta" path is consistent).  
 3. **`offline65`** — `catchUp` uses `dt = wall * (perk(g, 'offline65') ? 0.65 : 0.5)` instead of hardcoded `0.5`. Live `step` unchanged. Away report still honest on gross/wages.  
 4. **`doorPlus`** — in buy path and UI max for Door Staff: `max = (BUILDINGS door max) + perk(g, 'doorPlus')` → 6 or 7. **Card description must not hardcode `"(max 6)"`** (current Door Staff blurb does). When implementing, derive displayed max from the same expression as the buy path (e.g. `"… (max " + doorMax(g) + ")"`) or drop the parenthetical and show remaining capacity only on the card body. Leaving static "max 6" while allowing a seventh hire is a bug.  
@@ -267,7 +267,7 @@ When prestige is implemented, extend `pacing.mjs` (dependency-free, same DOM pre
 3. Only if gate is met: perform prestige reset with formula gain; spend **exactly 1 Legacy** on `cash10` rank 1 (leave remaining Legacy unspent).  
 4. **Run 2:** same bot from post-prestige start state.  
 5. Record wall-time of first LED as `t2`.  
-6. **Assert:** `t2 < t1` (run 2 reaches first upgrade faster with +10% cash). Exit non-zero on failure.
+6. **Assert:** `t2 < t1` (run 2 reaches first upgrade faster with +15% cash). Exit non-zero on failure.
 
 ### Reporting
 
@@ -277,7 +277,7 @@ Print a second table block:
 Prestige scenario
   run1 gate regulars: … (need >= 25)
   run1 first LED:  …s
-  run2 first LED (+10% cash perk): …s
+  run2 first LED (+15% cash perk): …s
   delta: …s (must be < 0 wall for run2 − run1)
 ```
 

@@ -94,7 +94,7 @@ hypeMult  = 1 + hype / 140
 crewMult  = residency ? 1.4 : 1
 cashMult  = (twodrink ? 1.35 : 1) * hypeMult * sm
 bottle    = bottle service ? 2.2 : 1
-houseCut  = cashIncomeMult(g) = 1 + 0.10 × cash10 perk rank   // multiplies ALL cash income
+houseCut  = cashIncomeMult(g) = 1 + 0.15 × cash10 perk rank   // multiplies ALL cash income
 cloutMult = 1 + 0.25 × clout25 perk rank                      // multiplies Clout gain
 ```
 
@@ -356,7 +356,7 @@ Legacy cost, max rank. `req: perkId` gates purchase on the prerequisite perk's r
 
 | id | Name | Cost | Max | Req | Effect |
 |----|------|-----:|----:|-----|--------|
-| cash10 | House cut | 1 | 5 | — | +10% all cash income per rank |
+| cash10 | House cut | 1 | 5 | — | +15% all cash income per rank |
 | startCrew | Seed roster | 2 | 1 | — | Start run with 1 crew on Main Stage |
 | startFlyers | Street team | 3 | 1 | — | Start run with Flyer Crew ×1 built |
 | offline65 | Franchise playbook | 4 | 1 | cash10 | Offline / catchUp rate 50% → 65% |

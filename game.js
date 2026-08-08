@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.10.2', build: 193, channel: 'alpha', date: '2026-08-08', codename: 'Neon Zero' };
+  VERSION = { num: '0.10.3', build: 194, channel: 'alpha', date: '2026-08-08', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -108,6 +108,9 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.10.3', date: '2026-08-08', codename: 'Neon Zero', notes: [
+      'Prestige "House cut" cash perk increased from +10% to +15% per rank. Formula 1 + 0.15 × cash10 rank. Prestige acceleration (run2 ÷ run1 first-LED) moves from ~0.95 to ~0.83, within the 0.7–0.9× target. All pacing milestones in band; prestige delta −2.50m (was −0.70m).'
+    ] },
     { v: '0.10.2', date: '2026-08-08', codename: 'Neon Zero', notes: [
       'Burst-event variety: a Critic now reviews each new night when Hype is high (2%/night). Strong room (20+ patrons) → rave: +Hype and +2 Clout. Weak room → pan: −Hype (floor 0). Adds live risk/reward texture around the deterministic building/research curve.',
       'Golden ticket: rare (0.5% per live tick, roll scaled to sim slice) floating offer while Hype is positive — a VIP booked the booth. Take the tip (cash scaled by income) or grow the crowd (+10 patrons, capped). One offer at a time; expires after 30s (live tick or offline catch-up).',
@@ -373,7 +376,7 @@ class Game {
   // Note: unlike UPGRADES.req ({ buildingId: count }), a perk req is a bare perkId string (existence-based,
   // rank >= 1). Reqs gate future purchases only, not past unlocks.
   PRESTIGE_PERKS = [
-    { id: 'cash10', name: 'House cut', cost: 1, max: 5, desc: '+10% all cash income per rank.' },
+    { id: 'cash10', name: 'House cut', cost: 1, max: 5, desc: '+15% all cash income per rank.' },
     { id: 'startCrew', name: 'Seed roster', cost: 2, max: 1, desc: 'Start run with 1 crew on Main Stage.' },
     { id: 'startFlyers', name: 'Street team', cost: 3, max: 1, desc: 'Start run with Flyer Crew ×1 built.' },
     { id: 'offline65', name: 'Franchise playbook', cost: 4, max: 1, req: 'cash10', desc: 'Offline / catchUp rate 50% → 65%.' },
@@ -459,7 +462,7 @@ class Game {
 
   // Multiplier applied to all cash income (passive + active clicks) from House cut perk.
   cashIncomeMult(g) {
-    return 1 + 0.10 * this.perk(g, 'cash10');
+    return 1 + 0.15 * this.perk(g, 'cash10');
   }
 
   JOBS = [
