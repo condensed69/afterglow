@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.10.4', build: 195, channel: 'alpha', date: '2026-08-08', codename: 'Neon Zero' };
+  VERSION = { num: '0.10.5', build: 196, channel: 'alpha', date: '2026-08-08', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -108,6 +108,10 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.10.5', date: '2026-08-08', codename: 'Neon Zero', notes: [
+      'Mobile buy-multiple: building cards now show ×1 / ×5 / ×10 / ×Max buttons so touch players can bulk-buy structures without a Shift key. Desktop Shift-click max still works.',
+      'Golden ticket is now a compact, collapsible VIP badge in the top-right of the stage instead of a large centered overlay. The idle sim keeps ticking underneath; tap the badge to open the choice and claim it when you want.'
+    ] },
     { v: '0.10.4', date: '2026-08-08', codename: 'Neon Zero', notes: [
       'Render throttle: DOM re-render capped at ~4 fps (250ms) while sim still steps every 100ms. Live tick increments state.tick each frame but only calls forceUpdate() when the throttle window has elapsed. User actions (clicks, purchases, golden ticket) and the catchUp path always render immediately. In a busy state (100 patrons, all buildings), per-call render() cost is ~20ms; at 10 fps that is 200ms/s of CPU, down to ~80ms/s with throttle — a ~60% reduction. No SAVE_VER bump.'
     ] },
@@ -596,6 +600,8 @@ class Game {
 
   state = {
     tab: 'club', showChangelog: false, showSettings: false, showPrestige: false, showAchievements: false, tick: 0, saveState: 'idle', resetArmed: false,
+    // Golden-ticket expanded state: badge is small by default; player taps to expand.
+    goldenOpen: false,
     // true when another tab wrote KEY — autosave is off until reload (PLAN §2.3).
     tabStale: false,
     g: null
@@ -1733,26 +1739,15 @@ class Game {
 
   // --- actions (buy*, hire, moveJob) ---
   // Non-owner / foreign-tab pause: actions are no-ops so progress cannot be "played" without persistence.
-  buyBuilding(def) {
+  // Buy `count` buildings (default 1), respecting caps and cash. Used by both
+  // the desktop single-build button and the mobile ×1/×5/×10/×Max quartet.
+  buyBuilding(def, count = 1) {
     if (this.state.tabStale) return;
     const g = this.state.g;
-    const n = g.b[def.id];
-    const max = def.id === 'door' ? this.doorMax(g) : def.max;
-    if (max != null && n >= max) return;
-    const price = Math.floor(def.cost * Math.pow(def.growth, n));
-    if (g.cash < price) return;
-    g.cash -= price;
-    g.b[def.id] = n + 1;
-    this.push(g, 'Built ' + def.name + ' #' + (n + 1) + ' for $' + this.fmt(price) + '.', '#22d3ee');
-    this.noteGoals(g);
-    this.checkAchievements(g);
-    this.forceUpdate();
-  }
-  buyBuildingMax(def) {
-    if (this.state.tabStale) return;
-    const g = this.state.g;
+    if (!count || count < 1) count = 1;
     let bought = 0;
-    while (true) {
+    let lastPrice = 0;
+    for (let i = 0; i < count; i++) {
       const n = g.b[def.id];
       const max = def.id === 'door' ? this.doorMax(g) : def.max;
       if (max != null && n >= max) break;
@@ -1761,13 +1756,35 @@ class Game {
       g.cash -= price;
       g.b[def.id] = n + 1;
       bought++;
+      lastPrice = price;
     }
     if (bought > 0) {
-      this.push(g, 'Built ' + def.name + ' \u00d7' + bought + '.', '#22d3ee');
+      this.push(g, 'Built ' + def.name + (bought === 1 ? ' #' + g.b[def.id] + ' for $' + this.fmt(lastPrice) : ' \u00d7' + bought) + '.', '#22d3ee');
       this.noteGoals(g);
       this.checkAchievements(g);
       this.forceUpdate();
     }
+  }
+  // Maximum affordable count for a building, capped by building max.
+  // Extracted so the UI and the buy button can agree on the number.
+  buildingMaxAffordable(def, cash = this.state.g.cash) {
+    const g = this.state.g;
+    let n = g.b[def.id];
+    const cap = def.id === 'door' ? this.doorMax(g) : def.max;
+    let count = 0;
+    while (true) {
+      if (cap != null && n >= cap) break;
+      const price = Math.floor(def.cost * Math.pow(def.growth, n));
+      if (cash < price) break;
+      cash -= price;
+      n++;
+      count++;
+    }
+    return count;
+  }
+  buyBuildingMax(def) {
+    const count = this.buildingMaxAffordable(def);
+    if (count > 0) this.buyBuilding(def, count);
   }
   buyUpgrade(def) {
     if (this.state.tabStale) return;
@@ -2107,19 +2124,34 @@ class Game {
 
     let cards = [], tabHint = '';
     if (this.state.tab === 'club') {
-      tabHint = 'Structures are permanent and scale in price. Everything on this tab is bought with cash. A few regulars wander in on their own; Buzz fills the floor faster. Shift-click a Build button to buy the maximum affordable in one click.';
+      tabHint = 'Structures are permanent and scale in price. Everything on this tab is bought with cash. A few regulars wander in on their own; Buzz fills the floor faster. Use the ×1 / ×5 / ×10 / ×Max buttons (or Shift-click a Build button on desktop) to buy multiple at once.';
       cards = this.BUILDINGS.map(d => {
         const n = g.b[d.id], price = Math.floor(d.cost * Math.pow(d.growth, n));
         const max = d.id === 'door' ? this.doorMax(g) : d.max;
         const maxed = max != null && n >= max;
         const ok = !maxed && g.cash >= price;
+        const affordable = maxed ? 0 : this.buildingMaxAffordable(d);
+        const can5 = !maxed && affordable >= 5;
+        const can10 = !maxed && affordable >= 10;
+        const canMax = affordable > 1;
         let desc = d.desc;
         if (d.id === 'door') desc = desc.replace('(max 6)', '(max ' + max + ')');
-        return { name: d.name, desc: desc, owned: n > 0 ? '\u00d7' + n : '\u2014',
-                  btn: maxed ? 'Maxed' : 'Build $' + this.fmt(price),
-                  meta: maxed ? 'maxed' : (ok ? 'affordable' : 'need $' + this.fmt(price - g.cash)),
-                  locked: !ok, wrapStyle: cardWrap(!maxed), btnStyle: btn(ok), act: () => this.buyBuilding(d), buildingId: d.id };
-              });
+        return {
+          name: d.name, desc: desc, owned: n > 0 ? '\u00d7' + n : '\u2014',
+          btn: maxed ? 'Maxed' : 'Build $' + this.fmt(price),
+          meta: maxed ? 'maxed' : (ok ? 'affordable' : 'need $' + this.fmt(price - g.cash)),
+          locked: !ok, wrapStyle: cardWrap(!maxed), btnStyle: btn(ok),
+          act: () => this.buyBuilding(d, 1),
+          buildingId: d.id,
+          multi: {
+            maxed,
+            x1: { act: () => this.buyBuilding(d, 1), locked: !ok, style: btn(ok, '#ff2d78') },
+            x5: { act: () => this.buyBuilding(d, 5), locked: !can5, label: '×5', style: btn(can5, '#ff2d78') },
+            x10: { act: () => this.buyBuilding(d, 10), locked: !can10, label: '×10', style: btn(can10, '#ff2d78') },
+            max: { act: () => this.buyBuildingMax(d), locked: !canMax, label: '×' + affordable, style: btn(canMax, '#ff2d78') }
+          }
+        };
+      });
     } else if (this.state.tab === 'crew') {
       tabHint = 'Hire dancers, then assign them to Main Stage (Hype), VIP, or Floor. Wages tick every second — park extras Off Shift when the room is dead.';
       const price = Math.floor(280 * Math.pow(1.38, g.crew));
@@ -2272,11 +2304,18 @@ class Game {
         this.checkAchievements(g);
         this.forceUpdate();
       },
-      // 0.10.2 golden ticket: overlay offer on the stage (see takeGolden).
-      // Buttons grey out on a stale tab, matching the confirmPrestige/round pattern.
-      golden: g.golden ? { cashLabel: 'Take the $', crowdLabel: 'Grow the crowd', locked: this.state.tabStale } : null,
-      takeGoldenCash: () => this.takeGolden(g, 'cash'),
-      takeGoldenCrowd: () => this.takeGolden(g, 'crowd'),
+      // 0.10.2 golden ticket: compact side badge on the stage. The badge is
+      // small, stays to the side, and lets the player open it when they want.
+      // It no longer blocks the stage with a large modal; the idle sim keeps
+      // ticking underneath. Buttons grey out on a stale tab.
+      golden: g.golden ? {
+        cashAmount: Math.floor(25 * this.cashIncomeMult(g)),
+        crowdAmount: Math.min(10, this.caps(g).patrons - g.patrons),
+        locked: this.state.tabStale
+      } : null,
+      goldenOpen: this.state.goldenOpen,
+      openGolden: () => this.setState(s => ({ goldenOpen: true })),
+      closeGolden: () => this.setState(s => ({ goldenOpen: false })),
       debugLine: (this.props.showDebug ?? false) ? 'cash ' + r.cash.toFixed(3) + '/s · hype ' + r.hype.toFixed(3) + '/s · buzz ' + r.buzz.toFixed(3) + '/s · pull ' + r.pull.toFixed(2) : '',
       ownersList: (() => {
         const total = this.GOALS.length;
@@ -2546,7 +2585,10 @@ class Game {
   // from live step() and catchUp() so a reload after offline never renders a dead
   // offer. Deterministic — no random roll, pacing-bot safe.
   expireGolden(g) {
-    if (g && g.golden && Date.now() - g.golden.at >= this.GOLDEN_TTL * 1000) g.golden = null;
+    if (g && g.golden && Date.now() - g.golden.at >= this.GOLDEN_TTL * 1000) {
+      g.golden = null;
+      this.state.goldenOpen = false;
+    }
   }
 
   // Resolve the active golden offer: 'cash' (income-scaled tip) or 'crowd'
@@ -2565,6 +2607,7 @@ class Game {
       this.push(g, 'Golden ticket: VIP tipped $' + this.fmt(amount) + '.', '#ffc94a');
     }
     g.golden = null;
+    this.state.goldenOpen = false;
     // Match the whale/tip handler pattern: a patrons/cash change can complete a
     // goal or achievement — resolve it here, not one tick later.
     this.noteGoals(g);
@@ -2623,10 +2666,17 @@ class Game {
           <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#22d3ee">${cd.owned}</span>
         </div>
         <div style="font-size:11px;color:#8b76a0;line-height:1.45;margin:4px 0 8px">${cd.desc}</div>
-        <div style="display:flex;align-items:center;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           ${cd.reqLocked
             ? `<span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#6f5885;font-weight:600;min-width:104px;text-align:center;padding:8px 12px">requires ${cd.reqName}</span>`
-            : `<button data-h="${this.bind(cd.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.locked ? 'disabled' : ''} ${cd.buildingId ? 'title="Shift-click to buy the maximum affordable"' : ''} style="${css(cd.btnStyle)}">${cd.btn}</button>`}
+            : cd.multi && !cd.multi.maxed
+              ? `<div style="display:flex;gap:6px;align-items:center">
+                  <button data-h="${this.bind(cd.multi.x1.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.multi.x1.locked ? 'disabled' : ''} title="Shift-click to buy the maximum affordable" style="${css({ ...cd.multi.x1.style, minWidth: '40px', padding: '8px 6px' })}">×1</button>
+                  <button data-h="${this.bind(cd.multi.x5.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.multi.x5.locked ? 'disabled' : ''} title="Shift-click to buy the maximum affordable" style="${css({ ...cd.multi.x5.style, minWidth: '40px', padding: '8px 6px' })}">${cd.multi.x5.label}</button>
+                  <button data-h="${this.bind(cd.multi.x10.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.multi.x10.locked ? 'disabled' : ''} title="Shift-click to buy the maximum affordable" style="${css({ ...cd.multi.x10.style, minWidth: '40px', padding: '8px 6px' })}">${cd.multi.x10.label}</button>
+                  <button data-h="${this.bind(cd.multi.max.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.multi.max.locked ? 'disabled' : ''} title="Shift-click to buy the maximum affordable" style="${css({ ...cd.multi.max.style, minWidth: '48px', padding: '8px 6px' })}">${cd.multi.max.label}</button>
+                </div>`
+              : `<button data-h="${this.bind(cd.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.locked ? 'disabled' : ''} ${cd.buildingId ? 'title="Shift-click to buy the maximum affordable"' : ''} style="${css(cd.btnStyle)}">${cd.btn}</button>`}
           <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#6f5885;text-align:right;flex:1">${cd.meta}</span>
         </div>
       </div>`).join('');
@@ -2858,13 +2908,23 @@ class Game {
         </div>
 
         ${v.golden ? `
-        <div style="position:absolute;left:50%;bottom:36%;transform:translateX(-50%);background:linear-gradient(180deg,#38260a,#1c1105);border:1px solid #ffc94a;border-radius:10px;padding:10px 14px;text-align:center;box-shadow:0 0 28px rgba(255,201,74,.4);z-index:5;min-width:230px">
-          <div style="font-size:9px;letter-spacing:2.4px;text-transform:uppercase;color:#ffc94a;font-weight:700;margin-bottom:5px">Golden ticket</div>
-          <div style="font-size:11px;color:#f3e2c2;margin-bottom:8px">VIP booked the booth — take the tip or grow the crowd?</div>
-          <div style="display:flex;gap:8px;justify-content:center">
-            <button data-h="${this.bind(v.takeGoldenCash)}" ${v.golden.locked ? 'disabled' : ''} style="background:${v.golden.locked ? '#2a1d0a' : 'linear-gradient(180deg,#ffc94a,#b8860b)'};border:0;border-radius:7px;color:${v.golden.locked ? '#6b5212' : '#1c1105'};font-weight:700;font-size:11px;padding:7px 12px;cursor:${v.golden.locked ? 'not-allowed' : 'pointer'}">${v.golden.cashLabel}</button>
-            <button data-h="${this.bind(v.takeGoldenCrowd)}" ${v.golden.locked ? 'disabled' : ''} style="background:${v.golden.locked ? '#1a1226' : '#170e22'};border:1px solid ${v.golden.locked ? '#2a1738' : '#ffc94a'};border-radius:7px;color:${v.golden.locked ? '#5a3a70' : '#ffc94a'};font-weight:700;font-size:11px;padding:7px 12px;cursor:${v.golden.locked ? 'not-allowed' : 'pointer'}">${v.golden.crowdLabel}</button>
-          </div>
+        <div style="position:absolute;right:10px;top:10px;z-index:5;display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+          ${v.goldenOpen ? `
+          <div style="background:linear-gradient(180deg,#38260a,#1c1105);border:1px solid #ffc94a;border-radius:10px;padding:10px 12px;text-align:left;box-shadow:0 0 28px rgba(255,201,74,.35);min-width:170px;max-width:220px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+              <div style="font-size:9px;letter-spacing:2.4px;text-transform:uppercase;color:#ffc94a;font-weight:700">Golden ticket</div>
+              <button data-h="${this.bind(v.closeGolden)}" style="background:transparent;border:0;color:#8b7355;font-size:14px;line-height:1;cursor:pointer;padding:0 0 0 8px">×</button>
+            </div>
+            <div style="font-size:11px;color:#f3e2c2;margin-bottom:8px">VIP booked the booth.</div>
+            <div style="display:flex;gap:6px">
+              <button data-h="${this.bind(() => this.takeGolden(g, 'cash'))}" ${v.golden.locked ? 'disabled' : ''} style="flex:1;background:${v.golden.locked ? '#2a1d0a' : 'linear-gradient(180deg,#ffc94a,#b8860b)'};border:0;border-radius:6px;color:${v.golden.locked ? '#6b5212' : '#1c1105'};font-weight:700;font-size:10px;padding:6px 8px;cursor:${v.golden.locked ? 'not-allowed' : 'pointer'}">+$${this.fmt(v.golden.cashAmount)}</button>
+              <button data-h="${this.bind(() => this.takeGolden(g, 'crowd'))}" ${v.golden.locked ? 'disabled' : ''} style="flex:1;background:${v.golden.locked ? '#1a1226' : '#170e22'};border:1px solid ${v.golden.locked ? '#2a1738' : '#ffc94a'};border-radius:6px;color:${v.golden.locked ? '#5a3a70' : '#ffc94a'};font-weight:700;font-size:10px;padding:6px 8px;cursor:${v.golden.locked ? 'not-allowed' : 'pointer'}">+${v.golden.crowdAmount} crowd</button>
+            </div>
+          </div>` : `
+          <button data-h="${this.bind(v.openGolden)}" style="background:linear-gradient(180deg,#ffc94a,#b8860b);border:0;border-radius:20px;padding:6px 10px;box-shadow:0 0 18px rgba(255,201,74,.45);display:flex;align-items:center;gap:6px;cursor:pointer;animation:pulseDot 1.6s ease-in-out infinite">
+            <span style="font-size:13px">🎫</span>
+            <span style="font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:#1c1105;font-weight:800">VIP</span>
+          </button>`}
         </div>` : ''}
       </div>
 
