@@ -416,11 +416,13 @@ A whale is **not** a click (does not increment `g.clicks`).
 
 ---
 
-## 12. Achievements (`ACHIEVEMENTS`) — shipped 0.8.1, 23 entries
+## 12. Achievements (`ACHIEVEMENTS`) — shipped 0.8.1 (23), density pass 0.10.1 (38)
 
 Permanent unlocks with small Clout/Legacy rewards. `checkAchievements(g)` iterates the catalog; on first pass of a satisfied check it pushes the id, pays the reward once, and logs **“Achievement: <name> — <desc>”** (`#ffd700`). Called per-slice in `step`/`catchUp` (so stat/night thresholds reached mid-window unlock), after every buy/hire action, after `spawnWhale`, after prestige, and on load via migration v6→v7 backfill.
 
 **Reward accounting rule (0.9.5, regression-tested):** achievement **Legacy rewards credit BOTH `g.legacy` (spendable) and `g.legacyTotal` (lifetime)** — matching how prestige gains are tracked — so `legacy_50` (Legacy Builder) and the Perks tab “Total Legacy earned” reflect achievement income. This matters in a single pass: `prestige_1` (+1) can push `legacyTotal` across 50 and unlock `legacy_50` (+2) in the same `checkAchievements` call.
+
+**0.10.1 density pass:** catalog grew 23 → 38 — new building tiers (10 bars, 5 DJs, 3 marquees, 5 flyer crews, max door, 3 dressing rooms), stat tiers (200 hype, 100 patrons, 50 regulars, 25 nights), 10 rounds, and burst-event achievements driven by two additive counters: `g.whalesCount` (incremented in `spawnWhale`) and `g.specialsCount` (incremented in `advanceShift` when a special actually triggers). The four burst-event achievements reward **Legacy, not Clout**: they fire early and randomly, and Clout rewards would inject variance into research pacing (Clout is the research currency; see §11 and `pacing.mjs`).
 
 | id | Name | Check | Reward |
 |----|------|-------|--------|
@@ -447,6 +449,21 @@ Permanent unlocks with small Clout/Legacy rewards. `checkAchievements(g)` iterat
 | all_upgrades | Fully Loaded | every upgrade bought | 3 Legacy |
 | all_research | Scholar | every research bought | 2 Legacy |
 | max_perks | Perfectionist | every perk at max rank | 10 Legacy |
+| bar_10 | Two-Thirds Full | bar ≥ 10 | 2 Clout |
+| dj_5 | Beatkeeper | dj ≥ 5 | 2 Clout |
+| marquee_3 | Bright Lights | marquee ≥ 3 | 3 Clout |
+| flyers_5 | Street Team | flyers ≥ 5 | 2 Clout |
+| door_max | Bouncer | door ≥ `doorMax(g)` | 3 Clout |
+| dress_3 | Backstage Pass | dress ≥ 3 | 3 Clout |
+| hype_200 | Deafening | hype ≥ 200 | 3 Clout |
+| patrons_100 | Fire Marshal | patrons ≥ 100 | 5 Clout |
+| regulars_50 | Institution | regulars ≥ 50 | 8 Clout |
+| night_25 | A Month In | night ≥ 25 | 3 Clout |
+| round_10 | Toast | rounds ≥ 10 | 1 Clout |
+| whale_1 | Big Catch | whalesCount ≥ 1 | 1 Legacy |
+| whale_10 | Whale Watcher | whalesCount ≥ 10 | 3 Legacy |
+| special_1 | Surprise Hit | specialsCount ≥ 1 | 1 Legacy |
+| special_5 | Event Planner | specialsCount ≥ 5 | 2 Legacy |
 
 Achievements live in the Settings modal. Backfill on load credits already-earned unlocks without double-paying (v6→v7 migration runs `checkAchievements`).
 
@@ -472,10 +489,11 @@ elapsed, night, shiftIdx, shiftT, log[], ts,
 goals[], clicks, rounds,
 legacy, legacyTotal, perks: { id: rank }, prestiges,
 achievements[],
+whalesCount, specialsCount,  // 0.10.1 burst-event counters (additive)
 managers: { id: bool }, managerPaused: { id: bool }
 ```
 
-Additive fields (e.g. `managerPaused`) default to 0/false when absent — not required by `isValidSavePayload`, so they never force a SAVE_VER bump on their own.
+Additive fields (`managerPaused`, and the 0.10.1 counters `whalesCount` / `specialsCount`) default to 0/false when absent — not required by `isValidSavePayload`, so they never force a SAVE_VER bump on their own.
 
 ### 13.2 Paths
 
