@@ -373,7 +373,7 @@ class Game {
   // Note: unlike UPGRADES.req ({ buildingId: count }), a perk req is a bare perkId string (existence-based,
   // rank >= 1). Reqs gate future purchases only, not past unlocks.
   PRESTIGE_PERKS = [
-    { id: 'cash10', name: 'House cut', cost: 1, max: 5, desc: '+10% all cash income per rank.' },
+    { id: 'cash10', name: 'House cut', cost: 1, max: 5, desc: '+15% all cash income per rank.' },
     { id: 'startCrew', name: 'Seed roster', cost: 2, max: 1, desc: 'Start run with 1 crew on Main Stage.' },
     { id: 'startFlyers', name: 'Street team', cost: 3, max: 1, desc: 'Start run with Flyer Crew ×1 built.' },
     { id: 'offline65', name: 'Franchise playbook', cost: 4, max: 1, req: 'cash10', desc: 'Offline / catchUp rate 50% → 65%.' },
@@ -459,7 +459,7 @@ class Game {
 
   // Multiplier applied to all cash income (passive + active clicks) from House cut perk.
   cashIncomeMult(g) {
-    return 1 + 0.10 * this.perk(g, 'cash10');
+    return 1 + 0.15 * this.perk(g, 'cash10');
   }
 
   JOBS = [
