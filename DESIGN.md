@@ -414,11 +414,37 @@ cooldown        = 120 + rand × 180 s                     // 2–5 min between w
 
 A whale is **not** a click (does not increment `g.clicks`).
 
+### 11.3 Critic (`maybeCritic`) — shipped 0.10.2
+
+A reviewer visits at the start of a **new night** (rollover into `shiftIdx === 0`), **live only** (gated by the `_live` flag set only in the real tick interval), requires `hype >= 30`:
+
+```
+per-night chance = CRITIC_CHANCE = 0.02        // 2% per night at hype ≥ 30
+strong room (patrons ≥ 20):  hype += floor(8 + hype × 0.08) (capped);  clout += 2   → rave
+weak room  (patrons < 20):   hype -= floor(12 + hype × 0.06) (floored at 0)          → pan
+```
+
+Rave and pan are logged with distinct colors. Like `spawnWhale`, the handler resolves goals/achievements immediately (`noteGoals` + `checkAchievements`) — a rave's +Hype can cross a stat tier (e.g. `hype_50`) in the same call. The night-rollover gate means a critic fires at most once per night; the pacing bot and offline `catchUp` drive `step()` with `_live = false` and never roll it.
+
+### 11.4 Golden ticket (`maybeGolden` / `takeGolden`) — shipped 0.10.2
+
+A rare floating offer — “VIP booked the booth” — **live only** (inside the `_live` tick), requires `hype > 0`, one offer at a time:
+
+```
+per-slice chance = GOLDEN_CHANCE × (chunk / SIM)          // 0.005 × slice-time fraction, whale-style
+state: g.golden = { at: Date.now() }                      // additive; null when absent
+TTL:  GOLDEN_TTL = 30 s wall-clock (live tick or catchUp expiry — expireGolden)
+take the $:    cash += floor(25 × cashIncomeMult(g))      // income-scaled tip
+grow the crowd: patrons = min(cap, patrons + 10)          // capped
+```
+
+The roll scales by slice time like the whale (`chunk / SIM`), so a lag spike packing many `SIM` slices into one `step()` call cannot inflate the rate. `takeGolden` is idempotent, refuses on a stale (non-owning) tab, and resolves goals/achievements immediately. `g.golden` is additive UI state — `sanitizeG` fail-closes malformed offers (non-object/array/non-finite `at` → `null`), and it never forces a SAVE_VER bump.
+
 ---
 
 ## 12. Achievements (`ACHIEVEMENTS`) — shipped 0.8.1 (23), density pass 0.10.1 (38)
 
-Permanent unlocks with small Clout/Legacy rewards. `checkAchievements(g)` iterates the catalog; on first pass of a satisfied check it pushes the id, pays the reward once, and logs **“Achievement: <name> — <desc>”** (`#ffd700`). Called per-slice in `step`/`catchUp` (so stat/night thresholds reached mid-window unlock), after every buy/hire action, after `spawnWhale`, after prestige, and on load via migration v6→v7 backfill.
+Permanent unlocks with small Clout/Legacy rewards. `checkAchievements(g)` iterates the catalog; on first pass of a satisfied check it pushes the id, pays the reward once, and logs **“Achievement: <name> — <desc>”** (`#ffd700`). Called per-slice in `step`/`catchUp` (so stat/night thresholds reached mid-window unlock), after every buy/hire action, after `spawnWhale` and the 0.10.2 burst handlers (`maybeCritic`, `takeGolden`), after prestige, and on load via migration v6→v7 backfill.
 
 **Reward accounting rule (0.9.5, regression-tested):** achievement **Legacy rewards credit BOTH `g.legacy` (spendable) and `g.legacyTotal` (lifetime)** — matching how prestige gains are tracked — so `legacy_50` (Legacy Builder) and the Perks tab “Total Legacy earned” reflect achievement income. This matters in a single pass: `prestige_1` (+1) can push `legacyTotal` across 50 and unlock `legacy_50` (+2) in the same `checkAchievements` call.
 
@@ -490,10 +516,11 @@ goals[], clicks, rounds,
 legacy, legacyTotal, perks: { id: rank }, prestiges,
 achievements[],
 whalesCount, specialsCount,  // 0.10.1 burst-event counters (additive)
+golden,                      // 0.10.2 golden-ticket offer (additive UI state: { at } | null)
 managers: { id: bool }, managerPaused: { id: bool }
 ```
 
-Additive fields (`managerPaused`, and the 0.10.1 counters `whalesCount` / `specialsCount`) default to 0/false when absent — not required by `isValidSavePayload`, so they never force a SAVE_VER bump on their own.
+Additive fields (`managerPaused`, the 0.10.1 counters `whalesCount` / `specialsCount`, and the 0.10.2 `golden` offer) default to 0/false/null when absent — not required by `isValidSavePayload`, so they never force a SAVE_VER bump on their own.
 
 ### 13.2 Paths
 
