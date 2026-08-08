@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.9.2', build: 187, channel: 'alpha', date: '2026-08-07', codename: 'Neon Zero' };
+  VERSION = { num: '0.9.3', build: 188, channel: 'alpha', date: '2026-08-07', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -108,6 +108,10 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.9.3', date: '2026-08-07', codename: 'Neon Zero', notes: [
+      'Fix: shift-click-to-buy-max on building cards never actually worked in any browser — the click handler checks el.dataset.buildingId, but the card template never set a data-building-id attribute (only a hover tooltip was added in 0.9.2). Shift-click silently fell back to a normal single buy.',
+      'Managers can now be paused/resumed from the Perks tab without firing them — previously a hired manager auto-bought forever with no way to redirect cash toward a different goal once every manager was hired. Click a hired manager\'s card to toggle Pause/Resume; Legacy already spent is not refunded.'
+    ] },
     { v: '0.9.2', date: '2026-08-07', codename: 'Neon Zero', notes: [
       'Fix: Franchise offer button threw "g is not defined" on click and crashed every subsequent render — the prestige modal template referenced the game-state variable g directly instead of the view-model v, but render() only has v in scope. Bug predates the perk tree work (introduced with the prestige system, 0.6.0).',
       'Prestige (and therefore the Perks tab, gated on prestiges > 0) was completely unreachable until this fix — anyone who never prestiged has been unable to see Managers, Special Shifts, or the Perk Tree despite all three having shipped.'
@@ -616,12 +620,12 @@ class Game {
   }
 
   fresh() {
-    const b = {}, u = {}, r = {}, perks = {}, managers = {};
+    const b = {}, u = {}, r = {}, perks = {}, managers = {}, managerPaused = {};
     this.BUILDINGS.forEach(x => b[x.id] = 0);
     this.UPGRADES.forEach(x => u[x.id] = false);
     this.RESEARCH.forEach(x => r[x.id] = false);
     this.PRESTIGE_PERKS.forEach(x => perks[x.id] = 0);
-    this.MANAGERS.forEach(x => managers[x.id] = false);
+    this.MANAGERS.forEach(x => { managers[x.id] = false; managerPaused[x.id] = false; });
     const g = {
       cash: (this.props && this.props.startingCash) ?? 20, hype: 0, buzz: 0, patrons: 0, regulars: 0, clout: 0,
       crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
@@ -633,7 +637,9 @@ class Game {
       // Achievements (SAVE_VER 7)
       achievements: [],
       // Managers (SAVE_VER 8) — auto-buyers, one per building type.
-      managers
+      managers,
+      // Manager pause state — additive, like goals/clicks (not required by isValidSavePayload).
+      managerPaused
     };
     this.applyStartPerks(g);
     return g;
@@ -710,6 +716,10 @@ class Game {
     if (!g.managers || typeof g.managers !== 'object' || Array.isArray(g.managers)) g.managers = {};
     for (const def of this.MANAGERS) {
       g.managers[def.id] = g.managers[def.id] === true;
+    }
+    if (!g.managerPaused || typeof g.managerPaused !== 'object' || Array.isArray(g.managerPaused)) g.managerPaused = {};
+    for (const def of this.MANAGERS) {
+      g.managerPaused[def.id] = g.managerPaused[def.id] === true;
     }
     return g;
   }
@@ -819,6 +829,14 @@ class Game {
       managersNext[def.id] = g.managers[def.id] === true;
     }
     g.managers = managersNext;
+
+    // Manager pause state — additive field, defaults false for known ids.
+    if (!g.managerPaused || typeof g.managerPaused !== 'object' || Array.isArray(g.managerPaused)) g.managerPaused = {};
+    const managerPausedNext = Object.create(null);
+    for (const def of this.MANAGERS) {
+      managerPausedNext[def.id] = g.managerPaused[def.id] === true;
+    }
+    g.managerPaused = managerPausedNext;
 
     if (!Array.isArray(g.log)) g.log = [];
     // Keep raw validated t/msg (length-capped) so export→import is idempotent.
@@ -1694,6 +1712,17 @@ class Game {
     this.push(g, 'Hired manager: ' + def.name + '.', '#a855f7');
     this.forceUpdate();
   }
+  // Pause/resume a hired manager's auto-buy without firing them (Legacy already spent stays spent).
+  toggleManager(def) {
+    if (this.state.tabStale) return;
+    const g = this.state.g;
+    if (!g.managers[def.id]) return;
+    if (!g.managerPaused || typeof g.managerPaused !== 'object') g.managerPaused = {};
+    const next = !g.managerPaused[def.id];
+    g.managerPaused[def.id] = next;
+    this.push(g, (next ? 'Paused' : 'Resumed') + ' manager: ' + def.name + '.', '#a855f7');
+    this.forceUpdate();
+  }
 
   // Auto-buy buildings for hired managers (PLAN.md §4.1).
   // Mutates g directly (does NOT route through buyBuilding, which reads this.state.g).
@@ -1713,6 +1742,7 @@ class Game {
     let bought = 0;
     for (const def of this.MANAGERS) {
       if (!g.managers[def.id]) continue;
+      if (g.managerPaused && g.managerPaused[def.id]) continue;
       const bdef = this.BUILDINGS.find(b => b.id === def.id);
       if (!bdef) continue;
       const n = g.b[def.id];
@@ -1742,10 +1772,12 @@ class Game {
       legacyTotal: (g.legacyTotal || 0),
       perks: {},
       prestiges: (g.prestiges || 0),
-      managers: {}
+      managers: {},
+      managerPaused: {}
     };
     for (const def of this.PRESTIGE_PERKS) snapshot.perks[def.id] = this.perk(g, def.id);
     for (const def of this.MANAGERS) snapshot.managers[def.id] = g.managers && g.managers[def.id] === true;
+    for (const def of this.MANAGERS) snapshot.managerPaused[def.id] = g.managerPaused && g.managerPaused[def.id] === true;
 
     // Build post-prestige candidate from fresh() defaults.
     const next = this.fresh();
@@ -1755,6 +1787,7 @@ class Game {
     next.prestiges = snapshot.prestiges + 1;
     next.achievements = Array.isArray(g.achievements) ? g.achievements.slice() : [];
     next.managers = snapshot.managers;
+    next.managerPaused = snapshot.managerPaused;
     this.applyStartPerks(next);
     // Start-perk state can satisfy building achievements.
     this.checkAchievements(next);
@@ -1969,7 +2002,7 @@ class Game {
 
     let cards = [], tabHint = '';
     if (this.state.tab === 'club') {
-      tabHint = 'Structures are permanent and scale in price. Everything on this tab is bought with cash. A few regulars wander in on their own; Buzz fills the floor faster.';
+      tabHint = 'Structures are permanent and scale in price. Everything on this tab is bought with cash. A few regulars wander in on their own; Buzz fills the floor faster. Shift-click a Build button to buy the maximum affordable in one click.';
       cards = this.BUILDINGS.map(d => {
         const n = g.b[d.id], price = Math.floor(d.cost * Math.pow(d.growth, n));
         const max = d.id === 'door' ? this.doorMax(g) : d.max;
@@ -2019,16 +2052,21 @@ class Game {
       });
       const managerCards = this.MANAGERS.map(d => {
         const hired = g.managers && g.managers[d.id];
+        const paused = hired && g.managerPaused && g.managerPaused[d.id];
         const bdef = this.BUILDINGS.find(b => b.id === d.id);
         const n = g.b[d.id];
         const price = bdef ? Math.floor(bdef.cost * Math.pow(bdef.growth, n)) : 0;
         const max = bdef && bdef.id === 'door' ? this.doorMax(g) : bdef ? bdef.max : null;
         const atCap = max != null && n >= max;
         const ok = !hired && g.legacy >= d.cost;
-        return { name: d.name, desc: d.desc, owned: hired ? 'hired' : '—',
-          btn: hired ? 'Hired' : d.cost + ' Legacy',
-          meta: hired ? (atCap ? 'auto-buys ' + (bdef ? bdef.name : d.id) + ' (capped — no more builds)' : 'auto-buys ' + (bdef ? bdef.name : d.id) + ' (next $' + this.fmt(price) + ')') : (ok ? 'ready' : this.fmt(d.cost - g.legacy) + ' Legacy short'),
-          locked: !ok, wrapStyle: cardWrap(!hired), btnStyle: btn(ok, '#a855f7'), act: () => this.buyManager(d) };
+        return { name: d.name, desc: d.desc, owned: hired ? (paused ? 'paused' : 'hired') : '—',
+          btn: hired ? (paused ? 'Resume' : 'Pause') : d.cost + ' Legacy',
+          meta: hired
+            ? (paused ? 'paused — click to resume auto-buying ' + (bdef ? bdef.name : d.id)
+              : (atCap ? 'auto-buys ' + (bdef ? bdef.name : d.id) + ' (capped — no more builds)' : 'auto-buys ' + (bdef ? bdef.name : d.id) + ' (next $' + this.fmt(price) + ')'))
+            : (ok ? 'ready' : this.fmt(d.cost - g.legacy) + ' Legacy short'),
+          locked: !hired && !ok, wrapStyle: cardWrap(true), btnStyle: btn(hired || ok, '#a855f7'),
+          act: () => hired ? this.toggleManager(d) : this.buyManager(d) };
       });
       cards = perkCards.concat(managerCards);
     } else {
@@ -2409,7 +2447,7 @@ class Game {
         <div style="display:flex;align-items:center;gap:8px">
           ${cd.reqLocked
             ? `<span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#6f5885;font-weight:600;min-width:104px;text-align:center;padding:8px 12px">requires ${cd.reqName}</span>`
-            : `<button data-h="${this.bind(cd.act)}" ${cd.locked ? 'disabled' : ''} style="${css(cd.btnStyle)}">${cd.btn}</button>`}
+            : `<button data-h="${this.bind(cd.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.locked ? 'disabled' : ''} ${cd.buildingId ? 'title="Shift-click to buy the maximum affordable"' : ''} style="${css(cd.btnStyle)}">${cd.btn}</button>`}
           <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#6f5885;text-align:right;flex:1">${cd.meta}</span>
         </div>
       </div>`).join('');
