@@ -1174,9 +1174,7 @@ class Game {
         g.ts = Date.now();
         this.setState(s => ({ tick: s.tick + 1 }));
       } else {
-        this._live = true;
-        this.step(Math.min(dt, 28800));
-        this._live = false;
+        this.liveStep(g, Math.min(dt, 28800));
       }
     }, 100);
     // Autosave only for the owning tab. A non-claiming second/duplicated tab
@@ -1566,6 +1564,18 @@ class Game {
       this.checkAchievements(g);
     }
     return { earned, wagesPaid, struck, managerBought };
+  }
+
+  // Live-tick step with the _live flag held for exactly the duration of the
+  // call. try/finally so a thrown error can never leave _live stuck true —
+  // it gates the live-only burst events, and pacing determinism depends on it.
+  liveStep(g, dt) {
+    this._live = true;
+    try {
+      this.step(dt);
+    } finally {
+      this._live = false;
+    }
   }
 
   step(dt) {

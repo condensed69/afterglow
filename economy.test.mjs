@@ -855,6 +855,18 @@ test('catchUp clears a golden offer whose TTL lapsed offline', () => {
   ok(g.golden, 'fresh offer survives offline');
 });
 
+test('_live flag is restored even when step throws (hard-gate invariant)', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  const orig = game.step;
+  game.step = () => { throw new Error('boom'); };
+  let threw = false;
+  try { game.liveStep(g, 0.1); } catch (e) { threw = true; }
+  game.step = orig;
+  strictEqual(threw, true, 'step threw');
+  strictEqual(game._live, false, '_live restored by finally — hard gate cannot stick open');
+});
+
 test('achievements persist through prestige', () => {
   const game = newGame(5000);
   const g = game.state.g;
