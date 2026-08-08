@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.9.3', build: 188, channel: 'alpha', date: '2026-08-07', codename: 'Neon Zero' };
+  VERSION = { num: '0.9.4', build: 189, channel: 'alpha', date: '2026-08-08', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -108,6 +108,10 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.9.4', date: '2026-08-08', codename: 'Neon Zero', notes: [
+      'Fix: Buzz→Patrons conversion was permanently capped at 0.065 — a hard floor meant to protect the early game but never lifted. At high Buzz/Hype the decay term (g.patrons × 0.008) outran capped growth, so Patrons stagnated or went negative no matter how much Buzz climbed.',
+      'The cap now scales with cap.buzz (0.0013 × cap.buzz), which grows with Marquee Sign upgrades — at marquee=0 it still equals the original 0.065, preserving early-game pacing, then rises naturally with progression.'
+    ] },
     { v: '0.9.3', date: '2026-08-07', codename: 'Neon Zero', notes: [
       'Fix: shift-click-to-buy-max on building cards never actually worked in any browser — the click handler checks el.dataset.buildingId, but the card template never set a data-building-id attribute (only a hover tooltip was added in 0.9.2). Shift-click silently fell back to a normal single buy.',
       'Managers can now be paused/resumed from the Perks tab without firing them — previously a hired manager auto-bought forever with no way to redirect cash toward a different goal once every manager was hired. Click a hired manager\'s card to toggle Pause/Resume; Legacy already spent is not refunded.'
@@ -1424,8 +1428,10 @@ class Game {
     const buzz = (g.b.marquee * 0.07 + g.b.flyers * 0.025 + floorBuzz) * (g.u.photog ? 1.5 : 1);
     const promoMult = g.r.promo ? 1.6 : 1;
     // Buzz→patron conversion paced for §C (numbers only; walk-in 0.02 stays fixed).
-    // Cap keeps active-play click buzz from flooding the floor before ~6 min.
-    const basis = (g.buzz > 0 ? Math.min(g.buzz, 0.065) : 0) * promoMult;
+    // Cap scales with cap.buzz (which grows with Marquee Sign), so buying Buzz-cap
+    // upgrades legitimately raises the pull ceiling instead of being permanently
+    // clamped at the launch-day floor (issue #29).
+    const basis = (g.buzz > 0 ? Math.min(g.buzz, cap.buzz * 0.0013) : 0) * promoMult;
     // Walk-in trickle: flat +0.02 patrons/s, unscaled by Hype (PLAN §1.4).
     const pull = basis * (1 + g.hype / 200) + 0.02;
     const space = Math.max(0, cap.patrons - g.patrons);
