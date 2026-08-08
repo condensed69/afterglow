@@ -1662,9 +1662,6 @@ class Game {
     // but re-render the DOM at most every 250ms (~4 fps). The non-live
     // catchUp path calls setState directly (always renders). User actions
     // call forceUpdate() in handlers and are never throttled.
-    // setState() is intentionally bypassed here: it bundles Object.assign +
-    // forceUpdate, and the whole point of the throttle is to separate the
-    // state mutation (tick++) from the costly DOM paint (forceUpdate).
     this.state.tick++;
     const now = Date.now();
     if (!this._lastRender || now - this._lastRender >= 250) {
@@ -2313,12 +2310,14 @@ class Game {
       // ticking underneath. Buttons grey out on a stale tab.
       golden: g.golden ? {
         cashAmount: Math.floor(25 * this.cashIncomeMult(g)),
-        crowdAmount: Math.min(10, this.caps(g).patrons - g.patrons),
+        crowdAmount: Math.round(Math.min(10, this.caps(g).patrons - g.patrons)),
         locked: this.state.tabStale
       } : null,
       goldenOpen: this.state.goldenOpen,
       openGolden: () => this.setState(s => ({ goldenOpen: true })),
       closeGolden: () => this.setState(s => ({ goldenOpen: false })),
+      takeGoldenCash: () => this.takeGolden(g, 'cash'),
+      takeGoldenCrowd: () => this.takeGolden(g, 'crowd'),
       debugLine: (this.props.showDebug ?? false) ? 'cash ' + r.cash.toFixed(3) + '/s · hype ' + r.hype.toFixed(3) + '/s · buzz ' + r.buzz.toFixed(3) + '/s · pull ' + r.pull.toFixed(2) : '',
       ownersList: (() => {
         const total = this.GOALS.length;
@@ -2602,8 +2601,10 @@ class Game {
     if (!g || !g.golden) return false;
     if (this.state.tabStale) return false;
     if (choice === 'crowd') {
+      const before = g.patrons;
       g.patrons = Math.min(this.caps(g).patrons, g.patrons + 10);
-      this.push(g, 'Golden ticket: VIP brought friends. +10 patrons.', '#ffc94a');
+      const added = Math.round(g.patrons - before);
+      this.push(g, 'Golden ticket: VIP brought friends. +' + added + ' patrons.', '#ffc94a');
     } else {
       const amount = Math.floor(25 * this.cashIncomeMult(g));
       g.cash += amount;
@@ -2920,8 +2921,8 @@ class Game {
             </div>
             <div style="font-size:11px;color:#f3e2c2;margin-bottom:8px">VIP booked the booth.</div>
             <div style="display:flex;gap:6px">
-              <button data-h="${this.bind(() => this.takeGolden(g, 'cash'))}" ${v.golden.locked ? 'disabled' : ''} style="flex:1;background:${v.golden.locked ? '#2a1d0a' : 'linear-gradient(180deg,#ffc94a,#b8860b)'};border:0;border-radius:6px;color:${v.golden.locked ? '#6b5212' : '#1c1105'};font-weight:700;font-size:10px;padding:6px 8px;cursor:${v.golden.locked ? 'not-allowed' : 'pointer'}">+$${this.fmt(v.golden.cashAmount)}</button>
-              <button data-h="${this.bind(() => this.takeGolden(g, 'crowd'))}" ${v.golden.locked ? 'disabled' : ''} style="flex:1;background:${v.golden.locked ? '#1a1226' : '#170e22'};border:1px solid ${v.golden.locked ? '#2a1738' : '#ffc94a'};border-radius:6px;color:${v.golden.locked ? '#5a3a70' : '#ffc94a'};font-weight:700;font-size:10px;padding:6px 8px;cursor:${v.golden.locked ? 'not-allowed' : 'pointer'}">+${v.golden.crowdAmount} crowd</button>
+              <button data-h="${this.bind(v.takeGoldenCash)}" ${v.golden.locked ? 'disabled' : ''} style="flex:1;background:${v.golden.locked ? '#2a1d0a' : 'linear-gradient(180deg,#ffc94a,#b8860b)'};border:0;border-radius:6px;color:${v.golden.locked ? '#6b5212' : '#1c1105'};font-weight:700;font-size:10px;padding:6px 8px;cursor:${v.golden.locked ? 'not-allowed' : 'pointer'}">+$${this.fmt(v.golden.cashAmount)}</button>
+              <button data-h="${this.bind(v.takeGoldenCrowd)}" ${v.golden.locked ? 'disabled' : ''} style="flex:1;background:${v.golden.locked ? '#1a1226' : '#170e22'};border:1px solid ${v.golden.locked ? '#2a1738' : '#ffc94a'};border-radius:6px;color:${v.golden.locked ? '#5a3a70' : '#ffc94a'};font-weight:700;font-size:10px;padding:6px 8px;cursor:${v.golden.locked ? 'not-allowed' : 'pointer'}">+${v.golden.crowdAmount} crowd</button>
             </div>
           </div>` : `
           <button data-h="${this.bind(v.openGolden)}" style="background:linear-gradient(180deg,#ffc94a,#b8860b);border:0;border-radius:20px;padding:6px 10px;box-shadow:0 0 18px rgba(255,201,74,.45);display:flex;align-items:center;gap:6px;cursor:pointer;animation:pulseDot 1.6s ease-in-out infinite">
