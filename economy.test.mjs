@@ -490,6 +490,24 @@ test('buyBuildingMax() unlocks building achievements', () => {
   ok(game.state.g.achievements.includes('first_rail'), 'buy max triggers first_rail');
 });
 
+test('buyBuilding(def, count) respects building max cap', () => {
+  const game = newGame(99999);
+  const door = buildingById(game, 'door');
+  // Door Staff max is 6 (or 7 with doorPlus). Buy 10, expect cap.
+  game.buyBuilding(door, 10);
+  const max = game.doorMax(game.state.g);
+  strictEqual(game.state.g.b.door, max, `buyBuilding(door, 10) stops at cap (${max})`);
+});
+
+test('buyBuilding(def, count) only buys what cash allows', () => {
+  const game = newGame(500);
+  const rail = buildingById(game, 'rail');
+  game.buyBuilding(rail, 10);
+  ok(game.state.g.b.rail >= 1, 'at least one rail bought');
+  ok(game.state.g.b.rail < 10, 'cannot afford 10 rails from $500');
+  ok(game.state.g.cash >= 0, 'cash never negative');
+});
+
 test('stat achievements unlock during live step', () => {
   const game = newGame(20);
   const g = game.state.g;
