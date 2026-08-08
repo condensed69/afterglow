@@ -347,11 +347,34 @@ test('confirmPrestige() resets run fields and persists meta', () => {
   strictEqual(next.perks.cash10, 2, 'perks preserved');
   // legacy gain + prestige_1 achievement reward (+1 Legacy)
   strictEqual(next.legacy, 5 + gain + 1, 'legacy incremented by gain + achievement');
-  strictEqual(next.legacyTotal, 12 + gain, 'legacyTotal incremented by gain (achievement reward is spendable only)');
+  strictEqual(next.legacyTotal, 12 + gain + 1, 'legacyTotal incremented by gain + achievement (achievement Legacy counts as earned)');
   strictEqual(next.prestiges, 2, 'prestiges incremented');
   ok(next.log.some(x => x.msg.includes('franchise deal')), 'prestige logged');
   ok(Array.isArray(next.achievements), 'achievements array persists');
   ok(next.achievements.includes('prestige_1'), 'prestige_1 achievement credited');
+});
+
+test('achievement legacy reward credits both spendable legacy and legacyTotal', () => {
+  const game = newGame();
+  const g = game.state.g;
+  g.legacy = 3;
+  g.legacyTotal = 7;
+  g.prestiges = 1; // prestige_1: reward { legacy: 1 }
+  game.checkAchievements(g);
+  strictEqual(g.legacy, 4, 'spendable legacy credited');
+  strictEqual(g.legacyTotal, 8, 'legacyTotal credited — achievement Legacy is earned Legacy');
+  ok(g.achievements.includes('prestige_1'), 'prestige_1 unlocked');
+});
+
+test('achievement legacy rewards feed legacy_50 in the same pass', () => {
+  const game = newGame();
+  const g = game.state.g;
+  g.legacyTotal = 49; // one short of Legacy Builder
+  g.prestiges = 1;    // prestige_1 (+1 Legacy) fires first, pushing legacyTotal to 50
+  game.checkAchievements(g);
+  ok(g.achievements.includes('prestige_1'), 'prestige_1 unlocked');
+  ok(g.achievements.includes('legacy_50'), 'legacy_50 unlocked in the same pass');
+  strictEqual(g.legacyTotal, 49 + 1 + 2, 'both achievement rewards credited to legacyTotal');
 });
 
 test('confirmPrestige() preserves hired managers across prestige', () => {
