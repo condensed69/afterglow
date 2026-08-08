@@ -346,7 +346,7 @@ Full locked design lives in **`PRESTIGE.md`** (fantasy, gate, formula, reset rul
 
 - **Gate:** `g.regulars >= 25` (goal 14). The **Franchise offer** button appears in the header once met; modal confirms.
 - **Gain:** `legacyGain(g) = floor(sqrt(regulars) + night / 7)`.
-- **Reset:** the next run is a `fresh()` club — cash/hype/buzz/patrons/regulars/clout/crew/buildings/research reset — while **perks, managers, managerPaused, achievements, legacy, legacyTotal, prestiges** persist.
+- **Reset:** the next run is a `fresh()` club — cash/hype/buzz/patrons/regulars/clout/crew/buildings/research reset, and Owner's List state restarts (`clicks: 0`, `rounds: 0`, `goals: []`, same goal arc) — while **perks, managers, managerPaused, achievements, legacy, legacyTotal, prestiges** persist.
 - **Persist-before-replace:** `confirmPrestige()` builds the post-prestige candidate, `localStorage.setItem` **first**; on failure → `saveState: 'prestige failed'` and the live club is untouched (same rule as import, §13.3).
 - **Fields:** `g.legacy` (spendable), `g.legacyTotal` (lifetime earned — achievements credit this too, see §12), `g.prestiges` (count), `g.perks` (id → rank map).
 
@@ -391,7 +391,7 @@ One auto-buyer per building type, purchased with Legacy from the Perks tab, max 
 
 ### 11.1 Special shifts (`SPECIAL_SHIFTS`) — shipped 0.9.0
 
-At each shift rollover (`advanceShift`, shared live/offline path), a normal shift that just ended rolls **`SPECIAL_CHANCE = 0.10`** to start a special on the next instance. A special that just ended is cleared and never re-rolls → **never two in a row**. `g.shiftIdx` keeps advancing the base 4-shift rotation underneath, so a special never corrupts it. `g._specialShift` (index into `SPECIAL_SHIFTS`) round-trips through disk, so a save mid-special resumes it correctly; bad/foreign values fall through to the base shift (fail-closed).
+At each shift rollover (`advanceShift`, shared live/offline path), a normal shift that just ended rolls **`SPECIAL_CHANCE = 0.10`** to start a special on the next instance. A special that just ended is cleared and never re-rolls → **never two in a row**. When the roll succeeds, the specific special is picked **by weight** (table below, default 1). `g.shiftIdx` keeps advancing the base 4-shift rotation underneath, so a special never corrupts it. `g._specialShift` (index into `SPECIAL_SHIFTS`) round-trips through disk, so a save mid-special resumes it correctly; bad/foreign values fall through to the base shift (fail-closed).
 
 | id | Name | Mult | Length (s) | Tint | Weight |
 |----|------|-----:|-----------:|------|-------:|
