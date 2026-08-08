@@ -118,3 +118,38 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
   50% { transform: translateY(-60px) scale(1.1); opacity: 1; }
   100% { transform: translateY(-140px) scale(0.9); opacity: 0; }
 }
+
+/* Shell grid (v0.10.0) — replaces the inline grid on <main>. The stage column is
+   hard-capped at 720px so it never stretches into dead space on wide monitors;
+   the shell centers via max-width + margin-inline:auto (not justify-content,
+   which would clip the left edge when narrow screens overflow). */
+.shell-grid {
+  display: grid;
+  grid-template-columns: minmax(232px, 300px) minmax(320px, 720px) minmax(320px, 440px);
+  width: 100%;
+  max-width: 1460px;
+  margin-inline: auto;
+  min-height: 0;
+  /* Grid item of the app-root 3-row grid: allow shrinking below content
+     min-content, or the single implicit column blows out to the widest
+     child's min-content (e.g. ledger rows) and clips on narrow screens. */
+  min-width: 0;
+  overflow: auto;
+}
+
+/* Small screens: stack Ledger / Stage / Systems vertically, no horizontal scroll.
+   Below the sum of the three column minimums (232+320+320 = 872px) the fixed
+   mins would force a page-level horizontal scrollbar; single-column removes it.
+   Interior grid rows (stage section, systems aside) are untouched. */
+@media (max-width: 900px) {
+  .shell-grid {
+    grid-template-columns: 1fr;
+    max-width: none;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  .shell-grid > section,
+  .shell-grid > aside {
+    min-width: 0;
+  }
+}
