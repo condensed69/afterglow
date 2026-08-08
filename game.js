@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.9.4', build: 189, channel: 'alpha', date: '2026-08-08', codename: 'Neon Zero' };
+  VERSION = { num: '0.9.5', build: 190, channel: 'alpha', date: '2026-08-08', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -108,6 +108,10 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.9.5', date: '2026-08-08', codename: 'Neon Zero', notes: [
+      'Fix: Achievement Legacy rewards (prestige_1, prestige_5, legacy_50) only credited spendable Legacy — lifetime Legacy (legacyTotal) ignored them, so the Legacy Builder achievement and the Perks tab "Total Legacy earned" undercounted real income.',
+      'Achievement Legacy now also credits legacyTotal, matching how prestige gains are tracked. No SAVE_VER bump — this only changes a runtime accounting path.'
+    ] },
     { v: '0.9.4', date: '2026-08-08', codename: 'Neon Zero', notes: [
       'Fix: Buzz→Patrons conversion was permanently capped at 0.065 — a hard floor meant to protect the early game but never lifted. At high Buzz/Hype the decay term (g.patrons × 0.008) outran capped growth, so Patrons stagnated or went negative no matter how much Buzz climbed.',
       'The cap now scales with cap.buzz (0.0013 × cap.buzz), which grows with Marquee Sign upgrades — at marquee=0 it still equals the original 0.065, preserving early-game pacing, then rises naturally with progression.'
@@ -1608,7 +1612,13 @@ class Game {
         g.achievements.push(ach.id);
         if (ach.reward) {
           if (ach.reward.clout) g.clout = (g.clout || 0) + ach.reward.clout;
-          if (ach.reward.legacy) g.legacy = (g.legacy || 0) + ach.reward.legacy;
+          if (ach.reward.legacy) {
+            g.legacy = (g.legacy || 0) + ach.reward.legacy;
+            // Achievement Legacy is earned Legacy: credit the lifetime counter too,
+            // so legacy_50 (Legacy Builder) and the Perks tab "Total Legacy earned"
+            // reflect achievement income, not just prestige gains.
+            g.legacyTotal = (g.legacyTotal || 0) + ach.reward.legacy;
+          }
         }
         this.push(g, 'Achievement: ' + ach.name + ' — ' + ach.desc, '#ffd700');
       }
