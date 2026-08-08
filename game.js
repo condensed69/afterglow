@@ -774,6 +774,10 @@ class Game {
     for (const def of this.MANAGERS) {
       g.managerPaused[def.id] = g.managerPaused[def.id] === true;
     }
+    // 0.10.2 golden offer: fail-closed to null unless a plain object with a
+    // finite at. A malformed at would make the TTL expiry check NaN >= … → never
+    // auto-expire; import/load normalizes instead of leaving a stuck offer.
+    if (!g.golden || typeof g.golden !== 'object' || Array.isArray(g.golden) || !Number.isFinite(g.golden.at)) g.golden = null;
     return g;
   }
 
@@ -2241,7 +2245,8 @@ class Game {
         this.forceUpdate();
       },
       // 0.10.2 golden ticket: overlay offer on the stage (see takeGolden).
-      golden: g.golden ? { cashLabel: 'Take the $', crowdLabel: 'Grow the crowd' } : null,
+      // Buttons grey out on a stale tab, matching the confirmPrestige/round pattern.
+      golden: g.golden ? { cashLabel: 'Take the $', crowdLabel: 'Grow the crowd', locked: this.state.tabStale } : null,
       takeGoldenCash: () => this.takeGolden(g, 'cash'),
       takeGoldenCrowd: () => this.takeGolden(g, 'crowd'),
       debugLine: (this.props.showDebug ?? false) ? 'cash ' + r.cash.toFixed(3) + '/s · hype ' + r.hype.toFixed(3) + '/s · buzz ' + r.buzz.toFixed(3) + '/s · pull ' + r.pull.toFixed(2) : '',
@@ -2503,8 +2508,11 @@ class Game {
 
   // Resolve the active golden offer: 'cash' (income-scaled tip) or 'crowd'
   // (+patrons, capped). Idempotent — returns false when no offer is active.
+  // Stale-tab guard matches every other mutating action: a paused duplicate tab
+  // must not mutate local state that save() (no-op there) would silently discard.
   takeGolden(g, choice) {
     if (!g || !g.golden) return false;
+    if (this.state.tabStale) return false;
     if (choice === 'crowd') {
       g.patrons = Math.min(this.caps(g).patrons, g.patrons + 10);
       this.push(g, 'Golden ticket: VIP brought friends. +10 patrons.', '#ffc94a');
@@ -2807,8 +2815,8 @@ class Game {
           <div style="font-size:9px;letter-spacing:2.4px;text-transform:uppercase;color:#ffc94a;font-weight:700;margin-bottom:5px">Golden ticket</div>
           <div style="font-size:11px;color:#f3e2c2;margin-bottom:8px">VIP booked the booth — take the tip or grow the crowd?</div>
           <div style="display:flex;gap:8px;justify-content:center">
-            <button data-h="${this.bind(v.takeGoldenCash)}" style="background:linear-gradient(180deg,#ffc94a,#b8860b);border:0;border-radius:7px;color:#1c1105;font-weight:700;font-size:11px;padding:7px 12px;cursor:pointer">${v.golden.cashLabel}</button>
-            <button data-h="${this.bind(v.takeGoldenCrowd)}" style="background:#170e22;border:1px solid #ffc94a;border-radius:7px;color:#ffc94a;font-weight:700;font-size:11px;padding:7px 12px;cursor:pointer">${v.golden.crowdLabel}</button>
+            <button data-h="${this.bind(v.takeGoldenCash)}" ${v.golden.locked ? 'disabled' : ''} style="background:${v.golden.locked ? '#2a1d0a' : 'linear-gradient(180deg,#ffc94a,#b8860b)'};border:0;border-radius:7px;color:${v.golden.locked ? '#6b5212' : '#1c1105'};font-weight:700;font-size:11px;padding:7px 12px;cursor:${v.golden.locked ? 'not-allowed' : 'pointer'}">${v.golden.cashLabel}</button>
+            <button data-h="${this.bind(v.takeGoldenCrowd)}" ${v.golden.locked ? 'disabled' : ''} style="background:${v.golden.locked ? '#1a1226' : '#170e22'};border:1px solid ${v.golden.locked ? '#2a1738' : '#ffc94a'};border-radius:7px;color:${v.golden.locked ? '#5a3a70' : '#ffc94a'};font-weight:700;font-size:11px;padding:7px 12px;cursor:${v.golden.locked ? 'not-allowed' : 'pointer'}">${v.golden.crowdLabel}</button>
           </div>
         </div>` : ''}
       </div>

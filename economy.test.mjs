@@ -788,6 +788,31 @@ test('burst events stay off when not live (pacing-bot determinism)', () => {
   strictEqual(g._specialShift, null, 'no special shift in bot path');
 });
 
+test('takeGolden is a no-op on a stale (non-owning) tab', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  game.state.tabStale = true;
+  g.golden = { at: 0 };
+  g.cash = 100;
+  strictEqual(game.takeGolden(g, 'cash'), false, 'refused on stale tab');
+  strictEqual(g.cash, 100, 'cash untouched');
+  ok(g.golden && g.golden.at === 0, 'offer left intact for the owning tab');
+});
+
+test('sanitizeG normalizes malformed golden offers (fail-closed)', () => {
+  const game = newGame();
+  const g = game.state.g;
+  g.golden = { at: 'soon' };
+  game.sanitizeG(g);
+  strictEqual(g.golden, null, 'non-numeric at cleared');
+  g.golden = [1, 2, 3];
+  game.sanitizeG(g);
+  strictEqual(g.golden, null, 'array golden cleared');
+  g.golden = { at: 12345 };
+  game.sanitizeG(g);
+  ok(g.golden && g.golden.at === 12345, 'valid offer preserved');
+});
+
 test('achievements persist through prestige', () => {
   const game = newGame(5000);
   const g = game.state.g;
