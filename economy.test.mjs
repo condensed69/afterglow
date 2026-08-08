@@ -813,6 +813,48 @@ test('sanitizeG normalizes malformed golden offers (fail-closed)', () => {
   ok(g.golden && g.golden.at === 12345, 'valid offer preserved');
 });
 
+test('maybeGolden scales its roll by chunk like the whale roll', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g.hype = 50;
+  // Partial chunk (0.05s): scaled chance = 0.005 * 0.05/0.1 = 0.0025.
+  withRandom([0.0024], () => { game.maybeGolden(g, 0.05); });
+  ok(g.golden, 'roll under the scaled threshold spawns');
+  g.golden = null;
+  withRandom([0.0026], () => { game.maybeGolden(g, 0.05); });
+  strictEqual(g.golden, null, 'partial chunk uses the scaled (lower) chance — a flat 0.5% roll would have spawned');
+  // Full chunk (SIM = 0.1s): chance back to the documented 0.5%.
+  withRandom([0.004], () => { game.maybeGolden(g, 0.1); });
+  ok(g.golden, 'full chunk rolls at the documented 0.5%');
+});
+
+test('takeGolden runs achievement checks after resolving (like other handlers)', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g.golden = { at: Date.now() };
+  let calls = 0;
+  const orig = game.checkAchievements;
+  game.checkAchievements = () => { calls++; };
+  try {
+    game.takeGolden(g, 'cash');
+  } finally {
+    game.checkAchievements = orig;
+  }
+  strictEqual(calls, 1, 'achievement check ran once');
+  strictEqual(g.golden, null, 'offer resolved');
+});
+
+test('catchUp clears a golden offer whose TTL lapsed offline', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g.golden = { at: Date.now() - (game.GOLDEN_TTL * 1000 + 5000) };
+  game.catchUp(g, 10);
+  strictEqual(g.golden, null, 'expired offer cleared on offline catch-up');
+  g.golden = { at: Date.now() };
+  game.catchUp(g, 10);
+  ok(g.golden, 'fresh offer survives offline');
+});
+
 test('achievements persist through prestige', () => {
   const game = newGame(5000);
   const g = game.state.g;

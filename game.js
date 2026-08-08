@@ -110,7 +110,7 @@ class Game {
   CHANGELOG = [
     { v: '0.10.2', date: '2026-08-08', codename: 'Neon Zero', notes: [
       'Burst-event variety: a Critic now reviews each new night when Hype is high (2%/night). Strong room (20+ patrons) → rave: +Hype and +2 Clout. Weak room → pan: −Hype (floor 0). Adds live risk/reward texture around the deterministic building/research curve.',
-      'Golden ticket: rare (0.5%/tick) floating offer while Hype is positive — a VIP booked the booth. Take the tip (cash scaled by income) or grow the crowd (+10 patrons, capped). One offer at a time; expires after 30s.',
+      'Golden ticket: rare (0.5% per live tick, roll scaled to sim slice) floating offer while Hype is positive — a VIP booked the booth. Take the tip (cash scaled by income) or grow the crowd (+10 patrons, capped). One offer at a time; expires after 30s (live tick or offline catch-up).',
       'Both events are live-only: the pacing bot and offline catchUp drive step() with _live = false, so their random rolls can never shift the deterministic pacing bands. g.golden is additive UI state (null when absent) — no SAVE_VER bump.'
     ] },
     { v: '0.10.1', date: '2026-08-08', codename: 'Neon Zero', notes: [
@@ -1525,6 +1525,8 @@ class Game {
   catchUp(g, seconds) {
     if (!g || !(seconds > 0)) return { earned: 0, wagesPaid: 0, struck: false, managerBought: 0 };
     seconds = Math.min(seconds, 28800);
+    // 0.10.2: a golden offer that lapsed while away must not render on return.
+    this.expireGolden(g);
     let remaining = seconds;
     let earned = 0;
     let wagesPaid = 0;
@@ -1609,8 +1611,8 @@ class Game {
       // 0.10.2 burst events — live only (see CRITIC_CHANCE note). Offline catchUp
       // and the pacing bot drive step() with _live = false and stay deterministic.
       if (this._live) {
-        if (g.golden && Date.now() - g.golden.at >= this.GOLDEN_TTL * 1000) g.golden = null;
-        this.maybeGolden(g);
+        this.expireGolden(g);
+        this.maybeGolden(g, chunk);
       }
       if (g.shiftT >= r.shift.len) {
         this.advanceShift(g);
@@ -2499,11 +2501,22 @@ class Game {
   // 0.10.2: rare floating offer — "VIP booked the booth". Spawns per live tick at
   // hype > 0, one at a time; resolved via takeGolden (stage overlay buttons).
   // g.golden is additive UI state (null when absent), so no SAVE_VER bump.
-  maybeGolden(g) {
+  // Roll scales by slice time like the whale roll (chunk / SIM): a lag spike that
+  // packs several chunks into one step() call must not inflate the spawn rate,
+  // and a trailing partial chunk (dt not a multiple of SIM) rolls proportionally.
+  maybeGolden(g, chunk = this.SIM) {
     if (!g || g.hype <= 0 || g.golden) return;
-    if (Math.random() >= this.GOLDEN_CHANCE) return;
+    const c = typeof chunk === 'number' && chunk > 0 ? chunk : this.SIM;
+    if (Math.random() >= this.GOLDEN_CHANCE * (c / this.SIM)) return;
     g.golden = { at: Date.now() };
     this.push(g, 'VIP booked the booth — golden ticket!', '#ffc94a');
+  }
+
+  // 0.10.2: clear a golden offer whose 30s TTL has lapsed (wall-clock). Called
+  // from live step() and catchUp() so a reload after offline never renders a dead
+  // offer. Deterministic — no random roll, pacing-bot safe.
+  expireGolden(g) {
+    if (g && g.golden && Date.now() - g.golden.at >= this.GOLDEN_TTL * 1000) g.golden = null;
   }
 
   // Resolve the active golden offer: 'cash' (income-scaled tip) or 'crowd'
@@ -2522,6 +2535,10 @@ class Game {
       this.push(g, 'Golden ticket: VIP tipped $' + this.fmt(amount) + '.', '#ffc94a');
     }
     g.golden = null;
+    // Match the whale/tip handler pattern: a patrons/cash change can complete a
+    // goal or achievement — resolve it here, not one tick later.
+    this.noteGoals(g);
+    this.checkAchievements(g);
     this.forceUpdate();
     return true;
   }
