@@ -267,7 +267,7 @@ When prestige is implemented, extend `pacing.mjs` (dependency-free, same DOM pre
 3. Only if gate is met: perform prestige reset with formula gain; spend **exactly 1 Legacy** on `cash10` rank 1 (leave remaining Legacy unspent).  
 4. **Run 2:** same bot from post-prestige start state.  
 5. Record wall-time of first LED as `t2`.  
-6. **Assert:** `t2 < t1` (run 2 reaches first upgrade faster with +10% cash). Exit non-zero on failure.
+6. **Assert:** `t2 < t1` (run 2 reaches first upgrade faster with +15% cash). Exit non-zero on failure.
 
 ### Reporting
 
@@ -275,9 +275,9 @@ Print a second table block:
 
 ```text
 Prestige scenario
-  6. **Assert:** `t2 < t1` (run 2 reaches first upgrade faster with +15% cash). Exit non-zero on failure.
-    run1 first LED:     …s
-    run2 first LED (+15% cash perk): …s
+  run1 gate regulars: … (need >= 25)
+  run1 first LED:  …s
+  run2 first LED (+15% cash perk): …s
   delta: …s (must be < 0 wall for run2 − run1)
 ```
 
