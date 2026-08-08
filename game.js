@@ -1656,6 +1656,9 @@ class Game {
     // but re-render the DOM at most every 250ms (~4 fps). The non-live
     // catchUp path calls setState directly (always renders). User actions
     // call forceUpdate() in handlers and are never throttled.
+    // setState() is intentionally bypassed here: it bundles Object.assign +
+    // forceUpdate, and the whole point of the throttle is to separate the
+    // state mutation (tick++) from the costly DOM paint (forceUpdate).
     this.state.tick++;
     const now = Date.now();
     if (!this._lastRender || now - this._lastRender >= 250) {

@@ -3626,6 +3626,27 @@ test('Marquee upgrades raise the Buzz→Patrons cap proportionally', () => {
   ok(Math.abs(r4 - expectedR4) < 0.0001, `marquee=4 rate ${r4} must match expected ${expectedR4}`);
 });
 
+test('render throttle: forceUpdate throttled with mock clock', () => {
+  const game = newGame(20);
+  let calls = 0;
+  const origFU = game.forceUpdate;
+  const origNow = Date.now;
+  let tick = 1000000;
+  Date.now = () => tick;
+  game.forceUpdate = () => { calls++; };
+  try {
+    // First step at t=1,000,000: cold start → forceUpdate fires (falsy _lastRender)
+    game.step(0.09); tick += 100;
+    strictEqual(calls, 1, 'cold start: first step always renders');
+    // Next 3 steps at t=+100, +200, +300: only the one at +300 crosses the 250ms window
+    for (let i = 0; i < 3; i++) { game.step(0.09); tick += 100; }
+    strictEqual(calls, 2, 'after 400ms elapsed: 2 renders total (0ms + 300ms)');
+  } finally {
+    game.forceUpdate = origFU;
+    Date.now = origNow;
+  }
+});
+
 console.log('\n───────────────────────────────────────');
 console.log(`Results: ${passed} passed, ${skipped} skipped, ${failed} failed`);
 console.log('───────────────────────────────────────\n');
