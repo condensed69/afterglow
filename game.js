@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.9.1', build: 186, channel: 'alpha', date: '2026-08-07', codename: 'Neon Zero' };
+  VERSION = { num: '0.9.2', build: 187, channel: 'alpha', date: '2026-08-07', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -108,6 +108,10 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.9.2', date: '2026-08-07', codename: 'Neon Zero', notes: [
+      'Fix: Franchise offer button threw "g is not defined" on click and crashed every subsequent render — the prestige modal template referenced the game-state variable g directly instead of the view-model v, but render() only has v in scope. Bug predates the perk tree work (introduced with the prestige system, 0.6.0).',
+      'Prestige (and therefore the Perks tab, gated on prestiges > 0) was completely unreachable until this fix — anyone who never prestiged has been unable to see Managers, Special Shifts, or the Perk Tree despite all three having shipped.'
+    ] },
     { v: '0.9.1', date: '2026-08-07', codename: 'Neon Zero', notes: [
       'Perk Tree: PRESTIGE_PERKS now enforce prerequisites via an optional req field (a bare perkId, unlike UPGRADES\' {buildingId: count}).',
       'Tier 1 (no req): House cut, Seed roster, Street team. Franchise playbook requires House cut rank 1+; Extra bouncer slot requires Seed roster; Name recognition requires Franchise playbook.',
@@ -2062,6 +2066,8 @@ class Game {
     // Prestige gate and preview data.
     const prestigeGate = (g.regulars || 0) >= 25;
     const prestigeGain = prestigeGate ? this.legacyGain(g) : 0;
+    const prestigeRegulars = this.fmt(g.regulars);
+    const prestigeNight = g.night;
 
     return {
       ...base,
@@ -2069,6 +2075,8 @@ class Game {
       metaUnlocked,
       prestigeGate,
       prestigeGain,
+      prestigeRegulars,
+      prestigeNight,
       confirmPrestige: () => this.confirmPrestige(),
       // Escape t/msg at the HTML boundary only (g.log stays raw for save round-trips).
       log: g.log.map(l => ({
@@ -2482,7 +2490,7 @@ class Game {
                 <span style="font-size:11px;color:#9c86ab">You reset</span>
                 <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#e7d8f2">cash, room, buildings, upgrades, research, crew, goals</span>
               </div>
-              <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6f5885;margin-top:2px">regulars ${this.fmt(g.regulars)} · night ${g.night}</div>
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6f5885;margin-top:2px">regulars ${v.prestigeRegulars} · night ${v.prestigeNight}</div>
             </div>
             <button data-h="${this.bind(v.confirmPrestige)}" ${v.tabStale ? 'disabled' : ''} style="background:${v.tabStale ? '#1a1226' : 'linear-gradient(180deg,#ff3d85,#d81259)'};border:0;border-radius:8px;color:${v.tabStale ? '#9c86ab' : '#fff'};font-weight:700;font-size:13px;letter-spacing:1px;text-transform:uppercase;padding:13px 16px;cursor:${v.tabStale ? 'not-allowed' : 'pointer'}">${v.tabStale ? 'Reload to adopt fresh save before signing' : 'Sign the deal'}</button>
             <button data-h="${this.bind(v.togglePrestige)}" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700">Not yet</button>

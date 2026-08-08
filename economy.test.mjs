@@ -390,6 +390,29 @@ test('confirmPrestige() is no-op below 25 regulars', () => {
   strictEqual(game.state.g.prestiges, 1);
 });
 
+// Regression: prestige modal template read the raw game-state `g` directly
+// (g.regulars, g.night) instead of the view-model `v` that render() actually
+// has in scope, throwing "g is not defined" on every render once the modal
+// was open — see PR #30. renderVals() is the fast assertion; render() is the
+// actual smoke test, since the bug only manifested while building markup.
+test('renderVals() exposes prestigeRegulars/prestigeNight for the modal template', () => {
+  const game = newGame(500);
+  const g = game.state.g;
+  g.regulars = 30;
+  g.night = 7;
+  const v = game.renderVals();
+  strictEqual(v.prestigeRegulars, game.fmt(g.regulars), 'prestigeRegulars mirrors g.regulars');
+  strictEqual(v.prestigeNight, g.night, 'prestigeNight mirrors g.night');
+});
+
+test('render() does not throw with the prestige modal open past the gate', () => {
+  const game = newGame(500);
+  const g = game.state.g;
+  g.regulars = 30; // clears the 25-regulars prestige gate
+  game.state.showPrestige = true;
+  game.render(); // the assertion is that this call does not throw — see test()
+});
+
 test('MIGRATIONS[5] rejects array perks and clamps out-of-range ranks', () => {
   const game = newGame();
   const g = game.fresh();
