@@ -475,7 +475,7 @@ achievements[],
 managers: { id: bool }, managerPaused: { id: bool }
 ```
 
-Additive fields (`managerPaused`, and any counter like `whalesCount`) default to 0/false when absent — not required by `isValidSavePayload`, so they never force a SAVE_VER bump on their own.
+Additive fields (e.g. `managerPaused`) default to 0/false when absent — not required by `isValidSavePayload`, so they never force a SAVE_VER bump on their own.
 
 ### 13.2 Paths
 
