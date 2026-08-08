@@ -149,7 +149,7 @@ class Game {
       'SAVE_VER bumped to 8; v7 saves migrate and default g.managers to all false.'
     ] },
     { v: '0.8.1', date: '2026-08-06', codename: 'Neon Zero', notes: [
-      'Achievements: 22 permanent unlocks with Clout/Legacy rewards and a modal in Settings.',
+      'Achievements: 23 permanent unlocks with Clout/Legacy rewards and a modal in Settings.',
       'Number formatting extended to Decillion (Dc, 1e33).',
       'Whale patron burst event: random high-roller spawns when hype is positive.',
       'Shift-click any building card to buy the maximum affordable count.',
