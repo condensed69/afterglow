@@ -22,7 +22,10 @@ const root = {
   replaceWith: () => {},
   classList: { contains: () => false, add: () => {}, remove: () => {}, toggle: () => {} },
 };
-Object.defineProperty(root, 'innerHTML', { set: () => {}, get: () => '' });
+// Real setter (not a pure no-op) so smoke tests can assert on emitted markup;
+// the getter still returns '' by default to keep unrelated tests unaffected.
+let lastInnerHTML = '';
+Object.defineProperty(root, 'innerHTML', { set: v => { lastInnerHTML = v; }, get: () => '' });
 Object.defineProperty(root, 'style', { value: {}, writable: true });
 
 // Capture listeners so ownership lifecycle (pagehide/pageshow/storage) is testable.
@@ -2923,6 +2926,90 @@ test('sanitizeG backfills managers map from known IDs', () => {
   for (const def of game.MANAGERS) {
     strictEqual(g.managers[def.id], false, def.id + ' clamped to false');
   }
+});
+
+// Regression: hiring a manager was permanent with no way to pause/stop its
+// auto-buy — a player could not redirect cash toward a different goal once
+// every manager was hired. toggleManager() flips a per-manager pause flag
+// that autoBuyManagers() honors without firing the manager (Legacy already
+// spent stays spent, consistent with the rest of the prestige-persistent state).
+test('toggleManager pauses and resumes a hired manager without un-hiring it', () => {
+  const game = newGame(0);
+  const g = game.state.g;
+  g.legacy = 10;
+  const railMgr = game.MANAGERS.find(m => m.id === 'rail');
+  game.buyManager(railMgr);
+  strictEqual(g.managers.rail, true, 'precondition: manager hired');
+  strictEqual(g.managerPaused.rail, false, 'starts unpaused');
+
+  game.toggleManager(railMgr);
+  strictEqual(g.managerPaused.rail, true, 'paused after first toggle');
+  strictEqual(g.managers.rail, true, 'still hired while paused');
+
+  game.toggleManager(railMgr);
+  strictEqual(g.managerPaused.rail, false, 'resumed after second toggle');
+});
+
+test('toggleManager is a no-op for a manager that was never hired', () => {
+  const game = newGame(0);
+  const g = game.state.g;
+  const barMgr = game.MANAGERS.find(m => m.id === 'bar');
+  game.toggleManager(barMgr);
+  strictEqual(g.managers.bar, false, 'not hired');
+  strictEqual(g.managerPaused.bar, false, 'pause flag untouched');
+});
+
+test('autoBuyManagers skips a paused manager even with cash available', () => {
+  const game = newGame(0);
+  const g = game.state.g;
+  g.legacy = 10;
+  const railMgr = game.MANAGERS.find(m => m.id === 'rail');
+  game.buyManager(railMgr);
+  game.toggleManager(railMgr); // pause
+  g.cash = 9999;
+  const before = g.b.rail;
+  const bought = game.autoBuyManagers(g);
+  strictEqual(bought, 0, 'paused manager does not auto-buy');
+  strictEqual(g.b.rail, before, 'building count unchanged while paused');
+});
+
+test('fresh() includes managerPaused map with all false', () => {
+  const game = newGame();
+  const g = game.fresh();
+  for (const def of game.MANAGERS) {
+    strictEqual(g.managerPaused[def.id], false, def.id + ' pause defaults to false');
+  }
+});
+
+test('sanitizeG backfills managerPaused map from known IDs', () => {
+  const game = newGame();
+  const g = game.fresh();
+  g.managerPaused = ['rail'];
+  game.sanitizeG(g);
+  strictEqual(Array.isArray(g.managerPaused), false, 'array managerPaused replaced with object');
+  for (const def of game.MANAGERS) {
+    strictEqual(g.managerPaused[def.id], false, def.id + ' clamped to false');
+  }
+});
+
+// Regression: the manager card's button gained a "pause/hired" title but the
+// shift-click-to-buy-max path on regular building cards depends on
+// el.dataset.buildingId, which the template never set — only a `title`
+// attribute was added (see PR #31). Shift-click silently fell through to a
+// normal single buy in every browser. renderVals() is the fast assertion;
+// the template snippet itself is asserted directly since the bug lived in
+// markup generation, not in a computed value.
+test('renderVals() building card carries buildingId for the shift-click handler', () => {
+  const game = newGame(500);
+  const v = game.renderVals();
+  const railCard = v.cards.find(c => c.buildingId === 'rail');
+  ok(railCard, 'a building card exposes buildingId for rail');
+});
+
+test('render() emits data-building-id on building buy buttons (shift-click wiring)', () => {
+  const game = newGame(500);
+  game.render();
+  ok(lastInnerHTML.includes('data-building-id="rail"'), 'rendered markup wires data-building-id for shift-click');
 });
 
 // ── Special shifts (PLAN §4.2) ───────────────────────────────────────────────
