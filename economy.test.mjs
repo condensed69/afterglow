@@ -548,6 +548,115 @@ test('spawnWhale() does not increment clicks', () => {
   ok(g.cash > 0, 'whale grants bonus cash');
 });
 
+// ── 0.10.1 density pass (23 → 38) ────────────────────────────────────────────
+
+test('whalesCount increments on spawnWhale and unlocks Big Catch', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g.hype = 50;
+  game.spawnWhale(g);
+  strictEqual(g.whalesCount, 1, 'whalesCount incremented');
+  ok(g.achievements.includes('whale_1'), 'whale_1 (Big Catch) unlocked');
+});
+
+test('whale_10 unlocks at 10 whales and its Legacy credits legacyTotal', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g.hype = 50;
+  g.whalesCount = 9;
+  g.legacy = 0;
+  g.legacyTotal = 0;
+  game.spawnWhale(g);
+  strictEqual(g.whalesCount, 10, 'whalesCount reached 10');
+  ok(g.achievements.includes('whale_10'), 'whale_10 (Whale Watcher) unlocked');
+  // whale_1 (+1) and whale_10 (+3) both fire in the same pass.
+  strictEqual(g.legacy, 4, 'whale_1 + whale_10 Legacy credited to spendable');
+  strictEqual(g.legacyTotal, 4, 'whale Legacy credited to legacyTotal (earned Legacy)');
+});
+
+test('specialsCount increments when a special shift triggers', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g._specialShift = null;
+  g.shiftIdx = 0;
+  g.shiftT = 0;
+  withRandom([0.0], () => game.advanceShift(g)); // roll 0 < SPECIAL_CHANCE (0.10) → special
+  strictEqual(g.specialsCount, 1, 'specialsCount incremented');
+  // In the real game the per-slice step() calls checkAchievements after advanceShift.
+  game.checkAchievements(g);
+  ok(g.achievements.includes('special_1'), 'special_1 (Surprise Hit) unlocked');
+});
+
+test('specialsCount does not increment on a normal shift rollover', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g._specialShift = null;
+  g.shiftIdx = 0;
+  g.shiftT = 0;
+  withRandom([0.99], () => game.advanceShift(g)); // roll 0.99 ≥ 0.10 → no special
+  strictEqual(g.specialsCount || 0, 0, 'no special → no count');
+});
+
+test('special_5 unlocks at 5 specials and its Legacy credits legacyTotal', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g.specialsCount = 5;
+  g.legacy = 2;
+  g.legacyTotal = 10;
+  game.checkAchievements(g);
+  ok(g.achievements.includes('special_5'), 'special_5 (Event Planner) unlocked');
+  // special_1 (+1) and special_5 (+2) both fire in the same pass.
+  strictEqual(g.legacy, 5, 'special_1 + special_5 Legacy credited to spendable');
+  strictEqual(g.legacyTotal, 13, 'special Legacy credited to legacyTotal');
+});
+
+test('new building achievements unlock via buyBuildingMax', () => {
+  // Each building gets a fresh game — a shared cash pool is drained by the
+  // earlier buyBuildingMax loops (growth costs), starving the later ones.
+  const cases = [
+    ['bar', 'bar_10', 'Two-Thirds Full'],
+    ['dj', 'dj_5', 'Beatkeeper'],
+    ['marquee', 'marquee_3', 'Bright Lights'],
+    ['flyers', 'flyers_5', 'Street Team'],
+    ['dress', 'dress_3', 'Backstage Pass'],
+    ['door', 'door_max', 'Bouncer'],
+  ];
+  for (const [id, achId, label] of cases) {
+    const game = newGame(1000000);
+    game.buyBuildingMax(buildingById(game, id));
+    ok(game.state.g.achievements.includes(achId), `${achId} (${label})`);
+  }
+});
+
+test('stat achievements unlock at thresholds (hype_200, patrons_100, regulars_50, night_25)', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g.hype = 200;
+  g.patrons = 100;
+  g.regulars = 50;
+  g.night = 25;
+  game.checkAchievements(g);
+  ok(g.achievements.includes('hype_200'), 'hype_200 (Deafening)');
+  ok(g.achievements.includes('patrons_100'), 'patrons_100 (Fire Marshal)');
+  ok(g.achievements.includes('regulars_50'), 'regulars_50 (Institution)');
+  ok(g.achievements.includes('night_25'), 'night_25 (A Month In)');
+});
+
+test('round_10 unlocks after 10 rounds', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g.rounds = 10;
+  game.checkAchievements(g);
+  ok(g.achievements.includes('round_10'), 'round_10 (Toast)');
+});
+
+test('achievement catalog is 38 entries with unique ids', () => {
+  const game = newGame();
+  const ids = game.ACHIEVEMENTS.map(a => a.id);
+  strictEqual(ids.length, 38, 'catalog grew 23 → 38');
+  strictEqual(new Set(ids).size, 38, 'ids unique');
+});
+
 test('achievements persist through prestige', () => {
   const game = newGame(5000);
   const g = game.state.g;

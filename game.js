@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.10.0', build: 191, channel: 'alpha', date: '2026-08-08', codename: 'Neon Zero' };
+  VERSION = { num: '0.10.1', build: 192, channel: 'alpha', date: '2026-08-08', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -108,6 +108,11 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.10.1', date: '2026-08-08', codename: 'Neon Zero', notes: [
+      'Achievement density pass: 23 → 38. New tiers for buildings (10 Back Bars, 5 DJ Booths, 3 Marquee Signs, 5 Flyer Crews, max Door Staff, 3 Dressing Rooms), stats (200 Hype, 100 patrons, 50 Regulars, 25 nights), 10 rounds, plus burst-event tracking: whales (1 / 10) and special shifts (1 / 5).',
+      'Whale and special-shift achievements are driven by two new additive counters (g.whalesCount, g.specialsCount) that default to 0 when absent — no SAVE_VER bump, old saves just earn them from now on. The special-shift counter increments when a special actually triggers (advanceShift), the whale counter on spawnWhale.',
+      'New Legacy rewards (Whale Watcher +3, Event Planner +2) credit both spendable Legacy and legacyTotal, matching the 0.9.5 accounting rule for achievement Legacy.'
+    ] },
     { v: '0.10.0', date: '2026-08-08', codename: 'Neon Zero', notes: [
       'Small screens: the three-column shell now stacks Ledger / Stage / Systems vertically below 900px instead of forcing horizontal scrolling (the fixed column minimums summed to 872px).',
       'The shell grid moved from an inline style on <main> to a .shell-grid class in style.css with a @media (max-width: 900px) single-column fallback. Interior grid rows and the stage container queries are untouched, and ≥901px layouts are pixel-identical to before.'
@@ -144,7 +149,7 @@ class Game {
       'SAVE_VER bumped to 8; v7 saves migrate and default g.managers to all false.'
     ] },
     { v: '0.8.1', date: '2026-08-06', codename: 'Neon Zero', notes: [
-      'Achievements: 22 permanent unlocks with Clout/Legacy rewards and a modal in Settings.',
+      'Achievements: 23 permanent unlocks with Clout/Legacy rewards and a modal in Settings.',
       'Number formatting extended to Decillion (Dc, 1e33).',
       'Whale patron burst event: random high-roller spawns when hype is positive.',
       'Shift-click any building card to buy the maximum affordable count.',
@@ -401,7 +406,25 @@ class Game {
     { id: 'all_buildings', name: 'Empire', desc: 'Own every structure at least once', check: g => this.BUILDINGS.every(b => g.b[b.id] >= 1), reward: { legacy: 3 } },
     { id: 'all_upgrades', name: 'Fully Loaded', desc: 'Buy every upgrade', check: g => this.UPGRADES.every(u => g.u[u.id]), reward: { legacy: 3 } },
     { id: 'all_research', name: 'Scholar', desc: 'Complete all research', check: g => this.RESEARCH.every(r => g.r[r.id]), reward: { legacy: 2 } },
-    { id: 'max_perks', name: 'Perfectionist', desc: 'Max all prestige perks', check: g => this.PRESTIGE_PERKS.every(p => this.perk(g, p.id) >= p.max), reward: { legacy: 10 } }
+    { id: 'max_perks', name: 'Perfectionist', desc: 'Max all prestige perks', check: g => this.PRESTIGE_PERKS.every(p => this.perk(g, p.id) >= p.max), reward: { legacy: 10 } },
+    // 0.10.1 density pass (23 → 38): building breadth, higher stat tiers, and the
+    // burst-event counters. Legacy rewards below credit legacyTotal via
+    // checkAchievements (earned Legacy), matching the 0.9.5 accounting rule.
+    { id: 'bar_10', name: 'Two-Thirds Full', desc: 'Own 10 Back Bars', check: g => g.b.bar >= 10, reward: { clout: 2 } },
+    { id: 'dj_5', name: 'Beatkeeper', desc: 'Own 5 DJ Booths', check: g => g.b.dj >= 5, reward: { clout: 2 } },
+    { id: 'marquee_3', name: 'Bright Lights', desc: 'Own 3 Marquee Signs', check: g => g.b.marquee >= 3, reward: { clout: 3 } },
+    { id: 'flyers_5', name: 'Street Team', desc: 'Own 5 Flyer Crews', check: g => g.b.flyers >= 5, reward: { clout: 2 } },
+    { id: 'door_max', name: 'Bouncer', desc: 'Max out Door Staff', check: g => g.b.door >= this.doorMax(g), reward: { clout: 3 } },
+    { id: 'dress_3', name: 'Backstage Pass', desc: 'Own 3 Dressing Rooms', check: g => g.b.dress >= 3, reward: { clout: 3 } },
+    { id: 'hype_200', name: 'Deafening', desc: 'Reach 200 Hype', check: g => g.hype >= 200, reward: { clout: 3 } },
+    { id: 'patrons_100', name: 'Fire Marshal', desc: '100 patrons on floor', check: g => g.patrons >= 100, reward: { clout: 5 } },
+    { id: 'regulars_50', name: 'Institution', desc: '50 Regulars', check: g => g.regulars >= 50, reward: { clout: 8 } },
+    { id: 'night_25', name: 'A Month In', desc: 'Survive 25 nights', check: g => g.night >= 25, reward: { clout: 3 } },
+    { id: 'round_10', name: 'Toast', desc: 'Buy 10 rounds', check: g => g.rounds >= 10, reward: { clout: 1 } },
+    { id: 'whale_1', name: 'Big Catch', desc: 'A whale patron spends big', check: g => (g.whalesCount || 0) >= 1, reward: { legacy: 1 } },
+    { id: 'whale_10', name: 'Whale Watcher', desc: '10 whale patrons', check: g => (g.whalesCount || 0) >= 10, reward: { legacy: 3 } },
+    { id: 'special_1', name: 'Surprise Hit', desc: 'Ride your first special shift', check: g => (g.specialsCount || 0) >= 1, reward: { legacy: 1 } },
+    { id: 'special_5', name: 'Event Planner', desc: 'Ride 5 special shifts', check: g => (g.specialsCount || 0) >= 5, reward: { legacy: 2 } }
   ];
 
   // Current rank of a prestige perk (0 if missing/invalid).
@@ -644,6 +667,10 @@ class Game {
       b, u, r, elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: Date.now(),
       // Owner's List (SAVE_VER 5) — not required by isValidSavePayload (v4 imports lack them).
       goals: [], clicks: 0, rounds: 0,
+      // Burst-event counters (0.10.1, additive) — whalesCount/specialsCount drive
+      // whale/special achievements. Not required by isValidSavePayload, so they
+      // never force a SAVE_VER bump on their own.
+      whalesCount: 0, specialsCount: 0,
       // Prestige meta (SAVE_VER 6) — defaults for first run; perks/prestiges persist.
       legacy: 0, legacyTotal: 0, perks, prestiges: 0,
       // Achievements (SAVE_VER 7)
@@ -1387,6 +1414,8 @@ class Game {
     g._specialShift = null;
     if (!specialJustEnded && Math.random() < this.SPECIAL_CHANCE) {
       g._specialShift = this.pickSpecialShift(g);
+      // 0.10.1: lifetime special-shift counter (drives special_1/special_5).
+      g.specialsCount = (g.specialsCount || 0) + 1;
     }
     return this.effectiveShift(g);
   }
@@ -2397,6 +2426,8 @@ class Game {
     const mult = 1 + g.hype / 100;
     const bonus = Math.floor(50 * mult * this.cashIncomeMult(g));
     g.cash += bonus;
+    // 0.10.1: lifetime whale counter (drives whale_1/whale_10).
+    g.whalesCount = (g.whalesCount || 0) + 1;
     this.push(g, '\uD83D\uDC0B Whale spotted! +$' + this.fmt(bonus), '#ffd700');
     this.noteGoals(g);
     this.checkAchievements(g);
