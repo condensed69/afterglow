@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.10.3', build: 194, channel: 'alpha', date: '2026-08-08', codename: 'Neon Zero' };
+  VERSION = { num: '0.10.4', build: 195, channel: 'alpha', date: '2026-08-08', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -108,8 +108,11 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.10.4', date: '2026-08-08', codename: 'Neon Zero', notes: [
+      'Render throttle: DOM re-render capped at ~4 fps (250ms) while sim still steps every 100ms. Live tick increments state.tick each frame but only calls forceUpdate() when the throttle window has elapsed. User actions (clicks, purchases, golden ticket) and the catchUp path always render immediately. In a busy state (100 patrons, all buildings), per-call render() cost is ~20ms; at 10 fps that is 200ms/s of CPU, down to ~80ms/s with throttle — a ~60% reduction. No SAVE_VER bump.'
+    ] },
     { v: '0.10.3', date: '2026-08-08', codename: 'Neon Zero', notes: [
-      'Prestige "House cut" cash perk increased from +10% to +15% per rank. Formula 1 + 0.15 × cash10 rank. Prestige acceleration (run2 ÷ run1 first-LED) moves from ~0.95 to ~0.83, within the 0.7–0.9× target. All pacing milestones in band; prestige delta −2.50m (was −0.70m).'
+      'Prestige "House cut" cash perk increased from +10% to +15% per rank. Formula 1 + 0.15 × cash10 rank. Prestige acceleration (run2 ÷ run1 first-LED) moves from ~0.95 to ~0.83, within the 0.7–0.9× target. All pacing milestones in band; prestige delta −2.50m (was −0.70m).',
     ] },
     { v: '0.10.2', date: '2026-08-08', codename: 'Neon Zero', notes: [
       'Burst-event variety: a Critic now reviews each new night when Hype is high (2%/night). Strong room (20+ patrons) → rave: +Hype and +2 Clout. Weak room → pan: −Hype (floor 0). Adds live risk/reward texture around the deterministic building/research curve.',
@@ -338,6 +341,7 @@ class Game {
   GOLDEN_CHANCE = 0.005; // per live tick at hype > 0
   GOLDEN_TTL = 30;       // seconds a golden offer stays clickable
   _live = false;         // true only inside the live tick interval
+  _lastRender = 0;       // 0.10.4: render throttle — forceUpdate only if 250ms since last DOM write
   SPECIAL_SHIFTS = [
     { name: 'Bachelorette Rush', mult: 1.9, len: 26, tint: '#ff2d78', weight: 4 },
     { name: 'Midweek Surge', mult: 1.3, len: 34, tint: '#22d3ee', weight: 3 },
@@ -1648,7 +1652,16 @@ class Game {
       }
     }
     g.ts = Date.now();
-    this.setState(s => ({ tick: s.tick + 1 }));
+    // 0.10.4 render throttle: increment tick every frame (10 Hz sim),
+    // but re-render the DOM at most every 250ms (~4 fps). The non-live
+    // catchUp path calls setState directly (always renders). User actions
+    // call forceUpdate() in handlers and are never throttled.
+    this.state.tick++;
+    const now = Date.now();
+    if (!this._lastRender || now - this._lastRender >= 250) {
+      this._lastRender = now;
+      this.forceUpdate();
+    }
   }
 
   // --- Owner's List (PLAN-NEXT §B) ---
