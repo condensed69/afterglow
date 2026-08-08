@@ -657,6 +657,137 @@ test('achievement catalog is 38 entries with unique ids', () => {
   strictEqual(new Set(ids).size, 38, 'ids unique');
 });
 
+// ── 0.10.2 burst events (critic + golden ticket) ─────────────────────────────
+// Both events are LIVE-ONLY: the pacing bot and offline catchUp drive step()
+// directly with _live = false, so their random rolls can never flake pacing.mjs.
+
+test('critic raves when the room is strong (hype ≥ 30, patrons ≥ 20)', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g.hype = 50;
+  g.patrons = 20;
+  g.clout = 0;
+  withRandom([0.0], () => game.maybeCritic(g)); // roll < CRITIC_CHANCE
+  ok(g.hype > 50, 'hype increased by the rave');
+  strictEqual(g.clout, 2, 'rave grants +2 Clout');
+  ok(g.log.some(l => /critic raves/i.test(l.msg)), 'rave logged');
+});
+
+test('critic pans when the room is weak (patrons < 20)', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g.hype = 50;
+  g.patrons = 5;
+  withRandom([0.0], () => game.maybeCritic(g));
+  ok(g.hype < 50, 'hype dropped by the pan');
+  ok(g.hype >= 0, 'hype never goes negative');
+  ok(g.log.some(l => /critic pans/i.test(l.msg)), 'pan logged');
+});
+
+test('critic only visits during Peak (hype ≥ 30) and on a successful roll', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g.hype = 10; g.patrons = 20; g.clout = 0;
+  withRandom([0.0], () => game.maybeCritic(g));
+  strictEqual(g.clout, 0, 'no visit below hype 30');
+  g.hype = 50;
+  withRandom([0.99], () => game.maybeCritic(g)); // ≥ CRITIC_CHANCE
+  strictEqual(g.clout, 0, 'no visit when the roll misses');
+});
+
+test('golden offer spawns on a hit when hype > 0 and never double-fires', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g.hype = 10;
+  withRandom([0.0], () => game.maybeGolden(g));
+  ok(g.golden && typeof g.golden.at === 'number', 'offer active with timestamp');
+  const first = g.golden;
+  withRandom([0.0], () => game.maybeGolden(g));
+  strictEqual(g.golden, first, 'no second offer while one is active');
+});
+
+test('golden does not spawn at hype 0 or when the roll misses', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g.hype = 0;
+  withRandom([0.0], () => game.maybeGolden(g));
+  strictEqual(g.golden, null, 'no offer at hype 0');
+  g.hype = 10;
+  withRandom([0.99], () => game.maybeGolden(g));
+  strictEqual(g.golden, null, 'no offer when the roll misses');
+});
+
+test('takeGolden cash pays an income-scaled tip and clears the offer', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g.golden = { at: 0 };
+  const mult = game.cashIncomeMult(g);
+  const before = g.cash;
+  ok(game.takeGolden(g, 'cash'), 'offer resolved');
+  strictEqual(g.cash - before, Math.floor(25 * mult), 'tip scaled by cashIncomeMult');
+  strictEqual(g.golden, null, 'offer cleared');
+  strictEqual(game.takeGolden(g, 'cash'), false, 'second resolve is a no-op');
+});
+
+test('takeGolden crowd adds patrons (capped) and clears the offer', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g.golden = { at: 0 };
+  const cap = game.caps(g).patrons;
+  g.patrons = cap - 3;
+  ok(game.takeGolden(g, 'crowd'), 'offer resolved');
+  strictEqual(g.patrons, cap, 'patrons capped at the floor cap');
+  strictEqual(g.golden, null, 'offer cleared');
+});
+
+test('stale golden offer expires during a live step', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  game._live = true;
+  g.hype = 0; // no new offers at hype 0
+  g.golden = { at: Date.now() - 100000 };
+  game.step(0.1);
+  strictEqual(g.golden, null, 'expired offer cleared');
+});
+
+test('critic fires at night rollover during a live step', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  game._live = true;
+  g.hype = 50;
+  g.b.bar = 4; // cap.patrons = 10 + 4*5 = 30; patrons=25 stays clear of the ≥20 rave line after per-slice decay (0.008/s)
+  g.patrons = 25;
+  g.clout = 0;
+  g.shiftIdx = 3; // After Hours → wraps to Night (shiftIdx 0)
+  const r = game.rates(g);
+  g.shiftT = r.shift.len - 0.05;
+  // Rolls per slice: whale (0.99 no), golden (0.99 no), special rollover (0.99 no), critic (0.0 yes).
+  withRandom([0.99, 0.99, 0.99, 0.0], () => game.step(0.1));
+  strictEqual(g.shiftIdx, 0, 'rolled into a new night');
+  // Background clout income (regulars * 0.0011) accrues during step, so assert ≥ 2.
+  ok(g.clout >= 2, 'critic rave granted +2 Clout');
+  ok(g.log.some(l => /critic/i.test(l.msg)), 'critic logged');
+});
+
+test('burst events stay off when not live (pacing-bot determinism)', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  strictEqual(game._live, false, 'not live by default');
+  g.hype = 50;
+  g.b.bar = 4; // keep patrons=20 above the fresh-game cap (10 + bar*5)
+  g.patrons = 20;
+  g.clout = 0;
+  g.shiftIdx = 3;
+  const r = game.rates(g);
+  g.shiftT = r.shift.len - 0.05;
+  // All rolls miss (0.99) — golden/critic never even roll without _live, and the
+  // pre-existing special-shift roll is allowed to miss cleanly.
+  withRandom([0.99, 0.99, 0.99, 0.99], () => game.step(0.1));
+  strictEqual(g.golden, null, 'no golden offer in bot path');
+  ok(g.clout < 0.001, 'no critic clout in bot path');
+  strictEqual(g._specialShift, null, 'no special shift in bot path');
+});
+
 test('achievements persist through prestige', () => {
   const game = newGame(5000);
   const g = game.state.g;

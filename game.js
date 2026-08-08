@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.10.1', build: 192, channel: 'alpha', date: '2026-08-08', codename: 'Neon Zero' };
+  VERSION = { num: '0.10.2', build: 193, channel: 'alpha', date: '2026-08-08', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -108,6 +108,11 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.10.2', date: '2026-08-08', codename: 'Neon Zero', notes: [
+      'Burst-event variety: a Critic now reviews each new night when Hype is high (2%/night). Strong room (20+ patrons) → rave: +Hype and +2 Clout. Weak room → pan: −Hype (floor 0). Adds live risk/reward texture around the deterministic building/research curve.',
+      'Golden ticket: rare (0.5%/tick) floating offer while Hype is positive — a VIP booked the booth. Take the tip (cash scaled by income) or grow the crowd (+10 patrons, capped). One offer at a time; expires after 30s.',
+      'Both events are live-only: the pacing bot and offline catchUp drive step() with _live = false, so their random rolls can never shift the deterministic pacing bands. g.golden is additive UI state (null when absent) — no SAVE_VER bump.'
+    ] },
     { v: '0.10.1', date: '2026-08-08', codename: 'Neon Zero', notes: [
       'Achievement density pass: 23 → 38. New tiers for buildings (10 Back Bars, 5 DJ Booths, 3 Marquee Signs, 5 Flyer Crews, max Door Staff, 3 Dressing Rooms), stats (200 Hype, 100 patrons, 50 Regulars, 25 nights), 10 rounds, plus burst-event tracking: whales (1 / 10) and special shifts (1 / 5).',
       'Whale and special-shift achievements are driven by two new additive counters (g.whalesCount, g.specialsCount) that default to 0 when absent — no SAVE_VER bump, old saves just earn them from now on. The special-shift counter increments when a special actually triggers (advanceShift), the whale counter on spawnWhale.',
@@ -323,6 +328,13 @@ class Game {
   // selection. Purely a modifier layer over shift.mult/shift.len: g.shiftIdx keeps
   // advancing the base rotation underneath, so a special never corrupts it.
   SPECIAL_CHANCE = 0.10; // per rollover chance to trigger a special (fixed 10%)
+  // 0.10.2 burst events — critic + golden ticket. Both are LIVE-ONLY: the pacing
+  // bot and offline catchUp drive step() with _live = false, so these random rolls
+  // can never flake pacing.mjs (a hard gate).
+  CRITIC_CHANCE = 0.02;  // per night at rollover, requires hype >= 30
+  GOLDEN_CHANCE = 0.005; // per live tick at hype > 0
+  GOLDEN_TTL = 30;       // seconds a golden offer stays clickable
+  _live = false;         // true only inside the live tick interval
   SPECIAL_SHIFTS = [
     { name: 'Bachelorette Rush', mult: 1.9, len: 26, tint: '#ff2d78', weight: 4 },
     { name: 'Midweek Surge', mult: 1.3, len: 34, tint: '#22d3ee', weight: 3 },
@@ -671,6 +683,8 @@ class Game {
       // whale/special achievements. Not required by isValidSavePayload, so they
       // never force a SAVE_VER bump on their own.
       whalesCount: 0, specialsCount: 0,
+      // Golden-ticket offer (0.10.2, additive UI state) — { at } while active.
+      golden: null,
       // Prestige meta (SAVE_VER 6) — defaults for first run; perks/prestiges persist.
       legacy: 0, legacyTotal: 0, perks, prestiges: 0,
       // Achievements (SAVE_VER 7)
@@ -1156,7 +1170,9 @@ class Game {
         g.ts = Date.now();
         this.setState(s => ({ tick: s.tick + 1 }));
       } else {
+        this._live = true;
         this.step(Math.min(dt, 28800));
+        this._live = false;
       }
     }, 100);
     // Autosave only for the owning tab. A non-claiming second/duplicated tab
@@ -1586,8 +1602,16 @@ class Game {
         this.spawnWhale(g);
         g._whaleCooldown = 120 + Math.random() * 180; // 2-5 min
       }
+      // 0.10.2 burst events — live only (see CRITIC_CHANCE note). Offline catchUp
+      // and the pacing bot drive step() with _live = false and stay deterministic.
+      if (this._live) {
+        if (g.golden && Date.now() - g.golden.at >= this.GOLDEN_TTL * 1000) g.golden = null;
+        this.maybeGolden(g);
+      }
       if (g.shiftT >= r.shift.len) {
         this.advanceShift(g);
+        // 0.10.2: a critic may review each new night (live only).
+        if (this._live && g.shiftIdx === 0) this.maybeCritic(g);
         if (chatty) {
           const eff = this.effectiveShift(g);
           const isSpecial = g._specialShift != null;
@@ -2216,6 +2240,10 @@ class Game {
         this.checkAchievements(g);
         this.forceUpdate();
       },
+      // 0.10.2 golden ticket: overlay offer on the stage (see takeGolden).
+      golden: g.golden ? { cashLabel: 'Take the $', crowdLabel: 'Grow the crowd' } : null,
+      takeGoldenCash: () => this.takeGolden(g, 'cash'),
+      takeGoldenCrowd: () => this.takeGolden(g, 'crowd'),
       debugLine: (this.props.showDebug ?? false) ? 'cash ' + r.cash.toFixed(3) + '/s · hype ' + r.hype.toFixed(3) + '/s · buzz ' + r.buzz.toFixed(3) + '/s · pull ' + r.pull.toFixed(2) : '',
       ownersList: (() => {
         const total = this.GOALS.length;
@@ -2443,6 +2471,51 @@ class Game {
       this.fxLayer.appendChild(f);
     }
     this.forceUpdate();
+  }
+
+  // 0.10.2: a reviewer visits at the start of a night during Peak (hype >= 30).
+  // Strong room (patrons >= 20) → rave: +Hype bonus, +2 Clout. Weak room → pan:
+  // −Hype. Live-only — the pacing bot and offline catchUp never call it.
+  maybeCritic(g) {
+    if (!g || g.hype < 30) return;
+    if (Math.random() >= this.CRITIC_CHANCE) return;
+    if (g.patrons >= 20) {
+      const bonus = Math.floor(8 + g.hype * 0.08);
+      g.hype = Math.min(this.caps(g).hype, g.hype + bonus);
+      g.clout = (g.clout || 0) + 2;
+      this.push(g, 'A critic raves — +' + bonus + ' Hype, +2 Clout.', '#4ade80');
+    } else {
+      const penalty = Math.floor(12 + g.hype * 0.06);
+      g.hype = Math.max(0, g.hype - penalty);
+      this.push(g, 'A critic pans the room — ' + penalty + ' Hype.', '#ff2d78');
+    }
+  }
+
+  // 0.10.2: rare floating offer — "VIP booked the booth". Spawns per live tick at
+  // hype > 0, one at a time; resolved via takeGolden (stage overlay buttons).
+  // g.golden is additive UI state (null when absent), so no SAVE_VER bump.
+  maybeGolden(g) {
+    if (!g || g.hype <= 0 || g.golden) return;
+    if (Math.random() >= this.GOLDEN_CHANCE) return;
+    g.golden = { at: Date.now() };
+    this.push(g, 'VIP booked the booth — golden ticket!', '#ffc94a');
+  }
+
+  // Resolve the active golden offer: 'cash' (income-scaled tip) or 'crowd'
+  // (+patrons, capped). Idempotent — returns false when no offer is active.
+  takeGolden(g, choice) {
+    if (!g || !g.golden) return false;
+    if (choice === 'crowd') {
+      g.patrons = Math.min(this.caps(g).patrons, g.patrons + 10);
+      this.push(g, 'Golden ticket: VIP brought friends. +10 patrons.', '#ffc94a');
+    } else {
+      const amount = Math.floor(25 * this.cashIncomeMult(g));
+      g.cash += amount;
+      this.push(g, 'Golden ticket: VIP tipped $' + this.fmt(amount) + '.', '#ffc94a');
+    }
+    g.golden = null;
+    this.forceUpdate();
+    return true;
   }
 
   bind(fn) {
@@ -2728,6 +2801,16 @@ class Game {
           <div style="font-size:9px;letter-spacing:2.6px;text-transform:uppercase;color:#7b5f90;font-weight:700">Room energy</div>
           <div style="font-family:'IBM Plex Mono',monospace;font-size:26px;color:#ffc94a;font-weight:600;line-height:1.1">${v.energyPct}</div>
         </div>
+
+        ${v.golden ? `
+        <div style="position:absolute;left:50%;bottom:36%;transform:translateX(-50%);background:linear-gradient(180deg,#38260a,#1c1105);border:1px solid #ffc94a;border-radius:10px;padding:10px 14px;text-align:center;box-shadow:0 0 28px rgba(255,201,74,.4);z-index:5;min-width:230px">
+          <div style="font-size:9px;letter-spacing:2.4px;text-transform:uppercase;color:#ffc94a;font-weight:700;margin-bottom:5px">Golden ticket</div>
+          <div style="font-size:11px;color:#f3e2c2;margin-bottom:8px">VIP booked the booth — take the tip or grow the crowd?</div>
+          <div style="display:flex;gap:8px;justify-content:center">
+            <button data-h="${this.bind(v.takeGoldenCash)}" style="background:linear-gradient(180deg,#ffc94a,#b8860b);border:0;border-radius:7px;color:#1c1105;font-weight:700;font-size:11px;padding:7px 12px;cursor:pointer">${v.golden.cashLabel}</button>
+            <button data-h="${this.bind(v.takeGoldenCrowd)}" style="background:#170e22;border:1px solid #ffc94a;border-radius:7px;color:#ffc94a;font-weight:700;font-size:11px;padding:7px 12px;cursor:pointer">${v.golden.crowdLabel}</button>
+          </div>
+        </div>` : ''}
       </div>
 
       <div style="display:flex;flex-wrap:wrap;gap:10px;padding:12px 14px;background:#0b0712;border-bottom:1px solid #2a1738;align-items:center">
