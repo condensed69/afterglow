@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.9.5', build: 190, channel: 'alpha', date: '2026-08-08', codename: 'Neon Zero' };
+  VERSION = { num: '0.10.0', build: 191, channel: 'alpha', date: '2026-08-08', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -108,6 +108,10 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.10.0', date: '2026-08-08', codename: 'Neon Zero', notes: [
+      'Small screens: the three-column shell now stacks Ledger / Stage / Systems vertically below 900px instead of forcing horizontal scrolling (the fixed column minimums summed to 872px).',
+      'The shell grid moved from an inline style on <main> to a .shell-grid class in style.css with a @media (max-width: 900px) single-column fallback. Interior grid rows and the stage container queries are untouched, and ≥901px layouts are pixel-identical to before.'
+    ] },
     { v: '0.9.5', date: '2026-08-08', codename: 'Neon Zero', notes: [
       'Fix: Achievement Legacy rewards (prestige_1, prestige_5, legacy_50) only credited spendable Legacy — lifetime Legacy (legacyTotal) ignored them, so the Legacy Builder achievement and the Perks tab "Total Legacy earned" undercounted real income.',
       'Achievement Legacy now also credits legacyTotal, matching how prestige gains are tracked. No SAVE_VER bump — this only changes a runtime accounting path.'
@@ -2597,7 +2601,7 @@ class Game {
       </div>` : '';
 
     this.root.innerHTML = `
-<div style="height:100vh;display:grid;grid-template-rows:auto 1fr auto;background:radial-gradient(1200px 700px at 50% -10%,#1a0e26 0%,#07050c 62%);overflow:hidden">
+<div style="height:100vh;display:grid;grid-template-rows:auto 1fr auto;grid-template-columns:minmax(0,1fr);background:radial-gradient(1200px 700px at 50% -10%,#1a0e26 0%,#07050c 62%);overflow:hidden">
 
   <header style="display:flex;align-items:center;gap:20px;padding:0 18px;height:62px;border-bottom:1px solid #2a1738;background:linear-gradient(180deg,#140b1f,#0b0712);position:relative;z-index:20">
     <div style="display:flex;align-items:baseline;gap:12px">
@@ -2637,7 +2641,7 @@ class Game {
     </div>
   </header>
 
-  <main data-scroll="main" style="display:grid;grid-template-columns:minmax(232px,300px) minmax(320px,720px) minmax(320px,440px);width:100%;max-width:1460px;margin-inline:auto;min-height:0;overflow:auto">
+  <main data-scroll="main" class="shell-grid">
 
     <aside data-scroll="ledger" style="border-right:1px solid #2a1738;background:#0a0611;overflow-y:auto;padding:14px 12px">
       <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700;margin-bottom:10px">Ledger</div>
