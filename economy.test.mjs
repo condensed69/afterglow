@@ -669,7 +669,9 @@ test('critic raves when the room is strong (hype ≥ 30, patrons ≥ 20)', () =>
   g.clout = 0;
   withRandom([0.0], () => game.maybeCritic(g)); // roll < CRITIC_CHANCE
   ok(g.hype > 50, 'hype increased by the rave');
-  strictEqual(g.clout, 2, 'rave grants +2 Clout');
+  // rave +2 Clout, plus hype_50 (Buzzing) completes immediately via the
+  // handler-pattern checkAchievements → +1 more.
+  strictEqual(g.clout, 3, 'rave grants +2 Clout, hype_50 completes immediately');
   ok(g.log.some(l => /critic raves/i.test(l.msg)), 'rave logged');
 });
 
@@ -865,6 +867,18 @@ test('_live flag is restored even when step throws (hard-gate invariant)', () =>
   game.step = orig;
   strictEqual(threw, true, 'step threw');
   strictEqual(game._live, false, '_live restored by finally — hard gate cannot stick open');
+});
+
+test('critic rave resolves goals/achievements immediately (handler pattern)', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g.hype = 45; // rave bonus floor(8 + 45*0.08) = 11 → crosses hype_50 (50)
+  g.patrons = 25; g.b.bar = 4; g.clout = 0;
+  withRandom([0.0], () => { game.maybeCritic(g); }); // 0.0 < 0.02 → fires
+  ok(g.hype >= 50, 'rave crossed the hype_50 threshold');
+  ok(Array.isArray(g.achievements) && g.achievements.includes('hype_50'),
+    'achievement completed inside maybeCritic, not one tick later');
+  ok(g.clout >= 3, 'rave +2 clout plus achievement reward credited immediately');
 });
 
 test('achievements persist through prestige', () => {

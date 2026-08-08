@@ -2506,6 +2506,10 @@ class Game {
       g.hype = Math.max(0, g.hype - penalty);
       this.push(g, 'A critic pans the room — ' + penalty + ' Hype.', '#ff2d78');
     }
+    // Match the spawnWhale/takeGolden handler pattern: a rave's +Hype/+Clout can
+    // cross a goal or achievement threshold — resolve it here, not next tick.
+    this.noteGoals(g);
+    this.checkAchievements(g);
   }
 
   // 0.10.2: rare floating offer — "VIP booked the booth". Spawns per live tick at
