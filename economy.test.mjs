@@ -3195,6 +3195,81 @@ test('save with an invalid special index is sanitized, not rejected (fail-closed
   strictEqual(game.state.g.shiftT, 10, 'shiftT preserved against base length');
 });
 
+// ── Buzz→Patrons conversion cap scales with cap.buzz (issue #29) ─────────────
+
+console.log('\nBuzz→Patrons cap scales with cap.buzz (issue #29)');
+
+test('patrons rate stays positive at high Buzz with upgraded Marquee', () => {
+  const game = newGame();
+  const g = game.state.g;
+  // Simulate the exact reported bug state: Buzz 2290/2290 (capped), Patrons 78.
+  // cap.buzz = 50 + marquee*35 = 2290 → marquee = 64.
+  // With the old flat 0.065 cap, basis = 0.065 forever and decay outruns it.
+  // With the fix, basis cap = 2290 * 0.0013 = 2.977 → pull overwhelms decay.
+  // Must also raise cap.patrons so there's room (space > 0) for growth.
+  g.b.marquee = 64;         // cap.buzz = 50 + 2240 = 2290
+  g.b.bar = 14;             // cap.patrons = 10 + 70 = 80 (room for patrons=78)
+  g.buzz = 2290;            // matches the reported capped Buzz
+  g.hype = 500;             // realistic late-game Hype
+  g.patrons = 78;           // the exact reported stuck-at value
+  const r = game.rates(g);
+  ok(r.patrons > 0, `patrons rate ${r.patrons} must be positive at high Buzz (reported bug: 0.00/s at Buzz ${g.buzz}, Patrons ${g.patrons})`);
+});
+
+test('early-game Buzz→Patrons conversion stays bounded (no flooding)', () => {
+  const game = newGame();
+  const g = game.state.g;
+  // Fresh game: no Marquee upgrades, tiny Buzz from starting click income.
+  // cap.buzz = 50 → basis cap = 50 * 0.0013 = 0.065 — same as the original flat cap.
+  g.b.marquee = 0;
+  g.buzz = 0.03;            // tiny early-game buzz
+  g.hype = 0;
+  g.patrons = 0;
+  const r = game.rates(g);
+  // Without the cap, buzz=0.03 would give pull=0.03+0.02=0.05. With the cap
+  // (0.065, same as before), buzz passes through directly since 0.03 < 0.065.
+  ok(r.patrons < 0.10, `patrons rate ${r.patrons} must be modest at early-game Buzz ${g.buzz} (flooding guard)`);
+  ok(r.patrons > 0, `patrons rate ${r.patrons} must be positive for tiny buzz`);
+});
+
+test('Buzz cap at marquee=0 equals the original 0.065 flat cap', () => {
+  const game = newGame();
+  const g = game.state.g;
+  g.b.marquee = 0;          // cap.buzz = 50
+  g.buzz = 500;             // well above the cap
+  g.hype = 0;
+  g.patrons = 0;
+  const r0 = game.rates(g);
+  // Expected: basis = min(500, 50*0.0013) = min(500, 0.065) = 0.065
+  // pull = 0.065 * 1 + 0.02 = 0.085
+  const expected = 0.065 * 1 + 0.02;  // no hype, no decay
+  ok(Math.abs(r0.patrons - expected) < 0.0001,
+     `patrons rate ${r0.patrons} must equal 0.085 at marquee=0 (cap.buzz 50 × 0.0013 = 0.065)`);
+});
+
+test('Marquee upgrades raise the Buzz→Patrons cap proportionally', () => {
+  const game = newGame();
+  const g = game.state.g;
+  g.buzz = 500;             // above any sane cap
+  g.hype = 0;
+  g.patrons = 0;
+  const ratesAt = (marquee) => {
+    g.b.marquee = marquee;
+    return game.rates(g).patrons;
+  };
+  const r0 = ratesAt(0);    // cap.buzz = 50, basis cap = 0.065
+  const r2 = ratesAt(2);    // cap.buzz = 50+70 = 120, basis cap = 0.156
+  const r4 = ratesAt(4);    // cap.buzz = 50+140 = 190, basis cap = 0.247
+  ok(r2 > r0, `marquee=2 rate ${r2} must exceed marquee=0 rate ${r0}`);
+  ok(r4 > r2, `marquee=4 rate ${r4} must exceed marquee=2 rate ${r2}`);
+  // Verify ratios are exactly proportional (within float tolerance):
+  // cap.buzz[2] / cap.buzz[0] = 120/50 = 2.4; cap.buzz[4] / cap.buzz[2] = 190/120 ≈ 1.583
+  const expectedR2 = 0.065 * (120 / 50) + 0.02;
+  const expectedR4 = 0.065 * (190 / 50) + 0.02;
+  ok(Math.abs(r2 - expectedR2) < 0.0001, `marquee=2 rate ${r2} must match expected ${expectedR2}`);
+  ok(Math.abs(r4 - expectedR4) < 0.0001, `marquee=4 rate ${r4} must match expected ${expectedR4}`);
+});
+
 console.log('\n───────────────────────────────────────');
 console.log(`Results: ${passed} passed, ${skipped} skipped, ${failed} failed`);
 console.log('───────────────────────────────────────\n');
