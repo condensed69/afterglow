@@ -169,7 +169,7 @@ crew, jobs
 
 `isValidSavePayload` must **not** require `g.clubs` — migration fills it. `sanitizeG` must fail-closed: if `g.clubs` is missing or malformed, reconstruct `{ main: freshClub() }` from top-level fields or from a full fresh state.
 
-**v9 import compatibility note:** the existing `isValidSavePayload` hard-requires `cash`, `hype`, `buzz`, `patrons`, `regulars` as numeric fields directly on `g` (game.js:819-821). After the v8→v9 migration, these fields live inside `g.clubs.main`, not on `g` directly. A natively-exported v9 save will lack these top-level fields, so the current validator would reject it. The fix: change `isValidSavePayload` to check `g.clubs?.main?.cash ?? g.cash` (and likewise for `hype`, `buzz`, `patrons`, `regulars`). This avoids duplicating state back to the top level and is consistent with the `club(g)` helper pattern used everywhere else. The migration chain runs *after* validation, so the validator sees either the pre-migration shape (fields on `g`) or the post-migration shape (fields in `g.clubs.main`).
+**v9 import compatibility note:** the existing `isValidSavePayload` hard-requires `cash`, `hype`, `buzz`, `patrons`, `regulars` as numeric fields directly on `g`. After the v8→v9 migration, these fields live inside `g.clubs.main`, not on `g` directly. A natively-exported v9 save will lack these top-level fields, so the current validator would reject it. The fix: change `isValidSavePayload` to check `g.clubs?.main?.cash ?? g.cash` (and likewise for `hype`, `buzz`, `patrons`, `regulars`). This avoids duplicating state back to the top level and is consistent with the `club(g)` helper pattern used everywhere else. The migration chain runs *after* validation, so the validator sees either the pre-migration shape (fields on `g`) or the post-migration shape (fields in `g.clubs.main`).
 
 *Implementation note:* `?.` (optional chaining) does not appear in `game.js` today. The implementer may choose to keep the codebase free of it (e.g. `g.clubs && g.clubs.main && g.clubs.main.cash`) or introduce it here as the first use — either is fine as long as it's intentional.
 
@@ -204,7 +204,7 @@ const c = this.club(g);
 const cap = this.caps(g, c);   // crew is shared; cap derived from active club's Dressing Rooms
 ```
 
-Crew capacity (`caps().crew`) is derived from the **active club's** Dressing Rooms, because crew is physically assigned to the active room. If the player switches clubs, the crew cap may shrink; excess crew are pushed to `off`. The existing `sanitizeG` rebalance pass (game.js:756-772) only rebalances `g.jobs` against `g.crew` count — it has no notion of `caps(g).crew` or evicting crew when a cap shrinks. The implementation PR must add a new cap-aware rebalance step in `setActiveClub` (or extend `sanitizeG`) that compares `g.crew` against `caps(g).crew` for the newly active club and evicts excess crew to `off`.
+Crew capacity (`caps().crew`) is derived from the **active club's** Dressing Rooms, because crew is physically assigned to the active room. If the player switches clubs, the crew cap may shrink; excess crew are pushed to `off`. The existing jobs/crew rebalance pass in `sanitizeG` only rebalances `g.jobs` against `g.crew` count — it has no notion of `caps(g).crew` or evicting crew when a cap shrinks. The implementation PR must add a new cap-aware rebalance step in `setActiveClub` (or extend `sanitizeG`) that compares `g.crew` against `caps(g).crew` for the newly active club and evicts excess crew to `off`.
 
 Clout is earned into the shared `g.clout` from the active club's Regulars only. Inactive clubs do not generate Clout. This is v1's simplicity tradeoff; future designs may accrue Clout across all clubs at a reduced rate.
 
@@ -218,19 +218,30 @@ Offline `catchUp` runs only for the active club. `g.ts` is a single shared times
 
 Owner's List remains account-level. Goal checks reference the **active club** for structure/stat goals, except where an aggregate makes more sense:
 
-| Goal id | Check in v1 |
-|---------|-------------|
-| work (clicks) | `g.clicks >= 5` |
-| rail, bar, flyers, etc. | active club's `g.b` |
-| pulse (patrons) | active club's `patrons` |
-| contract (crew) | account `g.crew` |
-| energy (hype) | active club's `hype` |
-| regulars | active club's `regulars` |
-| study (research) | account `g.r` |
-| peak | active club, live only |
-| name | active club's `regulars >= 25` |
+All 14 goal ids, with the field each `check` reads today and where it resolves under `g.clubs`:
 
-Goal rewards are paid to the active club's cash or account Clout as today. Goal 14 remains the per-club prestige gate for the active club.
+| # | Goal id | Reads today | Source in v1 |
+|---|---------|-------------|--------------|
+| 1 | `work` | `g.clicks >= 5` | account (clicks are not per-club) |
+| 2 | `rail` | `g.b.rail >= 1` | active club |
+| 3 | `word` | `g.b.flyers >= 1` | active club |
+| 4 | `pulse` | `g.patrons >= 8` | active club |
+| 5 | `contract` | `g.crew >= 1` | account (shared roster) |
+| 6 | `energy` | `g.hype >= 25` | active club |
+| 7 | `house` | `g.rounds >= 1` | account |
+| 8 | `backstage` | `g.b.vip >= 1` **and** `g.jobs.vipjob >= 1` | **mixed** — club `b`, shared `jobs` |
+| 9 | `regulars` | `g.regulars >= 3` | active club |
+| 10 | `study` | any `g.r[d.id]` | account (research) |
+| 11 | `roster` | `g.b.dress >= 1` **and** `g.crew >= 3` | **mixed** — club `b`, shared `crew` |
+| 12 | `peak` | `g.hype >= 60` **and** `g.shiftIdx === 1` | active club (live only) |
+| 13 | `builtin` | any `g.u[d.id]` | active club (`u` is club-level per §4) |
+| 14 | `name` | `g.regulars >= 25` | active club |
+
+> **Implementer note.** Goals 8 and 11 straddle the boundary: each predicate reads one
+> club-level field (`b`) and one shared-roster field (`jobs` / `crew`). They cannot be
+> rewritten as a blanket `club(g).x` substitution — split the two halves explicitly.
+
+Goal rewards are paid to the active club's cash or account Clout as today. Goal 14 (`name`) remains the per-club prestige gate for the active club.
 
 Prestige-tier Owner's List goals are still out of scope (this doc inherits PRESTIGE.md §8 non-goal).
 
@@ -367,7 +378,7 @@ Use this as the acceptance spine when coding the second room:
 - [ ] `activeClub` + `setActiveClub` action; header switcher.
 - [ ] "Open second room" unlock button + modal; gate on `prestiges >= 1` and `>= 1` manager.
 - [ ] SAVE_VER 9 + `MIGRATIONS[8]` moving top-level fields into `g.clubs.main`.
-- [ ] `isValidSavePayload` relaxed to accept v9 saves: check `g.clubs?.main?.cash ?? g.cash` for each required field (game.js:819-821).
+- [ ] `isValidSavePayload` relaxed to accept v9 saves: check `g.clubs?.main?.cash ?? g.cash` for each required field.
 - [ ] `fresh()` initializes `g.clubs.main` + `g.activeClub`.
 - [ ] Prestige reset preserves `g.clubs` keys but freshens every club's run state; applies starters to active club only.
 - [ ] Managers auto-buy only for active club; whale/critic/golden events only for active club.
@@ -375,7 +386,7 @@ Use this as the acceptance spine when coding the second room:
 - [ ] `sanitizeG` reconstructs `g.clubs` fail-closed.
 - [ ] Cap-aware crew rebalance in `setActiveClub` (or extended `sanitizeG`): compare `g.crew` against `caps(g).crew` for the newly active club, push excess to `off`.
 - [ ] `ACHIEVEMENTS` checks that read `g.b.*` / `g.u.*` are routed through `club(g)` (or `check` receives the active club) so building/upgrade achievements don't throw once `b`/`u` move off `g`.
-- [ ] Owner's List goal checks that read `g.b.*` / `g.hype` / `g.patrons` / etc. are routed through `club(g)` (same fix shape as achievements).
+- [ ] Owner's List goal checks that read `g.b.*` / `g.hype` / `g.patrons` / etc. are routed through `club(g)` (same fix shape as achievements) — **except** `backstage` and `roster`, whose predicates read both a club field (`b`) and a shared-roster field (`jobs` / `crew`); see the §6 table.
 - [ ] Ledger shows active-club label; Clout/Legacy remain account-level.
 - [ ] `pacing2.mjs` second-room scenario green.
 - [ ] VERSION + build + CHANGELOG together; SAVE_VER 9.
@@ -389,3 +400,4 @@ Use this as the acceptance spine when coding the second room:
 |------|------|
 | 2026-08-08 | Initial design lock for Phase 11. Mirrors PRESTIGE.md pattern; gates second-room implementation on account-level prestige + manager delegation; defines SAVE_VER 9 `g.clubs` map; supersedes PRESTIGE.md §8 second-location non-goals. |
 
+| 2026-08-08 | Review pass: §6 Owner's List table rewritten against the real `GOALS` array (all 14 ids; `bar`/`flyers` were not goal ids — the flyers goal is `word`; `regulars` threshold is 3, not 25) and flags `backstage`/`roster` as straddling the club/shared-roster boundary. Replaced brittle `game.js:NNN-NNN` citations with symbol references. `PRESTIGE.md` §8 and `PLAN.md` deferred item now cross-reference this doc. |
