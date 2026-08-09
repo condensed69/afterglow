@@ -39,6 +39,40 @@ tests:
 The third reports as `skip`, not `pass`, on purpose: counting unarmed coverage as green
 misstates what the suite checks.
 
+### 3. Fixed a pre-existing ~5% flake that CI found on its first run
+
+Not caused by this PR — CI surfaced it, which is the argument for having CI.
+
+`offline65 increases catchUp earnings over the same window` compares two `catchUp(g, 60)`
+arms. That window crosses a shift boundary, and `advanceShift` (`game.js:1451`) rolls
+`SPECIAL_CHANCE` there. Unstubbed, the two arms draw different shift schedules; when a
+low-multiplier special lands on the *boosted* arm it earns **less** than the base arm and the
+assertion fails. Instrumented over 40 runs, 5 rolled a special and one inverted the result:
+
+```
+35×  base 32.138  boosted 41.166  baseSpecial=null  boostSpecial=null
+ 2×  base 32.138  boosted 37.158  baseSpecial=null  boostSpecial=1
+ 1×  base 32.138  boosted 27.136  baseSpecial=null  boostSpecial=2   ← fails
+ 1×  base 28.991  boosted 41.166  baseSpecial=1     boostSpecial=null
+ 1×  base 21.123  boosted 41.166  baseSpecial=2     boostSpecial=null
+```
+
+The fix uses `withRandom`, already in the file and already documented as existing "to make
+the special-shift trigger deterministic" — this test just never used it. With no special on
+either arm, the comparison isolates the 0.5 → 0.65 offline rate, which is what it claims to
+measure.
+
+Measured, before and after:
+
+| Tree | Runs | Failures |
+|------|------|----------|
+| `main` @ `cb3073c`, unmodified | 60 | 3 — all `offline65` |
+| this branch | 50 | 0 |
+
+This mattered enough to fix here rather than defer: a required check that fails ~5% of the
+time teaches everyone to hit re-run, and `AGENTS.md` "When a gate fails" explicitly forbids
+re-running an unchanged gate. A flaky required check makes that rule unfollowable.
+
 ### Verified the partition test actually fires
 
 Added an unassigned `vipLounge: 0` to `fresh()`, the way a developer would add a field
@@ -51,6 +85,21 @@ Results: 200 passed, 1 skipped, 1 failed
 ```
 
 `game.js` was restored; it is unchanged in this PR.
+
+### What this still does not cover
+
+- **`_specialShift` and `_whaleCooldown` are enforced by nothing.** The coverage test asserts
+  every key `fresh()` produces is assigned to a side; it does not assert every *listed* field
+  exists. `freshClub()`'s key-set check filters `_`-prefixed names out on purpose, since they
+  are lazily created. So those two entries in `CLUB_FIELDS` can go stale silently. Accepted:
+  the alternative is asserting on fields that legitimately may not exist yet.
+- **This stops broken code reaching `main`. It does not stop an agent thrashing on a branch.**
+  The reverted attempt's other failure mode was looping on failures until a guardrail tripped.
+  Nothing here addresses that; `AGENTS.md` "When a gate fails" is still the only thing aimed
+  at it, and it is still a document.
+- **`init backfills achievements on existing current-format save` failed once on CI** and never
+  in 110 local runs. Left alone deliberately rather than fixed on a guess. If it recurs after
+  this lands, it is a second, independent flake.
 
 ### Docs touched
 

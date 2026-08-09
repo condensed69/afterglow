@@ -282,22 +282,30 @@ test('clout25 multiplier scales rates().clout', () => {
 });
 
 test('offline65 increases catchUp earnings over the same window', () => {
-  const game = newGame(500);
-  const base = game.state.g;
-  base.b.rail = 2;
-  base.b.bar = 1;
-  base.patrons = 10;
-  base.regulars = 5;
-  const baseReport = game.catchUp(base, 60);
+  // withRandom is required, not decorative: catchUp crosses a shift boundary in
+  // this window and advanceShift rolls SPECIAL_CHANCE there. Unstubbed, the two
+  // arms get different shift schedules, and a low-multiplier special landing on
+  // the boosted arm sinks it below the base arm — a real ~5% flake this test had
+  // before. 1 is never < SPECIAL_CHANCE, so neither arm gets a special and the
+  // comparison isolates the 0.5 → 0.65 offline rate, which is what it claims.
+  withRandom([1], () => {
+    const game = newGame(500);
+    const base = game.state.g;
+    base.b.rail = 2;
+    base.b.bar = 1;
+    base.patrons = 10;
+    base.regulars = 5;
+    const baseReport = game.catchUp(base, 60);
 
-  const boosted = game.fresh();
-  boosted.b.rail = 2;
-  boosted.b.bar = 1;
-  boosted.patrons = 10;
-  boosted.regulars = 5;
-  boosted.perks.offline65 = 1;
-  const boostedReport = game.catchUp(boosted, 60);
-  ok(boostedReport.earned > baseReport.earned, 'offline65 earns more over same window');
+    const boosted = game.fresh();
+    boosted.b.rail = 2;
+    boosted.b.bar = 1;
+    boosted.patrons = 10;
+    boosted.regulars = 5;
+    boosted.perks.offline65 = 1;
+    const boostedReport = game.catchUp(boosted, 60);
+    ok(boostedReport.earned > baseReport.earned, 'offline65 earns more over same window');
+  });
 });
 
 test('doorPlus raises effective Door Staff max to 7', () => {
