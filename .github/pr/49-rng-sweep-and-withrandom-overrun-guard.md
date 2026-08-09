@@ -161,3 +161,10 @@ bumps to behavior changes. `SAVE_VER` stays 8.
   document.
 - **The overrun guard is dynamic, not static.** It fires only on call sites the suite actually
   executes. A `withRandom` block inside a skipped test is unchecked until that test arms.
+
+### Docs (amended)
+
+One addition to `AGENTS.md` after the harness section: what the overrun throw means and how
+to respond to it. The specific failure it heads off is an agent hitting the throw and deleting
+the guard, or padding the list until the message stops, instead of counting the draws — which
+would restore exactly the silent wrap this PR removes.
