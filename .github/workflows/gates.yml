@@ -20,6 +20,10 @@ concurrency:
 jobs:
   gates:
     runs-on: ubuntu-latest
+    # The suite finishes in ~10s. A run that reaches 10 minutes has hung — an
+    # infinite loop in the sim, say — and should fail fast rather than sit until
+    # GitHub's multi-hour default.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
