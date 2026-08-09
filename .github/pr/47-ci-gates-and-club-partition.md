@@ -62,12 +62,35 @@ the special-shift trigger deterministic" — this test just never used it. With 
 either arm, the comparison isolates the 0.5 → 0.65 offline rate, which is what it claims to
 measure.
 
-Measured, before and after:
+### 4. And a second, CI-only flake — `init backfills achievements`
+
+This one recurred on a second CI run after never failing in 110+ local runs, which is what
+promoted it from noise to a defect.
+
+The test writes a save with `ts: Date.now()` and immediately calls `init()`. `init` computes
+`offline = (now - g.ts) / 1000` with **no minimum threshold** (`game.js:1068`), so the gap is
+however long the harness happened to take. Sub-millisecond locally; on a loaded runner it is
+long enough to run a real `catchUp` and move `clout` off its exact expected value. Injecting a
+3s gap reproduces the CI failure on the first try.
+
+Fixed with a new `withFrozenNow` helper: the test picks its own gap by writing `ts: t - 1000`
+against a frozen clock, so the window is exactly 1s every run regardless of runner load.
+
+**A finding along the way, worth recording:** the first attempt froze the clock with the gap
+at 0 and the test failed *100% of the time* — because the load-time achievement backfill lives
+inside `init`'s `if (offline > 0 && claimed)` branch. A save loaded with no measurable gap
+never gets backfilled at all. The test was silently relying on real elapsed time to reach the
+code it was testing. The 1s gap is deliberate for that reason, and it is now commented.
+
+Whether the backfill *should* depend on `offline > 0` is a real question about `game.js`, not
+about this test — left alone here rather than widened into a behavior change.
+
+### Flake measurements
 
 | Tree | Runs | Failures |
 |------|------|----------|
 | `main` @ `cb3073c`, unmodified | 60 | 3 — all `offline65` |
-| this branch | 50 | 0 |
+| this branch, after both fixes | 60 | 0 |
 
 This mattered enough to fix here rather than defer: a required check that fails ~5% of the
 time teaches everyone to hit re-run, and `AGENTS.md` "When a gate fails" explicitly forbids
@@ -97,9 +120,9 @@ Results: 200 passed, 1 skipped, 1 failed
   The reverted attempt's other failure mode was looping on failures until a guardrail tripped.
   Nothing here addresses that; `AGENTS.md` "When a gate fails" is still the only thing aimed
   at it, and it is still a document.
-- **`init backfills achievements on existing current-format save` failed once on CI** and never
-  in 110 local runs. Left alone deliberately rather than fixed on a guess. If it recurs after
-  this lands, it is a second, independent flake.
+- **Other tests may share the `offline > 0` dependency.** Only the two tests that actually
+  failed were audited. A sweep for tests that write `ts: Date.now()` and then call `init()`
+  would likely find more latent clock coupling; not done here.
 
 ### Docs touched
 

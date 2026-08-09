@@ -188,6 +188,24 @@ function withRandom(values, fn) {
   try { return fn(); } finally { Math.random = orig; }
 }
 
+// Freeze Date.now for the duration of fn(), which receives the frozen value.
+// init() computes `offline = (now - g.ts) / 1000` with no minimum threshold
+// (game.js:1068), so a save written with `ts: Date.now()` and loaded a moment
+// later measures however long the harness happened to take — sub-millisecond on
+// a dev box, long enough on a loaded CI runner to accrue real resources and
+// break an exact-value assertion. Frozen, a test picks its own gap by writing
+// `ts: t - ms` and gets the same window every run.
+//
+// Note the gap must stay > 0 where the load-time achievement backfill is under
+// test: that backfill lives inside init()'s `if (offline > 0 && claimed)` branch,
+// so a zero gap skips it.
+function withFrozenNow(fn) {
+  const orig = Date.now;
+  const t = orig();
+  Date.now = () => t;
+  try { return fn(t); } finally { Date.now = orig; }
+}
+
 const SECONDS_PER_NIGHT = 160; // 40+55+35+30
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -1096,7 +1114,7 @@ test('achievements persist through prestige', () => {
   ok(next.achievements.includes('prestige_1'), 'prestige_1 credited on new run');
 });
 
-test('init backfills achievements on existing current-format save', () => {
+test('init backfills achievements on existing current-format save', () => withFrozenNow((t) => {
   localStorage.clear();
   localStorage.setItem('afterglow.save', JSON.stringify({
     saveVer: 8,
@@ -1107,7 +1125,9 @@ test('init backfills achievements on existing current-format save', () => {
       crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
       b: { rail: 5, bar: 0, vip: 0, dj: 0, marquee: 0, flyers: 0, door: 0, dress: 0 },
       u: {}, r: {},
-      elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: Date.now(),
+      // Exactly 1s of offline, every run: enough to enter init()'s backfill
+      // branch, short enough that the exact clout assertion below stays exact.
+      elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: t - 1000,
       goals: [], clicks: 0, rounds: 0,
       legacy: 0, legacyTotal: 0, perks: {}, prestiges: 0, achievements: [],
       managers: { rail: false, bar: false, dj: false, marquee: false, flyers: false, vip: false, door: false, dress: false }
@@ -1121,7 +1141,7 @@ test('init backfills achievements on existing current-format save', () => {
   ok(game.state.g.achievements.includes('first_rail'), 'load backfills first_rail');
   ok(game.state.g.achievements.includes('rail_5'), 'load backfills rail_5');
   strictEqual(game.state.g.clout, 3, 'first_rail (+1) + rail_5 (+2) clout credited');
-});
+}));
 
 // ── 2. Job invariant: sum always equals crew ─────────────────────────────────
 
