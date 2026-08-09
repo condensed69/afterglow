@@ -440,6 +440,8 @@ grow the crowd: patrons = min(cap, patrons + 10)          // capped
 
 The roll scales by slice time like the whale (`chunk / SIM`), so a lag spike packing many `SIM` slices into one `step()` call cannot inflate the rate. `takeGolden` is idempotent, refuses on a stale (non-owning) tab, and resolves goals/achievements immediately. `g.golden` is additive UI state — `sanitizeG` fail-closes malformed offers (non-object/array/non-finite `at` → `null`), and it never forces a SAVE_VER bump.
 
+**Presentation (0.10.5):** the offer renders as a compact collapsible **VIP badge** in the top-right of the stage, not a centered overlay — the idle sim stays visible and keeps ticking underneath. `this.state.goldenOpen` (transient, not persisted) tracks whether the choice is expanded; the claim actions are built in `renderVals()` as `v.takeGoldenCash` / `v.takeGoldenCrowd` so the template never touches the raw `g` (see §14.4). The crowd preview is rounded — `g.patrons` is fractional in the sim.
+
 ---
 
 ## 12. Achievements (`ACHIEVEMENTS`) — shipped 0.8.1 (23), density pass 0.10.1 (38)
@@ -619,6 +621,32 @@ Typography (loaded in `index.html`): **Monoton** (wordmark), **Space Grotesk** (
 **Look prefs** (`localStorage['afterglow.look']`, chrome only — not in the save): House lights, Room mood, Motion (Full / Easy / Still). Panel mounts outside `#app` so the 10 Hz render loop does not destroy it.
 
 **Render hygiene:** Scroll positions restored via `data-scroll`. Pointer-down defers re-render so buttons receive real clicks under 10 Hz paint.
+
+### 14.3 Buying buildings (0.10.5)
+
+Building cards render a **×1 / ×5 / ×10 / ×Max** button row so touch players can bulk-buy
+without a Shift key. All four route through one `buyBuilding(def, count)` loop, which
+re-checks cash and the per-building `max` on every iteration and keeps the single-buy log
+format when `count === 1`. `buildingMaxAffordable()` is the shared source of truth for
+×Max and for each button's affordability state — the loop is not duplicated in the
+renderer.
+
+Desktop **Shift-click on any of the four** still forces a max buy via the global click
+handler. The explanatory `title` lives on ×1 only; repeating it on all four was noise now
+that a dedicated ×Max button exists.
+
+### 14.4 Templates read the view model, never `g`
+
+`render()` has only `v` (the `renderVals()` output) in scope. Any handler a template binds
+must be constructed in `renderVals()`, where `g` is in scope, and exposed on `v`. A
+template that references the bare identifier `g` parses fine and renders fine, then throws
+`ReferenceError: g is not defined` inside the delegated click handler — so it survives a
+render smoke test and only fails when a player actually clicks.
+
+This has shipped twice: the prestige modal (PR #30) and the 0.10.5 golden-ticket badge.
+Both are now covered by click-through regression tests in `economy.test.mjs`. New
+interactive surfaces need the same pair: a render-does-not-throw test **and** a test that
+invokes the bound action.
 
 ---
 

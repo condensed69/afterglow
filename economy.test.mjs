@@ -439,6 +439,44 @@ test('render() does not throw with the prestige modal open past the gate', () =>
   game.render(); // the assertion is that this call does not throw — see test()
 });
 
+// Same regression class as PR #30, one surface later: the 0.10.5 golden-ticket
+// badge built its claim closures inside render() (no `g` in scope) instead of
+// renderVals(). That throws only when the button is clicked, so a render smoke
+// test alone is not enough — the click-through below is the part that bites.
+test('renderVals() exposes golden claim actions and an integer crowd preview', () => {
+  const game = newGame(500);
+  const g = game.state.g;
+  g.golden = { at: Date.now() };
+  g.patrons = 2.6667; // sim keeps patrons fractional
+  const v = game.renderVals();
+  strictEqual(typeof v.takeGoldenCash, 'function', 'cash claim is a bound action on v');
+  strictEqual(typeof v.takeGoldenCrowd, 'function', 'crowd claim is a bound action on v');
+  strictEqual(
+    v.golden.crowdAmount, Math.round(v.golden.crowdAmount),
+    'crowd preview is rounded, not a raw float',
+  );
+});
+
+test('render() does not throw with the golden-ticket badge expanded', () => {
+  const game = newGame(500);
+  game.state.g.golden = { at: Date.now() };
+  game.state.goldenOpen = true;
+  game.render(); // assertion is that this call does not throw
+});
+
+test('golden claim actions from renderVals() resolve the offer when invoked', () => {
+  const game = newGame(500);
+  const g = game.state.g;
+
+  g.golden = { at: Date.now() };
+  game.renderVals().takeGoldenCash();
+  strictEqual(g.golden, null, 'cash claim resolved the offer');
+
+  g.golden = { at: Date.now() };
+  game.renderVals().takeGoldenCrowd();
+  strictEqual(g.golden, null, 'crowd claim resolved the offer');
+});
+
 test('MIGRATIONS[5] rejects array perks and clamps out-of-range ranks', () => {
   const game = newGame();
   const g = game.fresh();
