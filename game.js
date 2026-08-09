@@ -1145,6 +1145,14 @@ class Game {
       } catch (e) {
         this.setState({ saveState: 'save failed' });
       }
+      // `offline > 0` reads like it could skip the achievement backfill below, but it
+      // cannot for a player: `offline` is a float from (nowMs - g.ts)/1000, and any real
+      // reload puts at least a millisecond between the saver's last write and this read.
+      // A zero gap needs Date.now() to return the same value twice — which is a frozen
+      // test clock, not a browser. Even then it self-heals: step() runs checkAchievements
+      // every slice, and the live timer starts ~100ms later. The remaining false cases
+      // (no g.ts, future g.ts, non-owner tab) are all deliberate and documented above.
+      // Verified rather than assumed; see .github/pr/49.
       if (offline > 0 && claimed) {
         const report = this.catchUp(g, offline);
         if (offline > 60) this.push(g, this.awayMsg(offline, report), '#ffc94a');
