@@ -643,10 +643,21 @@ template that references the bare identifier `g` parses fine and renders fine, t
 `ReferenceError: g is not defined` inside the delegated click handler — so it survives a
 render smoke test and only fails when a player actually clicks.
 
-This has shipped twice: the prestige modal (PR #30) and the 0.10.5 golden-ticket badge.
-Both are now covered by click-through regression tests in `economy.test.mjs`. New
-interactive surfaces need the same pair: a render-does-not-throw test **and** a test that
-invokes the bound action.
+This has shipped twice: the prestige modal (PR #30) and the 0.10.5 golden-ticket badge
+(PR #43). Rather than rely on a review checklist a third time, `economy.test.mjs` enforces
+it with two gates:
+
+| Gate | What it does |
+|------|--------------|
+| `render() never references the bare identifier \`g\`` | Brace-matches `render()` out of the `game.js` source and scans it for `g` used as an identifier. Pins the exact cause with a line offset. |
+| `every bound click handler is invocable without a scope error` | Renders 12 surfaces (each Systems tab, each modal, the golden badge collapsed / expanded / stale-tab), then **calls every handler** `bind()` registered and fails on `ReferenceError`. This is the click a render smoke test cannot perform. |
+
+The sweep ignores non-scope throws — a handler is free to fail for missing-DOM reasons in
+the harness, and it runs against a throwaway in-memory game, so destructive actions are
+harmless. Both gates were verified against a reintroduced copy of the shipped bug.
+
+**Adding a new interactive surface?** Add it to the `surfaces` list in that test. A surface
+absent from the list is not swept.
 
 ---
 
