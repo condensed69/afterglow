@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.10.7', build: 198, channel: 'alpha', date: '2026-08-09', codename: 'Neon Zero' };
+  VERSION = { num: '0.10.8', build: 199, channel: 'alpha', date: '2026-08-09', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -108,6 +108,9 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.10.8', date: '2026-08-09', codename: 'Neon Zero', notes: [
+      'Change: the stage art is hidden on phones and other screens under 900px wide. It is scenery only — lights, haze, crowd — with nothing to press and nothing to read, so on a narrow screen it was a screenful of scrolling to get past before reaching the buttons. Work the room and Buy a round are now the first things under the Ledger. Nothing is hidden on desktop.'
+    ] },
     { v: '0.10.7', date: '2026-08-09', codename: 'Neon Zero', notes: [
       'Fix: on phones the page had two scrollbars stacked inside each other and was awkward to play. Ledger, Log and the Systems tab body each carried their own scroll box, which is correct as three side-by-side desktop columns but not when they stack into one column inside a fixed-height screen — every panel became a ~100px window you read a few rows at a time. Below 900px wide the panels now size to their content and the page scrolls once.',
       'Fix: the stage no longer squashes to its minimum height on narrow screens, and the Systems card list no longer collapses to nothing, now that the stacked column sizes to content instead of splitting a screen height it no longer has.'
@@ -2524,8 +2527,12 @@ class Game {
       f.style.top = (e.clientY - 24) + 'px';
     } else {
       // Keyboard activation (Enter/Space): clientX may be 0 — anchor to the CTA button.
+      // Size-check the rect, don't just null-check the element: #stage is
+      // display:none below 900px (v0.10.8), so it is truthy but measures 0×0 and
+      // would drop the floater in the top-left corner.
       const btn = document.querySelector('[data-h] .cta') || document.getElementById('stage');
-      const r = (btn && btn.getBoundingClientRect()) || { left: innerWidth / 2, top: innerHeight / 2, width: 0 };
+      let r = btn && btn.getBoundingClientRect();
+      if (!r || (!r.width && !r.height)) r = { left: innerWidth / 2, top: innerHeight / 2, width: 0 };
       f.style.left = (r.left + r.width / 2) + 'px';
       f.style.top = (r.top - 8) + 'px';
     }

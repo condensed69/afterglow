@@ -610,17 +610,19 @@ Typography (loaded in `index.html`): **Monoton** (wordmark), **Space Grotesk** (
 **Narrow screens — one scroller, not four (v0.10.7).** The app root is `height:100vh; overflow:hidden`, and Ledger, Log and the Systems tab body each carry an inline `overflow-y:auto`. Side by side that is correct: each of the three columns owns a full-height viewport. Stacked into a single column below **900px** they instead share `100vh − header − footer`, so every panel becomes a ~100px window with its own scrollbar nested inside the shell's. Below 900px:
 
 - the three inner panels go `overflow:visible !important` and size to content — `.shell-grid` (which already carries `data-scroll="main"`, so the existing save/restore in §14.2 covers it) is the only scroller;
-- the Stage `section` (`.stage-col`) and Systems `aside` (`.sys-col`) switch from `minmax(190px,1fr) auto 132px` / `auto auto minmax(0,1fr)` to content-sized rows, with the stage given an explicit `240px` — it is lighting and silhouettes with no intrinsic height;
+- the Stage `section` (`.stage-col`) and Systems `aside` (`.sys-col`) switch from `minmax(190px,1fr) auto 132px` / `auto auto minmax(0,1fr)` to content-sized rows — two rows for `.stage-col`, since `#stage` itself is hidden here (below);
 - `.shell-grid` gets **`grid-auto-rows: min-content`**. This one is not cosmetic. As a scroll container the grid has a *definite* height, so the default `auto` rows are shrunk to fit it — the Ledger claims the entire ~620px and the Stage and Systems rows resolve to **zero**, their contents spilling out and painting on top of each other. `min-content` refuses to shrink below content. Measured: `auto` and `grid-template-rows:auto auto auto` both leave `scrollHeight` at 1715px with two collapsed rows; `min-content` gives 2082px and three real panels.
 
 `!important` throughout because the shell is inline-styled from `game.js` and would otherwise win on specificity. None of this is reachable by the three verification gates, which stub the DOM — it was verified in headless Chrome at 400×800, 700×420 and 1400×900.
+
+**Narrow screens — no stage art (v0.10.8).** Below the same 900px, `#stage` is `display:none`. It is environment only (§14.2): no controls, no readout, nothing that changes with game state that a player needs. On a phone it was a screenful to scroll past before reaching *Work the room*, which moved the first action from y≈962 to y≈722 once removed. **Hidden, not removed from the markup** — the render path is shared with desktop, and both JS references survive it: the click brightness pulse is `if (stage && stage.animate)` and no-ops harmlessly on a hidden node, and the keyboard tip-floater anchor now size-checks its rect rather than null-checking the element, because a `display:none` `#stage` is truthy but measures 0×0 and would have parked the floater in the top-left corner. If the stage ever gains a control or a state readout, this rule has to be revisited rather than the control being hidden with it.
 
 ### 14.2 Main Stage (environment only — v0.7.0)
 
 **No CSS/DOM performer, pole, or undressing progression.** Operator removed the figure in v0.7.0 (“gimmicky”). Stage art is environmental only:
 
 - Marquee bulbs, sweeping spotlight cones, haze, crowd silhouettes, stage lip, neon *girls girls girls* sign  
-- `#stage` is a CSS **size container**: neon sign drops under 660px stage width and **hides under 300px**  
+- `#stage` is a CSS **size container**: neon sign drops under 660px stage width and **hides under 300px**. The whole panel is hidden below a 900px *viewport* (§14.1), so those container queries only ever fire on a narrow desktop column now, not on phones  
 - Empty-stage badge text still routes crew assignment: hire / assign / nobody on stage (badge → Crew tab)  
 - The crowd silhouette row grows from a pair of wallflowers up to 14 bodies as `patrons` increases, bobbing faster as `hype` rises; container queries hide later silhouettes below 600/420px stage widths (v0.7.3)  
 
