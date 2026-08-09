@@ -146,9 +146,10 @@ produce the tables above and then reverted; the only surviving change to the hel
 
 ### Docs / version
 
-No docs touched: no player-visible behavior, no constant, no system changed. No `VERSION`,
-build, or `CHANGELOG` bump — the sole `game.js` edit is a comment, and AGENTS.md scopes those
-bumps to behavior changes. `SAVE_VER` stays 8.
+One doc touched — `AGENTS.md`, described below. No player-facing doc changed, because no
+player-visible behavior, constant, or system changed. No `VERSION`, build, or `CHANGELOG`
+bump: the sole `game.js` edit is a comment, and AGENTS.md scopes those bumps to behavior
+changes. `SAVE_VER` stays 8.
 
 ### What this does not cover
 
