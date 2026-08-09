@@ -50,10 +50,22 @@ Concretely, the boundary that got this wrong:
 - `r` (research), `perks`, `legacy`, `legacyTotal`, `prestiges`, `clicks`, `rounds` are
   account-level.
 
-Recommended guard: define the club field list once as a constant, build `freshClub()` from
-it, and add a test asserting that the key set of `freshClub()` equals that constant and is
-disjoint from the account-level/shared key set. That converts the class of bug that killed
-the last attempt into a failing assertion.
+**This guard already exists — you inherit it, you do not write it.** `economy.test.mjs`
+carries `CLUB_FIELDS` and `ACCOUNT_FIELDS` transcribed from §4, and three tests:
+
+- the two lists must be disjoint and must account for **every** key `fresh()` produces, so
+  adding a field without deciding which side it belongs on fails the suite;
+- `crew`/`jobs` must be top-level and must never appear inside a club;
+- the moment `g.clubs` exists, the third test arms itself — account fields must not leak
+  into a club, club fields must not remain top-level shadowing the club copy, and
+  `freshClub()`'s key set must equal `CLUB_FIELDS`.
+
+That third test reports as **skipped** today. Your commit 1 is what turns it green. If it is
+still skipping when you open the PR, `g.clubs` is not wired up the way the design says.
+
+If you believe a field belongs on the other side of the split, change `SECOND_LOCATION.md`
+§4 and the constants together, in the same commit, and say why in the PR body. Do not edit
+the constants alone to make the suite quiet.
 
 ## Four more places this will bite
 

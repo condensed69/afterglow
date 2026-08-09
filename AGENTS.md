@@ -11,6 +11,12 @@ This is a dependency-free static website.
 
 Run all three before opening or updating a PR. A PR is not ready until they pass.
 
+**CI runs these too, on every PR and every push to `main`** (`.github/workflows/gates.yml`),
+and they are required status checks — a red gate blocks the merge button. Running them
+locally first is still expected: it is faster than a CI round-trip, and "CI will catch it"
+is how a broken `main` gets pushed. A `gates: pass` table in a PR body is a claim; the
+check run is the evidence.
+
 1. `node --check game.js` — syntax.
 2. `node economy.test.mjs` — economy/save/offline suite. Exits non-zero on failure.
 3. `node pacing.mjs` — reference-bot pacing bands. Exits non-zero when a milestone

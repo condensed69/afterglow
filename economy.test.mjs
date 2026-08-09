@@ -188,6 +188,24 @@ function withRandom(values, fn) {
   try { return fn(); } finally { Math.random = orig; }
 }
 
+// Freeze Date.now for the duration of fn(), which receives the frozen value.
+// init() computes `offline = (now - g.ts) / 1000` with no minimum threshold
+// (game.js:1068), so a save written with `ts: Date.now()` and loaded a moment
+// later measures however long the harness happened to take — sub-millisecond on
+// a dev box, long enough on a loaded CI runner to accrue real resources and
+// break an exact-value assertion. Frozen, a test picks its own gap by writing
+// `ts: t - ms` and gets the same window every run.
+//
+// Note the gap must stay > 0 where the load-time achievement backfill is under
+// test: that backfill lives inside init()'s `if (offline > 0 && claimed)` branch,
+// so a zero gap skips it.
+function withFrozenNow(fn) {
+  const orig = Date.now;
+  const t = orig();
+  Date.now = () => t;
+  try { return fn(t); } finally { Date.now = orig; }
+}
+
 const SECONDS_PER_NIGHT = 160; // 40+55+35+30
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -282,22 +300,30 @@ test('clout25 multiplier scales rates().clout', () => {
 });
 
 test('offline65 increases catchUp earnings over the same window', () => {
-  const game = newGame(500);
-  const base = game.state.g;
-  base.b.rail = 2;
-  base.b.bar = 1;
-  base.patrons = 10;
-  base.regulars = 5;
-  const baseReport = game.catchUp(base, 60);
+  // withRandom is required, not decorative: catchUp crosses a shift boundary in
+  // this window and advanceShift rolls SPECIAL_CHANCE there. Unstubbed, the two
+  // arms get different shift schedules, and a low-multiplier special landing on
+  // the boosted arm sinks it below the base arm — a real ~5% flake this test had
+  // before. 1 is never < SPECIAL_CHANCE, so neither arm gets a special and the
+  // comparison isolates the 0.5 → 0.65 offline rate, which is what it claims.
+  withRandom([1], () => {
+    const game = newGame(500);
+    const base = game.state.g;
+    base.b.rail = 2;
+    base.b.bar = 1;
+    base.patrons = 10;
+    base.regulars = 5;
+    const baseReport = game.catchUp(base, 60);
 
-  const boosted = game.fresh();
-  boosted.b.rail = 2;
-  boosted.b.bar = 1;
-  boosted.patrons = 10;
-  boosted.regulars = 5;
-  boosted.perks.offline65 = 1;
-  const boostedReport = game.catchUp(boosted, 60);
-  ok(boostedReport.earned > baseReport.earned, 'offline65 earns more over same window');
+    const boosted = game.fresh();
+    boosted.b.rail = 2;
+    boosted.b.bar = 1;
+    boosted.patrons = 10;
+    boosted.regulars = 5;
+    boosted.perks.offline65 = 1;
+    const boostedReport = game.catchUp(boosted, 60);
+    ok(boostedReport.earned > baseReport.earned, 'offline65 earns more over same window');
+  });
 });
 
 test('doorPlus raises effective Door Staff max to 7', () => {
@@ -1088,7 +1114,7 @@ test('achievements persist through prestige', () => {
   ok(next.achievements.includes('prestige_1'), 'prestige_1 credited on new run');
 });
 
-test('init backfills achievements on existing current-format save', () => {
+test('init backfills achievements on existing current-format save', () => withFrozenNow((t) => {
   localStorage.clear();
   localStorage.setItem('afterglow.save', JSON.stringify({
     saveVer: 8,
@@ -1099,7 +1125,9 @@ test('init backfills achievements on existing current-format save', () => {
       crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
       b: { rail: 5, bar: 0, vip: 0, dj: 0, marquee: 0, flyers: 0, door: 0, dress: 0 },
       u: {}, r: {},
-      elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: Date.now(),
+      // Exactly 1s of offline, every run: enough to enter init()'s backfill
+      // branch, short enough that the exact clout assertion below stays exact.
+      elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: t - 1000,
       goals: [], clicks: 0, rounds: 0,
       legacy: 0, legacyTotal: 0, perks: {}, prestiges: 0, achievements: [],
       managers: { rail: false, bar: false, dj: false, marquee: false, flyers: false, vip: false, door: false, dress: false }
@@ -1113,7 +1141,7 @@ test('init backfills achievements on existing current-format save', () => {
   ok(game.state.g.achievements.includes('first_rail'), 'load backfills first_rail');
   ok(game.state.g.achievements.includes('rail_5'), 'load backfills rail_5');
   strictEqual(game.state.g.clout, 3, 'first_rail (+1) + rail_5 (+2) clout credited');
-});
+}));
 
 // ── 2. Job invariant: sum always equals crew ─────────────────────────────────
 
@@ -3838,6 +3866,96 @@ test('render throttle: forceUpdate throttled with mock clock', () => {
   } finally {
     game.forceUpdate = origFU;
     Date.now = origNow;
+  }
+});
+
+// ── Second-location field partition (SECOND_LOCATION.md §3–§4) ───────────────
+// The reverted first attempt at multi-club died on a clubFields/freshClub()
+// mismatch: crew and jobs are SHARED roster and stay top-level, but the two
+// field lists disagreed about it. These tests exist BEFORE the implementation
+// so the implementer inherits the guard instead of being asked to write it.
+//
+// Pre-v9 (today) they assert the doc's partition is complete against fresh().
+// The moment g.clubs appears they arm themselves and assert the split is right.
+
+// Verbatim from SECOND_LOCATION.md §4 "Fields that move ... into each club".
+const CLUB_FIELDS = [
+  'cash', 'hype', 'buzz', 'patrons', 'regulars', 'b', 'u',
+  'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown',
+];
+// Verbatim from SECOND_LOCATION.md §4 "Fields that stay at the top level".
+const ACCOUNT_FIELDS = [
+  'clout', 'legacy', 'legacyTotal', 'perks', 'prestiges',
+  'r', 'managers', 'managerPaused', 'achievements',
+  'goals', 'clicks', 'rounds',
+  'whalesCount', 'specialsCount', 'golden',
+  'ts', 'log',
+  'crew', 'jobs',
+];
+
+test('SECOND_LOCATION field lists partition fresh() with nothing unassigned', () => {
+  const overlap = CLUB_FIELDS.filter(k => ACCOUNT_FIELDS.includes(k));
+  strictEqual(overlap.length, 0, `field claimed by both lists: ${overlap.join(', ')}`);
+
+  // Every key fresh() actually produces must be assigned to exactly one side.
+  // This fails when someone adds a field to fresh() without deciding whether a
+  // second club gets its own copy — the decision that broke the last attempt.
+  const unassigned = Object.keys(newGame(20).fresh())
+    .filter(k => !CLUB_FIELDS.includes(k) && !ACCOUNT_FIELDS.includes(k));
+  strictEqual(unassigned.length, 0,
+    `fresh() field not assigned club-level or account-level in SECOND_LOCATION.md §4: ${unassigned.join(', ')}`);
+});
+
+test('crew and jobs stay top-level shared roster, never inside a club', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+
+  // Holds today and must survive the migration. crew/jobs are shared across
+  // clubs (§3 "Shared roster"); moving them into a club silently duplicates
+  // the roster and breaks the cap-aware rebalance in setActiveClub.
+  ok(typeof g.crew === 'number', 'g.crew is top-level');
+  ok(g.jobs && typeof g.jobs === 'object', 'g.jobs is top-level');
+
+  if (!g.clubs) return; // pre-v9: nothing further to check yet.
+
+  for (const club of Object.values(g.clubs)) {
+    ok(!('crew' in club), 'crew must not be copied into a club');
+    ok(!('jobs' in club), 'jobs must not be copied into a club');
+  }
+});
+
+const SPLIT_TEST = 'once g.clubs exists, the club/account split matches the design';
+if (!newGame(20).state.g.clubs) {
+  // Reported as a skip, not a pass: this is coverage that arms on implementation,
+  // and counting it green today would misstate what the suite currently checks.
+  skip(SPLIT_TEST, 'pre-SAVE_VER-9: g.clubs not implemented yet');
+} else test(SPLIT_TEST, () => {
+  const game = newGame(20);
+  const g = game.state.g;
+
+  ok(typeof g.activeClub === 'string', 'g.activeClub names a club');
+  const active = g.clubs[g.activeClub];
+  ok(active && typeof active === 'object', `g.activeClub '${g.activeClub}' resolves to a club`);
+
+  // Account fields must not have leaked into the club.
+  const leaked = ACCOUNT_FIELDS.filter(k => k in active);
+  strictEqual(leaked.length, 0, `account-level field found inside a club: ${leaked.join(', ')}`);
+
+  // Club fields must no longer sit at the top level, shadowing the club copy.
+  // A stale top-level `cash` is the failure mode where the UI and the sim read
+  // different numbers and neither is obviously wrong.
+  const shadowed = CLUB_FIELDS.filter(k => k in g);
+  strictEqual(shadowed.length, 0, `club-level field still top-level on g: ${shadowed.join(', ')}`);
+
+  // freshClub(), if present, must produce exactly the club field set — this is
+  // the clubFields/freshClub() equality the reverted attempt got wrong.
+  if (typeof game.freshClub === 'function') {
+    const produced = Object.keys(game.freshClub()).sort();
+    const expected = CLUB_FIELDS.filter(k => !k.startsWith('_')).sort();
+    const missing = expected.filter(k => !produced.includes(k));
+    const extra = produced.filter(k => !CLUB_FIELDS.includes(k));
+    strictEqual(missing.length, 0, `freshClub() omits club field(s): ${missing.join(', ')}`);
+    strictEqual(extra.length, 0, `freshClub() invents non-club field(s): ${extra.join(', ')}`);
   }
 });
 

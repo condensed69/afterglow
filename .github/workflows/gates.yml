@@ -1,0 +1,44 @@
+name: Gates
+
+# The three verification gates from AGENTS.md, run by CI instead of trusted to
+# a self-report in the PR body. A PR body claiming "gates: pass" is a claim;
+# this is the check.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gates-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    # The suite finishes in ~10s. A run that reaches 10 minutes has hung — an
+    # infinite loop in the sim, say — and should fail fast rather than sit until
+    # GitHub's multi-hour default.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # No install step on purpose: this repo is dependency-free by invariant
+      # (AGENTS.md). If a gate ever needs npm, that is a design change, not a
+      # CI fix.
+
+      - name: syntax — node --check game.js
+        run: node --check game.js
+
+      - name: economy — node economy.test.mjs
+        run: node economy.test.mjs
+
+      - name: pacing — node pacing.mjs
+        run: node pacing.mjs
