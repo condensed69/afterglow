@@ -464,6 +464,104 @@ test('render() does not throw with the golden-ticket badge expanded', () => {
   game.render(); // assertion is that this call does not throw
 });
 
+// ── Guardrail: templates read the view model, never `g` ──────────────────────
+// This bug class has shipped twice (PR #30 prestige modal, PR #43 golden badge).
+// A template that references the bare identifier `g` parses fine and renders
+// fine, then throws `ReferenceError: g is not defined` inside the delegated
+// click handler — so it survives every render smoke test and only fails when a
+// player actually clicks. DESIGN.md §14.4 states the rule; these two tests
+// enforce it. The static check pins the exact cause; the sweep catches the
+// general case wherever a handler is built.
+
+function renderMethodSource() {
+  const start = src.indexOf('\n  render() {');
+  ok(start !== -1, 'located render() in game.js');
+  const open = src.indexOf('{', start);
+  let depth = 0;
+  for (let i = open; i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}' && --depth === 0) return src.slice(open, i + 1);
+  }
+  throw new Error('render() braces never balanced');
+}
+
+test('render() never references the bare identifier `g`', () => {
+  // render() has only `v` (the renderVals() output) in scope. Anything a
+  // template needs from game state must be built in renderVals() and exposed
+  // on `v`. Bare `g` here is the exact shape of both shipped regressions.
+  const body = renderMethodSource();
+  const offenders = [];
+  const bareG = /(?<![\w.$])g(?![\w$])/g;
+  let m;
+  while ((m = bareG.exec(body)) !== null) {
+    const line = body.slice(0, m.index).split('\n').length;
+    offenders.push(`render()+${line}: ${body.slice(Math.max(0, m.index - 60), m.index + 60).replace(/\n/g, ' ')}`);
+  }
+  strictEqual(
+    offenders.length, 0,
+    `render() must not reference \`g\` — build the value in renderVals() and read it off \`v\`:\n  ${offenders.join('\n  ')}`,
+  );
+});
+
+test('every bound click handler is invocable without a scope error', () => {
+  // render() populates game.handlers via bind(); the delegated listener looks
+  // each one up by its data-h index and calls it. Calling them all here is the
+  // click-through a render smoke test cannot do. We only care about scope
+  // errors — a handler is free to throw for missing-DOM reasons in this
+  // harness, and destructive actions run against a throwaway in-memory game.
+  const surfaces = [
+    { name: 'club tab', apply: () => {} },
+    { name: 'crew tab', apply: g => { g.crew = 3; }, state: { tab: 'crew' } },
+    { name: 'upgrades tab', state: { tab: 'upgrades' } },
+    { name: 'research tab', state: { tab: 'research' } },
+    { name: 'perks tab', apply: g => { g.prestiges = 1; g.legacy = 5; }, state: { tab: 'perks' } },
+    { name: 'changelog modal', state: { showChangelog: true } },
+    { name: 'achievements modal', state: { showAchievements: true } },
+    { name: 'settings modal', state: { showSettings: true } },
+    { name: 'prestige modal', apply: g => { g.regulars = 30; }, state: { showPrestige: true } },
+    { name: 'golden badge collapsed', apply: g => { g.golden = { at: Date.now() }; } },
+    { name: 'golden badge expanded', apply: g => { g.golden = { at: Date.now() }; }, state: { goldenOpen: true } },
+    { name: 'golden badge on a stale tab', apply: g => { g.golden = { at: Date.now() }; }, state: { goldenOpen: true, tabStale: true } },
+  ];
+
+  const failures = [];
+  let invoked = 0;
+
+  for (const surface of surfaces) {
+    const game = newGame(500);
+    if (surface.apply) surface.apply(game.state.g);
+    Object.assign(game.state, surface.state || {});
+    game.render();
+
+    // Snapshot: invoking a handler may mutate state, but each closure stays
+    // valid across renders exactly as it does in the browser.
+    const handlers = game.handlers.slice();
+    ok(handlers.length > 0, `${surface.name} bound at least one handler`);
+
+    handlers.forEach((fn, i) => {
+      if (typeof fn !== 'function') {
+        failures.push(`${surface.name} handler ${i} is ${typeof fn}, not a function`);
+        return;
+      }
+      invoked++;
+      try {
+        fn({ shiftKey: false, preventDefault: () => {}, stopPropagation: () => {} });
+      } catch (e) {
+        if (e instanceof ReferenceError) {
+          failures.push(`${surface.name} handler ${i} — ${e.message}`);
+        }
+        // Anything else is a missing-DOM artifact of the harness, not a scope bug.
+      }
+    });
+  }
+
+  ok(invoked > 100, `swept a meaningful number of handlers (got ${invoked})`);
+  strictEqual(
+    failures.length, 0,
+    `handlers threw a scope error on click — the template captured game state render() does not have:\n  ${failures.join('\n  ')}`,
+  );
+});
+
 test('golden claim actions from renderVals() resolve the offer when invoked', () => {
   const game = newGame(500);
   const g = game.state.g;

@@ -24,6 +24,11 @@ Both harnesses stub the DOM and load `game.js` by stripping its page-boot lines.
 If you change the trailing boot block in `game.js`, update the strip regex in both
 files or the harness exits 2.
 
+**Adding an interactive surface** (a modal, an overlay, a new tab): register it in
+the `surfaces` list of the `every bound click handler is invocable without a scope
+error` test. That sweep is what stops the `g`-in-template bug from shipping a third
+time (see `DESIGN.md` §14.4), and it only covers surfaces on that list.
+
 ### When a gate fails
 
 A non-zero exit is a result, not a transient error. Re-running an unchanged
