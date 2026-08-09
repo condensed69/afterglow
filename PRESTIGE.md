@@ -297,8 +297,8 @@ Explicitly **out of scope** for the first prestige ship:
 
 | Non-goal | Rationale |
 |----------|-----------|
-| Second-location simulation | One club fantasy; no parallel rooms |
-| Multi-club map / travel | No world map UI |
+| Second-location simulation | One club fantasy; no parallel rooms. **Superseded by `SECOND_LOCATION.md`** for a future implementation PR. |
+| Multi-club map / travel | No world map UI. **Superseded by `SECOND_LOCATION.md`** (tab switcher, not a map). |
 | Prestige-tier Owner's List goals | List resets; new goal rows later if needed |
 | Leaderboards / cloud ranks | Static site, local saves only |
 | Legacy → cash/Clout conversion | Keeps currencies pure |
@@ -308,6 +308,8 @@ Explicitly **out of scope** for the first prestige ship:
 | Changing SHIFTS / offline cap (8h) / walk-in 0.02 as prestige levers | Unrelated; offline **rate** 50→65 is the only offline knob here |
 
 If a later plan wants multi-club, it supersedes this section deliberately — not by creeping into v1.
+That plan now exists: `SECOND_LOCATION.md` supersedes the two second-location rows above. The rest
+of this section stands.
 
 ---
 
