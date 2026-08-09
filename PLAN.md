@@ -177,7 +177,7 @@ Currently a flat list of 6 perks, all purchasable in any order once unlocked (PR
 
 ## Deferred / out of scope
 
-- **Second location** — its own design pass beyond 0.9.0; `franchise` removal in 1.9 keeps the door open.
+- **Second location** — its own design pass beyond 0.9.0; `franchise` removal in 1.9 keeps the door open. Design: `SECOND_LOCATION.md`.
 - **DESIGN.md full rewrite** — after Phase 3, as a writing task. (Phase 3 shipped; rewrite itself remains undone as of this audit.)
 - **Render throttle** (10fps full-innerHTML is wasteful but functional) — only if profiling shows a problem; the performer-node preservation already handles the animation-sensitive part.
 - **Balance tuning** — numbers stay placeholders per AGENTS.md until the mechanics above are stable.
