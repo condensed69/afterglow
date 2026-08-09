@@ -139,17 +139,57 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
 
 /* Small screens: stack Ledger / Stage / Systems vertically, no horizontal scroll.
    Below the sum of the three column minimums (232+320+320 = 872px) the fixed
-   mins would force a page-level horizontal scrollbar; single-column removes it.
-   Interior grid rows (stage section, systems aside) are untouched. */
+   mins would force a page-level horizontal scrollbar; single-column removes it. */
 @media (max-width: 900px) {
   .shell-grid {
     grid-template-columns: 1fr;
     max-width: none;
     overflow-y: auto;
     overflow-x: hidden;
+    /* min-content, not the `auto` default. As a scroll container inside the
+       100vh app root this grid has a *definite* height, so `auto` rows are
+       shrunk to fit it: the Ledger's content claims the whole ~620px and the
+       Stage and Systems rows resolve to zero, their contents spilling out and
+       painting on top of each other. Measured, not theorised — `auto` and
+       `grid-template-rows:auto auto auto` both leave scrollHeight at 1715px
+       with two collapsed rows; min-content takes it to 2082px with all three
+       panels at their real heights. min-content refuses to shrink below
+       content, which is the whole point when the shell is the scroller. */
+    grid-auto-rows: min-content;
   }
   .shell-grid > section,
   .shell-grid > aside {
     min-width: 0;
+  }
+
+  /* One scroller, not four (v0.10.7). The app root is height:100vh;overflow:hidden,
+     and Ledger, Log and the Systems tab body each carry their own inline
+     `overflow-y:auto`. Side by side as three desktop columns that is right: each
+     column owns a full-height viewport. Stacked into one mobile column they all
+     share 100vh minus header and footer, so every panel becomes a ~100px window
+     with its own scrollbar nested inside the shell's — two visible tracks, and a
+     card list you read three rows at a time.
+
+     Below 900px the inner panels size to content and `.shell-grid` (which already
+     carries data-scroll="main", so the existing save/restore covers it) is the
+     only thing that scrolls. `overflow` not `overflow-y`: the shorthand resets
+     both longhands, and !important is required because the inline style would
+     otherwise win on specificity. */
+  .shell-grid [data-scroll="ledger"],
+  .shell-grid [data-scroll="log"],
+  .shell-grid [data-scroll^="sys_"] {
+    overflow: visible !important;
+  }
+
+  /* Both interior grids distribute a height they no longer have once the shell
+     is the scroller: with no free space, the stage's minmax(190px,1fr) collapses
+     to its 190px floor and the Systems body's minmax(0,1fr) resolves to zero and
+     disappears entirely. Content-sized rows instead. The stage is lighting and
+     silhouettes with no intrinsic height, so it gets an explicit one. */
+  .stage-col {
+    grid-template-rows: 240px auto auto !important;
+  }
+  .sys-col {
+    grid-template-rows: auto auto auto !important;
   }
 }

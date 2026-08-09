@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.10.6', build: 197, channel: 'alpha', date: '2026-08-08', codename: 'Neon Zero' };
+  VERSION = { num: '0.10.7', build: 198, channel: 'alpha', date: '2026-08-09', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -108,6 +108,10 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.10.7', date: '2026-08-09', codename: 'Neon Zero', notes: [
+      'Fix: on phones the page had two scrollbars stacked inside each other and was awkward to play. Ledger, Log and the Systems tab body each carried their own scroll box, which is correct as three side-by-side desktop columns but not when they stack into one column inside a fixed-height screen — every panel became a ~100px window you read a few rows at a time. Below 900px wide the panels now size to their content and the page scrolls once.',
+      'Fix: the stage no longer squashes to its minimum height on narrow screens, and the Systems card list no longer collapses to nothing, now that the stacked column sizes to content instead of splitting a screen height it no longer has.'
+    ] },
     { v: '0.10.6', date: '2026-08-08', codename: 'Neon Zero', notes: [
       'Fix: the golden-ticket claim buttons threw ReferenceError on click and never granted the reward. The 0.10.5 badge built its claim closures inside render(), which has only the view model in scope — the raw g is not defined there. Closures now live in renderVals() and are consumed as v.takeGoldenCash / v.takeGoldenCrowd, matching every other bound action. Same bug class as the 0.8.0 prestige modal.',
       'Fix: the crowd preview on the badge showed a raw float (e.g. +7.339999999999998 crowd) because g.patrons is fractional in the sim. Now rounded, matching the claim log line.',
@@ -2877,7 +2881,7 @@ class Game {
       <div style="border:1px solid #221434;border-radius:7px;background:#0f0a18;padding:9px">${statRows}</div>
     </aside>
 
-    <section style="display:grid;grid-template-rows:minmax(190px,1fr) auto 132px;min-height:0;min-width:0">
+    <section class="stage-col" style="display:grid;grid-template-rows:minmax(190px,1fr) auto 132px;min-height:0;min-width:0">
 
       <div id="stage" style="position:relative;overflow:hidden;min-height:0;background:linear-gradient(180deg,#12081c 0%,#1a0b26 55%,#0d0715 100%);border-bottom:1px solid #2a1738">
         <div style="position:absolute;inset:0;background:repeating-linear-gradient(90deg,rgba(255,45,120,.05) 0 2px,transparent 2px 62px);opacity:${v.beamOpacity}"></div>
@@ -2956,7 +2960,7 @@ class Game {
       </div>
     </section>
 
-    <aside style="border-left:1px solid #2a1738;background:#0a0611;display:grid;grid-template-rows:auto auto minmax(0,1fr);min-height:0">
+    <aside class="sys-col" style="border-left:1px solid #2a1738;background:#0a0611;display:grid;grid-template-rows:auto auto minmax(0,1fr);min-height:0">
       <div style="display:flex;border-bottom:1px solid #2a1738;background:#0d0814">${tabRows}</div>
 
       ${v.ownersList ? (() => {

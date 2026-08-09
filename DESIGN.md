@@ -607,6 +607,14 @@ Main: three columns **`minmax(232px,300px) | minmax(320px,720px) | minmax(320px,
 
 Typography (loaded in `index.html`): **Monoton** (wordmark), **Space Grotesk** (UI), **IBM Plex Mono** (numbers). Palette is magenta `#ff2d78`, cyan `#22d3ee`, gold `#ffc94a` on near-black `#07050c`.
 
+**Narrow screens — one scroller, not four (v0.10.7).** The app root is `height:100vh; overflow:hidden`, and Ledger, Log and the Systems tab body each carry an inline `overflow-y:auto`. Side by side that is correct: each of the three columns owns a full-height viewport. Stacked into a single column below **900px** they instead share `100vh − header − footer`, so every panel becomes a ~100px window with its own scrollbar nested inside the shell's. Below 900px:
+
+- the three inner panels go `overflow:visible !important` and size to content — `.shell-grid` (which already carries `data-scroll="main"`, so the existing save/restore in §14.2 covers it) is the only scroller;
+- the Stage `section` (`.stage-col`) and Systems `aside` (`.sys-col`) switch from `minmax(190px,1fr) auto 132px` / `auto auto minmax(0,1fr)` to content-sized rows, with the stage given an explicit `240px` — it is lighting and silhouettes with no intrinsic height;
+- `.shell-grid` gets **`grid-auto-rows: min-content`**. This one is not cosmetic. As a scroll container the grid has a *definite* height, so the default `auto` rows are shrunk to fit it — the Ledger claims the entire ~620px and the Stage and Systems rows resolve to **zero**, their contents spilling out and painting on top of each other. `min-content` refuses to shrink below content. Measured: `auto` and `grid-template-rows:auto auto auto` both leave `scrollHeight` at 1715px with two collapsed rows; `min-content` gives 2082px and three real panels.
+
+`!important` throughout because the shell is inline-styled from `game.js` and would otherwise win on specificity. None of this is reachable by the three verification gates, which stub the DOM — it was verified in headless Chrome at 400×800, 700×420 and 1400×900.
+
 ### 14.2 Main Stage (environment only — v0.7.0)
 
 **No CSS/DOM performer, pole, or undressing progression.** Operator removed the figure in v0.7.0 (“gimmicky”). Stage art is environmental only:
