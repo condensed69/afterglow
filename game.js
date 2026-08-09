@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.10.5', build: 196, channel: 'alpha', date: '2026-08-08', codename: 'Neon Zero' };
+  VERSION = { num: '0.10.6', build: 197, channel: 'alpha', date: '2026-08-08', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -108,6 +108,11 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.10.6', date: '2026-08-08', codename: 'Neon Zero', notes: [
+      'Fix: the golden-ticket claim buttons threw ReferenceError on click and never granted the reward. The 0.10.5 badge built its claim closures inside render(), which has only the view model in scope — the raw g is not defined there. Closures now live in renderVals() and are consumed as v.takeGoldenCash / v.takeGoldenCrowd, matching every other bound action. Same bug class as the 0.8.0 prestige modal.',
+      'Fix: the crowd preview on the badge showed a raw float (e.g. +7.339999999999998 crowd) because g.patrons is fractional in the sim. Now rounded, matching the claim log line.',
+      'Tidy: dropped the duplicated Shift-click tooltip from the x5/x10/xMax buy buttons; it stays on x1 now that a dedicated xMax button exists.'
+    ] },
     { v: '0.10.5', date: '2026-08-08', codename: 'Neon Zero', notes: [
       'Mobile buy-multiple: building cards now show ×1 / ×5 / ×10 / ×Max buttons so touch players can bulk-buy structures without a Shift key. Desktop Shift-click max still works.',
       'Golden ticket is now a compact, collapsible VIP badge in the top-right of the stage instead of a large centered overlay. The idle sim keeps ticking underneath; tap the badge to open the choice and claim it when you want.'
@@ -1662,9 +1667,6 @@ class Game {
     // but re-render the DOM at most every 250ms (~4 fps). The non-live
     // catchUp path calls setState directly (always renders). User actions
     // call forceUpdate() in handlers and are never throttled.
-    // setState() is intentionally bypassed here: it bundles Object.assign +
-    // forceUpdate, and the whole point of the throttle is to separate the
-    // state mutation (tick++) from the costly DOM paint (forceUpdate).
     this.state.tick++;
     const now = Date.now();
     if (!this._lastRender || now - this._lastRender >= 250) {
@@ -2313,12 +2315,14 @@ class Game {
       // ticking underneath. Buttons grey out on a stale tab.
       golden: g.golden ? {
         cashAmount: Math.floor(25 * this.cashIncomeMult(g)),
-        crowdAmount: Math.min(10, this.caps(g).patrons - g.patrons),
+        crowdAmount: Math.round(Math.min(10, this.caps(g).patrons - g.patrons)),
         locked: this.state.tabStale
       } : null,
       goldenOpen: this.state.goldenOpen,
       openGolden: () => this.setState(s => ({ goldenOpen: true })),
       closeGolden: () => this.setState(s => ({ goldenOpen: false })),
+      takeGoldenCash: () => this.takeGolden(g, 'cash'),
+      takeGoldenCrowd: () => this.takeGolden(g, 'crowd'),
       debugLine: (this.props.showDebug ?? false) ? 'cash ' + r.cash.toFixed(3) + '/s · hype ' + r.hype.toFixed(3) + '/s · buzz ' + r.buzz.toFixed(3) + '/s · pull ' + r.pull.toFixed(2) : '',
       ownersList: (() => {
         const total = this.GOALS.length;
@@ -2602,8 +2606,10 @@ class Game {
     if (!g || !g.golden) return false;
     if (this.state.tabStale) return false;
     if (choice === 'crowd') {
+      const before = g.patrons;
       g.patrons = Math.min(this.caps(g).patrons, g.patrons + 10);
-      this.push(g, 'Golden ticket: VIP brought friends. +10 patrons.', '#ffc94a');
+      const added = Math.round(g.patrons - before);
+      this.push(g, 'Golden ticket: VIP brought friends. +' + added + ' patrons.', '#ffc94a');
     } else {
       const amount = Math.floor(25 * this.cashIncomeMult(g));
       g.cash += amount;
@@ -2675,9 +2681,9 @@ class Game {
             : cd.multi && !cd.multi.maxed
               ? `<div style="display:flex;gap:6px;align-items:center">
                   <button data-h="${this.bind(cd.multi.x1.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.multi.x1.locked ? 'disabled' : ''} title="Shift-click to buy the maximum affordable" style="${css({ ...cd.multi.x1.style, minWidth: '40px', padding: '8px 6px' })}">×1</button>
-                  <button data-h="${this.bind(cd.multi.x5.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.multi.x5.locked ? 'disabled' : ''} title="Shift-click to buy the maximum affordable" style="${css({ ...cd.multi.x5.style, minWidth: '40px', padding: '8px 6px' })}">${cd.multi.x5.label}</button>
-                  <button data-h="${this.bind(cd.multi.x10.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.multi.x10.locked ? 'disabled' : ''} title="Shift-click to buy the maximum affordable" style="${css({ ...cd.multi.x10.style, minWidth: '40px', padding: '8px 6px' })}">${cd.multi.x10.label}</button>
-                  <button data-h="${this.bind(cd.multi.max.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.multi.max.locked ? 'disabled' : ''} title="Shift-click to buy the maximum affordable" style="${css({ ...cd.multi.max.style, minWidth: '48px', padding: '8px 6px' })}">${cd.multi.max.label}</button>
+                  <button data-h="${this.bind(cd.multi.x5.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.multi.x5.locked ? 'disabled' : ''} style="${css({ ...cd.multi.x5.style, minWidth: '40px', padding: '8px 6px' })}">${cd.multi.x5.label}</button>
+                  <button data-h="${this.bind(cd.multi.x10.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.multi.x10.locked ? 'disabled' : ''} style="${css({ ...cd.multi.x10.style, minWidth: '40px', padding: '8px 6px' })}">${cd.multi.x10.label}</button>
+                  <button data-h="${this.bind(cd.multi.max.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.multi.max.locked ? 'disabled' : ''} style="${css({ ...cd.multi.max.style, minWidth: '48px', padding: '8px 6px' })}">${cd.multi.max.label}</button>
                 </div>`
               : `<button data-h="${this.bind(cd.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.locked ? 'disabled' : ''} ${cd.buildingId ? 'title="Shift-click to buy the maximum affordable"' : ''} style="${css(cd.btnStyle)}">${cd.btn}</button>`}
           <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#6f5885;text-align:right;flex:1">${cd.meta}</span>
@@ -2920,8 +2926,8 @@ class Game {
             </div>
             <div style="font-size:11px;color:#f3e2c2;margin-bottom:8px">VIP booked the booth.</div>
             <div style="display:flex;gap:6px">
-              <button data-h="${this.bind(() => this.takeGolden(g, 'cash'))}" ${v.golden.locked ? 'disabled' : ''} style="flex:1;background:${v.golden.locked ? '#2a1d0a' : 'linear-gradient(180deg,#ffc94a,#b8860b)'};border:0;border-radius:6px;color:${v.golden.locked ? '#6b5212' : '#1c1105'};font-weight:700;font-size:10px;padding:6px 8px;cursor:${v.golden.locked ? 'not-allowed' : 'pointer'}">+$${this.fmt(v.golden.cashAmount)}</button>
-              <button data-h="${this.bind(() => this.takeGolden(g, 'crowd'))}" ${v.golden.locked ? 'disabled' : ''} style="flex:1;background:${v.golden.locked ? '#1a1226' : '#170e22'};border:1px solid ${v.golden.locked ? '#2a1738' : '#ffc94a'};border-radius:6px;color:${v.golden.locked ? '#5a3a70' : '#ffc94a'};font-weight:700;font-size:10px;padding:6px 8px;cursor:${v.golden.locked ? 'not-allowed' : 'pointer'}">+${v.golden.crowdAmount} crowd</button>
+              <button data-h="${this.bind(v.takeGoldenCash)}" ${v.golden.locked ? 'disabled' : ''} style="flex:1;background:${v.golden.locked ? '#2a1d0a' : 'linear-gradient(180deg,#ffc94a,#b8860b)'};border:0;border-radius:6px;color:${v.golden.locked ? '#6b5212' : '#1c1105'};font-weight:700;font-size:10px;padding:6px 8px;cursor:${v.golden.locked ? 'not-allowed' : 'pointer'}">+$${this.fmt(v.golden.cashAmount)}</button>
+              <button data-h="${this.bind(v.takeGoldenCrowd)}" ${v.golden.locked ? 'disabled' : ''} style="flex:1;background:${v.golden.locked ? '#1a1226' : '#170e22'};border:1px solid ${v.golden.locked ? '#2a1738' : '#ffc94a'};border-radius:6px;color:${v.golden.locked ? '#5a3a70' : '#ffc94a'};font-weight:700;font-size:10px;padding:6px 8px;cursor:${v.golden.locked ? 'not-allowed' : 'pointer'}">+${v.golden.crowdAmount} crowd</button>
             </div>
           </div>` : `
           <button data-h="${this.bind(v.openGolden)}" style="background:linear-gradient(180deg,#ffc94a,#b8860b);border:0;border-radius:20px;padding:6px 10px;box-shadow:0 0 18px rgba(255,201,74,.45);display:flex;align-items:center;gap:6px;cursor:pointer;animation:pulseDot 1.6s ease-in-out infinite">
