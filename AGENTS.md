@@ -4,9 +4,25 @@ This is a dependency-free static website.
 
 - Do not run `npm install`, add a package manager, or introduce a build step unless the task explicitly requires it.
 - Primary files: `index.html`, `style.css`, and `game.js`.
-- Validate JavaScript with `node --check game.js`.
 - Review only the changed behavior unless the diff exposes a consequential existing defect.
 - Treat balance values as early-stage placeholders unless a task specifically concerns balance.
+
+## Verification gates
+
+Run all three before opening or updating a PR. A PR is not ready until they pass.
+
+1. `node --check game.js` — syntax.
+2. `node economy.test.mjs` — economy/save/offline suite. Exits non-zero on failure.
+3. `node pacing.mjs` — reference-bot pacing bands. Exits non-zero when a milestone
+   falls outside its band.
+
+Any behavior change to the economy, save shape, offline catch-up, prestige, or
+achievements must land with a test in `economy.test.mjs` in the same commit — not
+as a review follow-up.
+
+Both harnesses stub the DOM and load `game.js` by stripping its page-boot lines.
+If you change the trailing boot block in `game.js`, update the strip regex in both
+files or the harness exits 2.
 
 ## Project invariants
 
@@ -16,10 +32,53 @@ This is a dependency-free static website.
 - The stage carries no performer figure. The CSS/DOM dancer and pole were removed in v0.7.0 by
   operator decision; do not reintroduce them. The stage is lighting, haze, crowd silhouettes and
   the stage lip.
+- Pacing must stay deterministic. Random/burst events are live-session-only and must not
+  shift the pacing bands `pacing.mjs` measures.
+- The sim steps at 10Hz; full re-render is throttled independently. Do not couple
+  simulation correctness to render cadence.
 
-## Code review rules
+## Incremental-game design lens
+
+When a task is open-ended ("improve", "add content", "balance"), judge the change
+against these before writing code:
+
+- **No dead zones.** Every stretch of play should have a visible next purchase,
+  unlock, or milestone within roughly one active session.
+- **Curves, not cliffs.** Costs and rates scale multiplicatively; a new source of
+  income must not flatten an existing one into irrelevance.
+- **The prestige loop is the spine.** New content should either shorten a run,
+  deepen a run, or give a reason to reset — say which in the PR body.
+- **Caps are design, not bugs.** `caps(g)` and `rates(g)` encode intended ceilings.
+  Raising one is a balance decision that needs a pacing run, not a bugfix.
+- **Offline progress is a first-class path.** Anything that accrues live must have a
+  defined offline behavior, and elapsed time must never be double-counted.
+
+## Versioning and changelog
 
 - `VERSION`, the visible build number, and `CHANGELOG` must advance together for behavior changes.
 - Bump `SAVE_VER` only when the persisted save shape changes.
 - Preserve backward compatibility with existing `localStorage` saves unless the change explicitly requires a reset.
-- Preserve offline progression correctness and prevent elapsed-time double counting.
+- **Parallel branches collide here.** Before opening a PR, rebase onto the latest
+  `main` and renumber your version/build to sit above whatever landed while you
+  worked. Never resolve a `VERSION`/`CHANGELOG` conflict by merging both entries.
+
+## Documentation
+
+Docs ship *with* the feature, in the same PR — never as a follow-up. Before opening
+a PR, grep the docs for every constant, count, or system you changed:
+
+- `DESIGN.md` — systems, numbers, achievement counts.
+- `PRESTIGE.md` — anything touching Legacy, perks, or reset behavior.
+- `PLAN.md` / `IMPLEMENTATION_PLAN.md` — tick off or amend the item you implemented.
+- `README.md` — only if player-visible setup or controls changed.
+
+A partial docs pass is the single most common review finding on this repo. Search,
+don't recall.
+
+## Pull requests
+
+- Write the PR body to a tracked file and commit it — an untracked `.pr-body.md`
+  never reaches the remote, and the PR ships with a stale or empty description.
+- The body must describe *this* branch. Copying a prior PR's body has happened; check it.
+- State explicitly in the body: gates run and their result, docs files touched, and
+  whether `SAVE_VER` moved and why.
