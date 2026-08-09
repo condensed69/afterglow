@@ -181,13 +181,25 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
     overflow: visible !important;
   }
 
+  /* Stage art is hidden on phones (v0.10.8, operator request). It is environment
+     only — lighting, haze, crowd silhouettes, the neon sign — with no controls
+     and no readout, so on a narrow screen it was 240px of scrolling past nothing
+     to reach the buttons. It stays in the DOM rather than being dropped from the
+     markup: the render path is shared with desktop, and the two JS references
+     (`getElementById('stage')` for the click brightness pulse and the keyboard
+     tip-floater anchor) both stay non-null and no-op. Desktop is untouched. */
+  #stage {
+    display: none;
+  }
+
   /* Both interior grids distribute a height they no longer have once the shell
      is the scroller: with no free space, the stage's minmax(190px,1fr) collapses
      to its 190px floor and the Systems body's minmax(0,1fr) resolves to zero and
-     disappears entirely. Content-sized rows instead. The stage is lighting and
-     silhouettes with no intrinsic height, so it gets an explicit one. */
+     disappears entirely. Content-sized rows instead. Two rows, not three — a
+     `display:none` grid item is removed from layout entirely, so the actions bar
+     and the Night log are the only children left to place. */
   .stage-col {
-    grid-template-rows: 240px auto auto !important;
+    grid-template-rows: auto auto !important;
   }
   .sys-col {
     grid-template-rows: auto auto auto !important;
