@@ -93,9 +93,30 @@ if (values.length > 1 && i > values.length) {
 }
 ```
 
-Scoped to multi-value lists only, so the constant-pinning idiom keeps working. Under-supplying
-(padding a list beyond what gets drawn) stays legal — it is the defensive pattern the helper's
-comment recommends, and it is harmless.
+Scoped to multi-value lists only, so the constant-pinning idiom keeps working. Supplying more
+values than get drawn stays legal — it is the defensive pattern the helper's comment
+recommends, and it is harmless. What is not legal is *arriving* at the number by appending
+until the message stops; AGENTS.md says count the draws.
+
+**The throw is guarded on normal completion, not just on the count.** A `throw` inside
+`finally` discards whatever exception is already in flight — so a naive version of this guard
+would replace a failing assertion's message with the overrun message. That overlap is not
+hypothetical: a test whose assertions are failing is disproportionately likely to have taken a
+different number of draws than its author assumed, which is the same condition that trips the
+overrun. A guard that eats the real error at exactly that moment makes the harness worse.
+
+So `fn()`'s result is captured, a `completed` flag is set, and the overrun is reported only
+when `fn()` returned normally.
+
+Verified in both directions, the same way the RNG probe was validity-gated before being
+trusted — a guard that fires in the wrong order is as useless as a probe that never fires:
+
+| probe | expected | observed |
+|---|---|---|
+| block overruns **and** fails an assertion | assertion message | `PROBE assertion failure` |
+| block overruns, returns normally | overrun message | `withRandom script overrun: 6 draws against 4 supplied values.` |
+
+Neither probe was committed; the test was restored to its six-value form.
 
 Scope checked before landing it, per AGENTS.md *"if a change breaks a large share of the suite
 at once, you have violated an invariant"*: the guard fails **exactly one** test, the one above.
@@ -143,6 +164,15 @@ The seed/bias probes live in a scratchpad and import the suite from outside, sam
 per-draw stack tracing and the draw counter were temporary edits to `withRandom`, used to
 produce the tables above and then reverted; the only surviving change to the helper is the
 `throw`. Same pattern as #47's `vipLounge: 0` insertion — instrument, record, restore.
+
+Confirmed from the diff rather than from memory — one instrumentation pass in this session
+silently ran in the wrong working directory, so a written claim about what was reverted is
+worth checking against the authority:
+
+```
+$ git diff main...HEAD -- economy.test.mjs | grep -nE "_rawDebug|DRAW#|OVERRUN|PROBE"
+(no output)
+```
 
 ### Docs / version
 

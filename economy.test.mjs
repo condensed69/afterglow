@@ -185,7 +185,12 @@ function withRandom(values, fn) {
   const orig = Math.random;
   let i = 0;
   Math.random = () => values[i++ % values.length];
-  try { return fn(); } finally {
+  let completed = false;
+  try {
+    const result = fn();
+    completed = true;
+    return result;
+  } finally {
     Math.random = orig;
     // A multi-value list is a per-draw script: value 1 for the first roll, value 2
     // for the second, and so on. Drawing past the end silently wraps to values[0]
@@ -197,7 +202,14 @@ function withRandom(values, fn) {
     // A single-value list is the separate, deliberate idiom "pin Math.random to this
     // constant for the whole block", where cycling is the point. Only scripts are
     // checked.
-    if (values.length > 1 && i > values.length) {
+    //
+    // Guarded on `completed` because a throw from `finally` discards whatever
+    // exception is already in flight. A test that fails an assertion is exactly the
+    // test most likely to have drawn a different number of times than its author
+    // assumed, so without this the overrun message would replace the assertion
+    // failure at the moment the assertion failure is the thing you need to read.
+    // The overrun is reported only when fn() returned normally.
+    if (completed && values.length > 1 && i > values.length) {
       throw new Error(
         `withRandom script overrun: ${i} draws against ${values.length} supplied values. ` +
         `Draws past the end wrap to values[0] (${values[0]}) and can re-fire it. ` +
