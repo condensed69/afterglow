@@ -503,34 +503,74 @@ test('render() never references the bare identifier `g`', () => {
   );
 });
 
+// A game with everything unlocked, so no surface renders its locked/empty
+// branch and every card, stepper, and modal body is reachable.
+function unlockedGame() {
+  const game = newGame(1e6);
+  const g = game.state.g;
+  g.crew = 4;
+  g.jobs = { stage: 1, vipjob: 1, floor: 1, off: 1 }; // must sum to crew
+  g.hype = 60; g.buzz = 40; g.patrons = 20; g.regulars = 30;
+  g.clout = 500; g.legacy = 10; g.legacyTotal = 10; g.prestiges = 1;
+  g.rounds = 1; g.clicks = 10;
+  for (const b of game.BUILDINGS) g.b[b.id] = 1;
+  g.golden = { at: Date.now() };
+  return game;
+}
+
+// Surfaces are DISCOVERED, not listed. Tabs come from the view model's own tab
+// array (activated through each tab's `go` action, so the test never has to
+// know a tab id — an earlier hand-written list silently used 'upgrades' and
+// 'research' when the real ids are 'up' and 'res', and swept the wrong tab
+// twice). Modal/overlay surfaces come from every boolean flag on game.state.
+// Add a modal → add a `show*` flag → it is swept, with no test edit.
+function discoverSurfaces() {
+  const probe = unlockedGame();
+  const tabCount = probe.renderVals().tabs.length;
+  const flags = Object.keys(probe.state).filter(k => typeof probe.state[k] === 'boolean');
+
+  const surfaces = [];
+  for (let i = 0; i < tabCount; i++) {
+    surfaces.push({
+      name: `tab #${i}`,
+      setup: game => { game.renderVals().tabs[i].go(); },
+    });
+  }
+  for (const flag of flags) {
+    surfaces.push({ name: `state.${flag}`, setup: game => { game.state[flag] = true; } });
+  }
+  // Dependent pairs (e.g. resetArmed only means anything inside the settings
+  // modal) without enumerating which depends on which.
+  surfaces.push({
+    name: 'all flags at once',
+    setup: game => { for (const f of flags) game.state[f] = true; },
+  });
+
+  return { surfaces, tabCount, flagCount: flags.length };
+}
+
+test('handler sweep discovers every surface without a hand-maintained list', () => {
+  // Guards the discovery itself: if a refactor stops exposing tabs on the view
+  // model, or renames the state booleans, the sweep below would quietly shrink
+  // to nothing and keep passing.
+  const { tabCount, flagCount } = discoverSurfaces();
+  ok(tabCount >= 5, `discovered every tab including Perks (got ${tabCount})`);
+  ok(flagCount >= 6, `discovered the UI state booleans (got ${flagCount})`);
+});
+
 test('every bound click handler is invocable without a scope error', () => {
   // render() populates game.handlers via bind(); the delegated listener looks
   // each one up by its data-h index and calls it. Calling them all here is the
   // click-through a render smoke test cannot do. We only care about scope
   // errors — a handler is free to throw for missing-DOM reasons in this
   // harness, and destructive actions run against a throwaway in-memory game.
-  const surfaces = [
-    { name: 'club tab', apply: () => {} },
-    { name: 'crew tab', apply: g => { g.crew = 3; }, state: { tab: 'crew' } },
-    { name: 'upgrades tab', state: { tab: 'upgrades' } },
-    { name: 'research tab', state: { tab: 'research' } },
-    { name: 'perks tab', apply: g => { g.prestiges = 1; g.legacy = 5; }, state: { tab: 'perks' } },
-    { name: 'changelog modal', state: { showChangelog: true } },
-    { name: 'achievements modal', state: { showAchievements: true } },
-    { name: 'settings modal', state: { showSettings: true } },
-    { name: 'prestige modal', apply: g => { g.regulars = 30; }, state: { showPrestige: true } },
-    { name: 'golden badge collapsed', apply: g => { g.golden = { at: Date.now() }; } },
-    { name: 'golden badge expanded', apply: g => { g.golden = { at: Date.now() }; }, state: { goldenOpen: true } },
-    { name: 'golden badge on a stale tab', apply: g => { g.golden = { at: Date.now() }; }, state: { goldenOpen: true, tabStale: true } },
-  ];
-
+  const { surfaces } = discoverSurfaces();
   const failures = [];
   let invoked = 0;
 
   for (const surface of surfaces) {
-    const game = newGame(500);
-    if (surface.apply) surface.apply(game.state.g);
-    Object.assign(game.state, surface.state || {});
+    const game = unlockedGame();
+    surface.setup(game);
     game.render();
 
     // Snapshot: invoking a handler may mutate state, but each closure stays
@@ -555,7 +595,7 @@ test('every bound click handler is invocable without a scope error', () => {
     });
   }
 
-  ok(invoked > 100, `swept a meaningful number of handlers (got ${invoked})`);
+  ok(invoked > 200, `swept a meaningful number of handlers (got ${invoked})`);
   strictEqual(
     failures.length, 0,
     `handlers threw a scope error on click — the template captured game state render() does not have:\n  ${failures.join('\n  ')}`,

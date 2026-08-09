@@ -24,10 +24,12 @@ Both harnesses stub the DOM and load `game.js` by stripping its page-boot lines.
 If you change the trailing boot block in `game.js`, update the strip regex in both
 files or the harness exits 2.
 
-**Adding an interactive surface** (a modal, an overlay, a new tab): register it in
-the `surfaces` list of the `every bound click handler is invocable without a scope
-error` test. That sweep is what stops the `g`-in-template bug from shipping a third
-time (see `DESIGN.md` §14.4), and it only covers surfaces on that list.
+**Interactive surfaces sweep themselves.** The `every bound click handler is
+invocable without a scope error` test discovers tabs from the view model and
+modals/overlays from the boolean flags on `game.state`, then clicks every bound
+handler. A new modal with a `show*` state flag — the way every existing modal is
+built — is covered with no test edit. This is what stops the `g`-in-template bug
+from shipping a third time; see `DESIGN.md` §14.4.
 
 ### When a gate fails
 
