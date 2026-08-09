@@ -2610,7 +2610,7 @@ test('init migrate + offline persists; second init does not double-count offline
   game2.init();
   if (game2.timer) clearInterval(game2.timer);
   if (game2.saver) clearInterval(game2.saver);
-  const delta = Math.abs(game2.state.g.cash - cashAfterFirst);
+  const delta = game2.state.g.cash - cashAfterFirst;
   strictEqual(delta, 0, `second init must not re-apply ~1h offline (Δcash=${delta}, first=${cashAfterFirst})`);
   strictEqual(JSON.parse(localStorage.getItem(game2.KEY)).saveVer, game2.SAVE_VER);
 }));
