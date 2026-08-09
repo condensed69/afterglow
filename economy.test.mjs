@@ -2574,10 +2574,10 @@ test('study/builtin ignore orphan keys; catalog research completes study', () =>
   strictEqual(builtin.check(g), true, 'catalog upgrade completes builtin');
 });
 
-test('init migrate + offline persists; second init does not double-count offline', () => {
+test('init migrate + offline persists; second init does not double-count offline', () => withFrozenNow((t) => {
   localStorage.clear();
   const b = { rail: 2, bar: 1, vip: 0, dj: 0, marquee: 0, flyers: 1, door: 0, dress: 0 };
-  const hourAgo = Date.now() - 3600_000;
+  const hourAgo = t - 3600_000;
   localStorage.setItem('afterglow.save', JSON.stringify({
     saveVer: 4,
     ver: '0.5.3',
@@ -2600,23 +2600,27 @@ test('init migrate + offline persists; second init does not double-count offline
   ok(Array.isArray(stored.g.goals), 'persisted goals after migrate');
   ok(stored.g.ts > hourAgo + 3_000_000, 'ts refreshed so offline window cannot replay');
   // Second init loads current format with fresh ts — must not re-apply the hour of catchUp.
-  // Tiny sub-second offline between inits can tick fractional cash; bound it tightly.
+  // Frozen, the first init refreshed ts to exactly `t`, so the second init measures a 0s
+  // window and applies nothing at all: the delta is exactly 0, not merely small. The old
+  // `< 1` slack existed only to absorb whatever wall-clock passed between the two inits;
+  // with the clock held there is nothing to absorb, and an exact assertion catches a
+  // fractional re-apply that a tolerance of 1 would have hidden.
   const game2 = new Game(root);
   game2.forceUpdate = () => {};
   game2.init();
   if (game2.timer) clearInterval(game2.timer);
   if (game2.saver) clearInterval(game2.saver);
   const delta = Math.abs(game2.state.g.cash - cashAfterFirst);
-  ok(delta < 1, `second init must not re-apply ~1h offline (Δcash=${delta}, first=${cashAfterFirst})`);
+  strictEqual(delta, 0, `second init must not re-apply ~1h offline (Δcash=${delta}, first=${cashAfterFirst})`);
   strictEqual(JSON.parse(localStorage.getItem(game2.KEY)).saveVer, game2.SAVE_VER);
-});
+}));
 
 // AAR-59 / Codex P2: setItem throw must not leave catch-up applied only in memory
 // while the prior blob (old ts) remains — that path double-counts offline on reload.
-test('init setItem throw after migrate skips catch-up (no double-count risk)', () => {
+test('init setItem throw after migrate skips catch-up (no double-count risk)', () => withFrozenNow((t) => {
   localStorage.clear();
   const b = { rail: 2, bar: 1, vip: 0, dj: 0, marquee: 0, flyers: 1, door: 0, dress: 0 };
-  const hourAgo = Date.now() - 3600_000;
+  const hourAgo = t - 3600_000;
   const seed = {
     saveVer: 4,
     ver: '0.5.3',
@@ -2658,20 +2662,22 @@ test('init setItem throw after migrate skips catch-up (no double-count risk)', (
   strictEqual(stored.saveVer, game2.SAVE_VER);
   ok(stored.g.ts > hourAgo + 3_000_000, 'ts claimed after successful persist');
 
-  // Third init must not re-apply the hour.
+  // Third init must not re-apply the hour. Frozen, game2 claimed ts at exactly `t`, so
+  // game3 measures a 0s window and the delta is exactly 0 (see the note on the previous
+  // test for why the old `< 1` slack is no longer needed).
   const cashAfter = game2.state.g.cash;
   const game3 = new Game(root);
   game3.forceUpdate = () => {};
   game3.init();
   if (game3.timer) clearInterval(game3.timer);
   if (game3.saver) clearInterval(game3.saver);
-  ok(Math.abs(game3.state.g.cash - cashAfter) < 1, 'no double-count after recover');
-});
+  strictEqual(game3.state.g.cash - cashAfter, 0, 'no double-count after recover');
+}));
 
-test('init post-catchUp setItem throw still claimed ts (reload cannot re-apply gap)', () => {
+test('init post-catchUp setItem throw still claimed ts (reload cannot re-apply gap)', () => withFrozenNow((t) => {
   localStorage.clear();
   const b = { rail: 2, bar: 1, vip: 0, dj: 0, marquee: 0, flyers: 1, door: 0, dress: 0 };
-  const hourAgo = Date.now() - 3600_000;
+  const hourAgo = t - 3600_000;
   localStorage.setItem('afterglow.save', JSON.stringify({
     saveVer: 4,
     ver: '0.5.3',
@@ -2710,10 +2716,12 @@ test('init post-catchUp setItem throw still claimed ts (reload cannot re-apply g
   game2.init();
   if (game2.timer) clearInterval(game2.timer);
   if (game2.saver) clearInterval(game2.saver);
-  // Second init must not re-apply ~1h offline on top of disk state.
-  ok(Math.abs(game2.state.g.cash - cashOnDisk) < 1,
+  // Second init must not re-apply ~1h offline on top of disk state. Frozen, the claim
+  // write set ts to exactly `t`, so the reload measures a 0s window and re-applies
+  // nothing — exactly 0, not within 1.
+  strictEqual(game2.state.g.cash - cashOnDisk, 0,
     `reload must not re-apply offline gap (disk=${cashOnDisk}, second=${game2.state.g.cash})`);
-});
+}));
 
 test('v6 migrates to v8 and backfills achievements; v5 without prestige still migrates', () => {
   const game = newGame(20);
