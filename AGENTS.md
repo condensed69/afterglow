@@ -24,6 +24,21 @@ Both harnesses stub the DOM and load `game.js` by stripping its page-boot lines.
 If you change the trailing boot block in `game.js`, update the strip regex in both
 files or the harness exits 2.
 
+### When a gate fails
+
+A non-zero exit is a result, not a transient error. Re-running an unchanged
+command cannot change it.
+
+- Read the **first** failure only. Later failures are usually downstream of it.
+- Fix that root cause, then re-run the gate **once**.
+- If the same failure survives two fixes, stop and report: name the failing
+  assertion, the value you got, the value expected, and what you tried. A
+  described blocker is worth more than another attempt.
+- Never re-run a gate you have not changed anything for.
+- If a change breaks a large share of the suite at once, you have violated an
+  invariant, not found many bugs. Revert to the last green state and re-approach
+  in smaller steps rather than patching failures one by one.
+
 ## Project invariants
 
 - This is an incremental/idle nightclub-management game using plain HTML, CSS, and JavaScript.
