@@ -159,7 +159,7 @@ crew, jobs
   main.night = typeof main.night === 'number' ? Math.max(1, main.night) : 1;
   main.shiftIdx = typeof main.shiftIdx === 'number' ? main.shiftIdx % this.SHIFTS.length : 0;
   main.shiftT = typeof main.shiftT === 'number' ? main.shiftT : 0;
-  main._specialShift = typeof main._specialShift === 'number' ? main._specialShift : -1;
+  main._specialShift = main._specialShift != null && Number.isInteger(main._specialShift) ? main._specialShift : null;
   main._whaleCooldown = typeof main._whaleCooldown === 'number' ? main._whaleCooldown : 0;
 
   g.clubs = { main };
@@ -171,6 +171,8 @@ crew, jobs
 
 **v9 import compatibility note:** the existing `isValidSavePayload` hard-requires `cash`, `hype`, `buzz`, `patrons`, `regulars` as numeric fields directly on `g` (game.js:819-821). After the v8→v9 migration, these fields live inside `g.clubs.main`, not on `g` directly. A natively-exported v9 save will lack these top-level fields, so the current validator would reject it. The fix: change `isValidSavePayload` to check `g.clubs?.main?.cash ?? g.cash` (and likewise for `hype`, `buzz`, `patrons`, `regulars`). This avoids duplicating state back to the top level and is consistent with the `club(g)` helper pattern used everywhere else. The migration chain runs *after* validation, so the validator sees either the pre-migration shape (fields on `g`) or the post-migration shape (fields in `g.clubs.main`).
 
+*Implementation note:* `?.` (optional chaining) does not appear in `game.js` today. The implementer may choose to keep the codebase free of it (e.g. `g.clubs && g.clubs.main && g.clubs.main.cash`) or introduce it here as the first use — either is fine as long as it's intentional.
+
 ---
 
 ## 5. Simulation changes
@@ -180,11 +182,11 @@ crew, jobs
 ```js
 club(g, id = g.activeClub) {
   const c = g.clubs && g.clubs[id];
-  return c || g.clubs && g.clubs.main;
+  return c || (g.clubs && g.clubs.main);
 }
 ```
 
-Single helper used everywhere a club-specific value is read. No scattered `g.clubs[g.activeClub]` copies.
+Single helper used everywhere a club-specific value is read. No scattered `g.clubs[g.activeClub]` copies. The explicit parens `c || (g.clubs && g.clubs.main)` avoid precedence ambiguity (`&&` binds tighter than `||`).
 
 ### `activeClub(g)` / `setActiveClub(id)`
 
@@ -202,7 +204,7 @@ const c = this.club(g);
 const cap = this.caps(g, c);   // crew is shared; cap derived from active club's Dressing Rooms
 ```
 
-Crew capacity (`caps().crew`) is derived from the **active club's** Dressing Rooms, because crew is physically assigned to the active room. If the player switches clubs, the crew cap may shrink; excess crew are pushed to `off`. The existing `sanitizeG` rebalance pass (game.js:757-773) only rebalances `g.jobs` against `g.crew` count — it has no notion of `caps(g).crew` or evicting crew when a cap shrinks. The implementation PR must add a new cap-aware rebalance step in `setActiveClub` (or extend `sanitizeG`) that compares `g.crew` against `caps(g).crew` for the newly active club and evicts excess crew to `off`.
+Crew capacity (`caps().crew`) is derived from the **active club's** Dressing Rooms, because crew is physically assigned to the active room. If the player switches clubs, the crew cap may shrink; excess crew are pushed to `off`. The existing `sanitizeG` rebalance pass (game.js:756-772) only rebalances `g.jobs` against `g.crew` count — it has no notion of `caps(g).crew` or evicting crew when a cap shrinks. The implementation PR must add a new cap-aware rebalance step in `setActiveClub` (or extend `sanitizeG`) that compares `g.crew` against `caps(g).crew` for the newly active club and evicts excess crew to `off`.
 
 Clout is earned into the shared `g.clout` from the active club's Regulars only. Inactive clubs do not generate Clout. This is v1's simplicity tradeoff; future designs may accrue Clout across all clubs at a reduced rate.
 
@@ -257,7 +259,7 @@ Cash, Hype, Buzz, Patrons, Regulars now reflect the **active club**. Clout and L
 
 ### 8.3 Systems / Club tab
 
-The existing **Club** tab stays focused on the active club's buildings. No new tab needed for v1. Upgrades and Research are account-level (Research already is). Perks/Managers remain account-level.
+The existing **Club** tab stays focused on the active club's buildings and upgrades. No new tab needed for v1. Research is account-level (already is). Perks/Managers remain account-level.
 
 ### 8.4 Night log
 
@@ -331,6 +333,7 @@ Explicitly **out of scope** for the first second-club ship:
 | Second-room prestige goal | Prestige goals remain out of scope (PRESTIGE.md §8). |
 | Auto-prestige per club | Manual prestige modal only; prestige resets all clubs. |
 | Cross-club scheduling / shift coordination | Each club has its own shift clock. |
+| Crew restore on switch-back | Excess crew pushed to `off` when switching to a smaller-capacity club stay in `off` until manually reassigned; no auto-restore on returning to a larger-capacity club. |
 | New buildings/upgrades unique to the annex | Annex uses the same catalog; future design may add location-specific content. |
 
 If a later plan wants world maps, inactive earnings, or per-club crew, it supersedes this section deliberately — not by creeping into v1.
