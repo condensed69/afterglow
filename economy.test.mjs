@@ -185,7 +185,37 @@ function withRandom(values, fn) {
   const orig = Math.random;
   let i = 0;
   Math.random = () => values[i++ % values.length];
-  try { return fn(); } finally { Math.random = orig; }
+  let completed = false;
+  try {
+    const result = fn();
+    completed = true;
+    return result;
+  } finally {
+    Math.random = orig;
+    // A multi-value list is a per-draw script: value 1 for the first roll, value 2
+    // for the second, and so on. Drawing past the end silently wraps to values[0]
+    // and re-fires whatever that value was chosen to trigger — the test then passes
+    // because the wrap-around value happened to be benign, not because anyone picked
+    // it. That is how `critic fires at night rollover during a live step` sat at 6
+    // draws against a 4-value script with a comment claiming 4.
+    //
+    // A single-value list is the separate, deliberate idiom "pin Math.random to this
+    // constant for the whole block", where cycling is the point. Only scripts are
+    // checked.
+    //
+    // Guarded on `completed` because a throw from `finally` discards whatever
+    // exception is already in flight. A test that fails an assertion is exactly the
+    // test most likely to have drawn a different number of times than its author
+    // assumed, so without this the overrun message would replace the assertion
+    // failure at the moment the assertion failure is the thing you need to read.
+    // The overrun is reported only when fn() returned normally.
+    if (completed && values.length > 1 && i > values.length) {
+      throw new Error(
+        `withRandom script overrun: ${i} draws against ${values.length} supplied values. ` +
+        `Draws past the end wrap to values[0] (${values[0]}) and can re-fire it. ` +
+        `Supply one value per draw, or pass a single-value list to pin the RNG.`);
+    }
+  }
 }
 
 // Freeze Date.now for the duration of fn(), which receives the frozen value.
@@ -983,8 +1013,15 @@ test('critic fires at night rollover during a live step', () => {
   g.shiftIdx = 3; // After Hours → wraps to Night (shiftIdx 0)
   const r = game.rates(g);
   g.shiftT = r.shift.len - 0.05;
-  // Rolls per slice: whale (0.99 no), golden (0.99 no), special rollover (0.99 no), critic (0.0 yes).
-  withRandom([0.99, 0.99, 0.99, 0.0], () => game.step(0.1));
+  // step(0.1) runs TWO slices here, not one: shiftT starts 0.05 short of the shift
+  // length, so the first slice rolls the shift over and a second slice runs after it.
+  // Slice 1 rolls whale (0.99 no), golden (0.99 no), special rollover (0.99 no),
+  // critic (0.0 yes — the behavior under test). Slice 2 rolls whale and golden again;
+  // it does not re-roll the rollover or critic, having already crossed the boundary.
+  // All six are supplied explicitly. Before, only four were, and draws 5-6 wrapped
+  // back to values[0..1] — benign only because both are 0.99. withRandom now throws
+  // on a script overrun rather than wrapping, so this cannot silently regress.
+  withRandom([0.99, 0.99, 0.99, 0.0, 0.99, 0.99], () => game.step(0.1));
   strictEqual(g.shiftIdx, 0, 'rolled into a new night');
   // Background clout income (regulars * 0.0011) accrues during step, so assert ≥ 2.
   ok(g.clout >= 2, 'critic rave granted +2 Clout');

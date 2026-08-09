@@ -30,6 +30,20 @@ Both harnesses stub the DOM and load `game.js` by stripping its page-boot lines.
 If you change the trailing boot block in `game.js`, update the strip regex in both
 files or the harness exits 2.
 
+**`withRandom` throws on script overrun.** A multi-value list is a per-draw script —
+one value per `Math.random()` call, in order. Drawing past the end used to wrap to
+`values[0]` and silently re-fire it; it now throws. If you hit it, count the draws
+your code path actually makes and supply that many, or pass a single-value list to
+pin the RNG to a constant for the whole block. Do not "fix" it by deleting the guard,
+and do not append values blindly until the message stops — count the draws your path
+makes, then supply that many. A `step()` call that crosses a shift boundary runs two
+slices and rolls twice, and that count is the thing worth knowing. Supplying more
+values than get drawn is legal; arriving at the number without looking is not.
+
+The throw fires only when the block returns normally. If a test both fails an
+assertion and overruns, you see the assertion — that ordering is deliberate, and
+there is a test-order check for it in PR #49. Do not move the throw out of that guard.
+
 **Interactive surfaces sweep themselves.** The `every bound click handler is
 invocable without a scope error` test discovers tabs from the view model and
 modals/overlays from the boolean flags on `game.state`, then clicks every bound
