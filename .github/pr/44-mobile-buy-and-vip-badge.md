@@ -1,60 +1,58 @@
-## feat: mobile buy-multiple + compact VIP golden-ticket badge (0.10.5, build 196)
+## fix: golden-ticket claim buttons throw on click (0.10.6, build 197)
 
-Two player-facing changes, both aimed at making the game usable on a phone.
+**PR #43 already merged the 0.10.5 feature work** (mobile buy-multiple + compact VIP
+badge). This branch was the duplicate carrying the *fixed* version of the same commit, so
+after rebasing onto `main` what remains is the bugfix, its tests, and the docs pass.
 
-### 1. Buy-multiple on building cards
+### The bug that is live on `main` right now
 
-Building cards now render a **×1 / ×5 / ×10 / ×Max** row, so touch players can bulk-buy
-without a Shift key. Desktop Shift-click on any of the four still forces a max buy.
+The golden-ticket badge built its claim closures inside `render()`:
 
-- `buyBuilding(def, count)` folds the old `buyBuilding` / `buyBuildingMax` duplication into
-  one loop. Cash and the per-building `max` are re-checked every iteration, and the
-  single-buy log format is preserved when `count === 1`.
-- `buildingMaxAffordable()` is extracted as the shared source of truth for ×Max and for each
-  button's affordability state, so the renderer no longer duplicates the loop.
+```js
+<button data-h="${this.bind(() => this.takeGolden(g, 'cash'))}" ...>
+```
 
-### 2. Golden ticket becomes a collapsible VIP badge
+`render()` has only `v` (the `renderVals()` output) in scope — there is no `g`. The template
+parses and renders fine, then throws `ReferenceError: g is not defined` inside the delegated
+click handler. **Clicking either claim button does nothing: the reward is never granted and
+the offer never clears.** It sits there until the 30s TTL expires.
 
-The rare golden-ticket offer moves from a large centered overlay to a compact badge in the
-stage's top-right corner. The idle sim stays visible and keeps ticking underneath; tap the
-badge to expand the cash/crowd choice.
+Fixed by building the closures in `renderVals()`, where `g` is in scope, and consuming them
+as `v.takeGoldenCash` / `v.takeGoldenCrowd` — the same shape as every other bound action.
 
-`this.state.goldenOpen` tracks the expanded state. It lives in `this.state`, not in `g`, so
-it is transient UI and **does not** persist.
+Also fixed: `crowdAmount` was interpolated as a raw float. `g.patrons` is fractional in the
+sim, so the preview could read `+7.339999999999998 crowd`. Now rounded, matching the claim
+log line.
 
-### Review findings addressed
+### Why the tests did not catch it
 
-The automated review on this branch raised four items. Two were fixed in the current head
-before this body was written; two were open and are fixed here.
-
-| Finding | Status |
-|---|---|
-| Claim buttons referenced bare `g`, which `render()` does not have in scope — `ReferenceError` on click | Fixed at head — closures now built in `renderVals()` and consumed as `v.takeGoldenCash` / `v.takeGoldenCrowd` |
-| `crowdAmount` interpolated as a raw float (`+7.339999999999998 crowd`) | Fixed at head — `Math.round(...)`, matching the log line |
-| No test covering `goldenOpen` or the claim actions | **Fixed here** — 3 tests added (below) |
-| `title` tooltip duplicated across all four buy buttons | **Fixed here** — kept on ×1 only |
-
-The `g`-in-template bug is the same class as PR #30's prestige modal. It renders fine and
-only throws when the button is actually clicked, so a render smoke test does not catch it.
-Added tests:
+This is the second time this exact bug class has shipped — the first was the prestige modal
+in PR #30. It survives a render smoke test, because rendering is not what throws; only an
+actual click is. Three tests added:
 
 - `renderVals()` exposes both claim actions and a rounded crowd preview.
 - `render()` does not throw with the badge expanded.
 - **Click-through** — invoking `v.takeGoldenCash()` / `v.takeGoldenCrowd()` resolves the
-  offer. This is the one that would have caught the shipped bug.
+  offer. This is the one that would have caught it.
 
-`DESIGN.md` §14.4 now states the rule (templates read the view model, never `g`) and notes
-that it has shipped twice, so the next interactive surface gets both tests by default.
+`DESIGN.md` §14.4 now states the rule and requires that pair for any new interactive
+surface, so the third occurrence gets caught by the checklist rather than by a player.
+
+### Also in this PR
+
+- Dropped the duplicated Shift-click `title` from the ×5/×10/×Max buy buttons; kept on ×1
+  now that a dedicated ×Max button exists.
+- The docs pass PR #43 skipped (it shipped player-visible controls and touched no docs).
 
 ### Docs touched
 
 | File | Change |
 |------|--------|
-| `DESIGN.md` §11.4 | Golden-ticket presentation change: badge not overlay, `goldenOpen`, rounded crowd preview. |
-| `DESIGN.md` §14.3 | New — buy-multiple buttons, the shared `buildingMaxAffordable()`, Shift-click behavior. |
-| `DESIGN.md` §14.4 | New — templates read `v`, never `g`; the regression-test pair required for new interactive surfaces. |
+| `DESIGN.md` §11.4 | Golden-ticket presentation: badge not overlay, `goldenOpen`, rounded crowd preview. |
+| `DESIGN.md` §14.3 | New — buy-multiple buttons, shared `buildingMaxAffordable()`, Shift-click behavior. |
+| `DESIGN.md` §14.4 | New — templates read the view model, never `g`; the regression-test pair new interactive surfaces require. |
 
-`README.md` untouched: it documents no controls. `PLAN.md` / `PRESTIGE.md` untouched:
+`README.md` untouched — it documents no controls. `PLAN.md` / `PRESTIGE.md` untouched —
 nothing here touches prestige or a planned item.
 
 ### Verification gates
@@ -62,15 +60,14 @@ nothing here touches prestige or a planned item.
 | Gate | Result |
 |------|--------|
 | `node --check game.js` | pass |
-| `node economy.test.mjs` | pass — 195 tests, 0 failed (192 before; +3) |
+| `node economy.test.mjs` | pass — 196 tests, 0 failed (193 before; +3) |
 | `node pacing.mjs` | pass — all milestones in band |
 
-Pacing is unaffected by construction: both changes are live-UI only. The pacing bot drives
-`step()` with `_live = false`, so the golden ticket never rolls in it, and buy-multiple
-changes the number of clicks a purchase takes, not its cost curve.
+Pacing is unaffected by construction: the golden ticket is live-only, and the pacing bot
+drives `step()` with `_live = false`, so it never rolls.
 
 ### Version / save format
 
-- `VERSION` `0.10.5`, build `196`, and the `CHANGELOG` entry advance together — behavior change.
-- `SAVE_VER` **stays 8**. `goldenOpen` is transient `this.state`, not persisted `g`; no field
-  was added to the save shape.
+- `VERSION` `0.10.6`, build `197`, and a `CHANGELOG` entry advance together. This is a
+  behavior change — a broken button becomes a working one.
+- `SAVE_VER` **stays 8**. `goldenOpen` is transient `this.state`, not persisted `g`.

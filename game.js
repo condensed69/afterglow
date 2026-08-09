@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.10.5', build: 196, channel: 'alpha', date: '2026-08-08', codename: 'Neon Zero' };
+  VERSION = { num: '0.10.6', build: 197, channel: 'alpha', date: '2026-08-08', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -108,6 +108,11 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.10.6', date: '2026-08-08', codename: 'Neon Zero', notes: [
+      'Fix: the golden-ticket claim buttons threw ReferenceError on click and never granted the reward. The 0.10.5 badge built its claim closures inside render(), which has only the view model in scope — the raw g is not defined there. Closures now live in renderVals() and are consumed as v.takeGoldenCash / v.takeGoldenCrowd, matching every other bound action. Same bug class as the 0.8.0 prestige modal.',
+      'Fix: the crowd preview on the badge showed a raw float (e.g. +7.339999999999998 crowd) because g.patrons is fractional in the sim. Now rounded, matching the claim log line.',
+      'Tidy: dropped the duplicated Shift-click tooltip from the x5/x10/xMax buy buttons; it stays on x1 now that a dedicated xMax button exists.'
+    ] },
     { v: '0.10.5', date: '2026-08-08', codename: 'Neon Zero', notes: [
       'Mobile buy-multiple: building cards now show ×1 / ×5 / ×10 / ×Max buttons so touch players can bulk-buy structures without a Shift key. Desktop Shift-click max still works.',
       'Golden ticket is now a compact, collapsible VIP badge in the top-right of the stage instead of a large centered overlay. The idle sim keeps ticking underneath; tap the badge to open the choice and claim it when you want.'
