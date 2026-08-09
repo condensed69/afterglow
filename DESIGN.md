@@ -650,14 +650,31 @@ it with two gates:
 | Gate | What it does |
 |------|--------------|
 | `render() never references the bare identifier \`g\`` | Brace-matches `render()` out of the `game.js` source and scans it for `g` used as an identifier. Pins the exact cause with a line offset. |
-| `every bound click handler is invocable without a scope error` | Renders 12 surfaces (each Systems tab, each modal, the golden badge collapsed / expanded / stale-tab), then **calls every handler** `bind()` registered and fails on `ReferenceError`. This is the click a render smoke test cannot perform. |
+| `every bound click handler is invocable without a scope error` | **Discovers** every surface, renders each, then **calls every handler** `bind()` registered and fails on `ReferenceError`. This is the click a render smoke test cannot perform. ~565 invocations across 13 surfaces. |
+| `handler sweep discovers every surface without a hand-maintained list` | Guards the discovery itself, so a refactor cannot silently shrink the sweep to nothing while still passing. |
 
-The sweep ignores non-scope throws — a handler is free to fail for missing-DOM reasons in
-the harness, and it runs against a throwaway in-memory game, so destructive actions are
-harmless. Both gates were verified against a reintroduced copy of the shipped bug.
+Surfaces are **discovered, not listed**:
 
-**Adding a new interactive surface?** Add it to the `surfaces` list in that test. A surface
-absent from the list is not swept.
+- **Tabs** come from the view model's own `tabs` array, activated through each tab's `go`
+  action — the test never needs to know a tab id. (The first version of this sweep hand-wrote
+  `'upgrades'` and `'research'`; the real ids are `'up'` and `'res'`, so it swept the wrong
+  tab twice and passed anyway. That is why discovery replaced the list.)
+- **Modals and overlays** come from every boolean flag on `game.state`, each raised alone,
+  plus one pass with all of them raised together to cover dependent pairs like
+  `resetArmed` inside the settings modal.
+
+So **adding a modal is enough**: give it a `show*` state flag as every existing modal does
+and the sweep picks it up with no test edit. Verified — a new `showFakeModal` carrying a
+deliberate bare-`g` handler was caught and reported as
+`state.showFakeModal handler 43 — g is not defined` without touching `economy.test.mjs`.
+
+The sweep ignores non-scope throws: a handler is free to fail for missing-DOM reasons in the
+harness, and it runs against a throwaway fully-unlocked in-memory game, so destructive
+actions are harmless. Both gates were also verified against a reintroduced copy of the
+shipped PR #43 bug.
+
+The residue: a surface driven by something other than a `game.state` boolean — a URL
+parameter, say — would not be discovered. Nothing in the current UI works that way.
 
 ---
 
