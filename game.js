@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.10.9', build: 200, channel: 'alpha', date: '2026-08-12', codename: 'Neon Zero' };
+  VERSION = { num: '0.10.10', build: 201, channel: 'alpha', date: '2026-08-12', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -108,6 +108,11 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.10.10', date: '2026-08-12', codename: 'Neon Zero', notes: [
+      'Onboarding: sticky "Goal X of 14" banner at top of Owner\'s List panel with progress counter.',
+      'Onboarding: pulse animation on active goal banner for first 3 goals to draw attention to next step.',
+      'UX: Owner\'s List panel now shows goal index (1-14) and total completed count in prominent banner.'
+    ] },
     { v: '0.10.9', date: '2026-08-12', codename: 'Neon Zero', notes: [
       'Fix: hardReset() now clears lastAutoSave so a wiped club does not show the prior club\'s autosave timestamp.',
       'Fix: importSaveFromText() includes lastAutoSave in the written payload so an imported save does not retain the previous session\'s autosave value.',
@@ -2358,13 +2363,14 @@ class Game {
         const total = this.GOALS.length;
         const done = Array.isArray(g.goals) ? g.goals.length : 0;
         const goal = this.activeGoal(g);
+        const goalIdx = goal ? this.GOALS.findIndex(x => x.id === goal.id) : total;
         if (!goal) {
           return {
             done: true, n: total, total,
             title: 'Club runs itself',
             why: 'Word is a franchise man has been asking about you.',
             hint: 'Onboarding complete — keep the room humming.',
-            reward: '', progress: null, flash: false
+            reward: '', progress: null, flash: false, goalIdx: total, totalGoals: total
           };
         }
         const rew = goal.reward || {};
@@ -2376,6 +2382,9 @@ class Game {
           const p = goal.progress(g);
           if (p && p.max > 0) progress = { cur: Math.max(0, p.cur), max: p.max, pct: Math.min(100, (p.cur / p.max) * 100) };
         }
+        // Onboarding pulse: true for first 3 goals or when player has no completed goals
+        // This drives a more prominent pulse animation on the active goal banner
+        const onboardingPulse = done < 3;
         return {
           done: false, n: done, total,
           title: goal.title,
@@ -2383,7 +2392,10 @@ class Game {
           hint: goal.hint,
           reward: rparts.join(' '),
           progress,
-          flash: done > 0 && this.state.tick > 0
+          flash: done > 0 && this.state.tick > 0,
+          goalIdx,
+          totalGoals: total,
+          onboardingPulse
         };
       })(),
       achievements: this.ACHIEVEMENTS.map(a => ({
@@ -3004,7 +3016,20 @@ class Game {
               </div>
             </div>`
           : '';
-        return `<div style="border-bottom:1px solid #2a1738;background:#0d0814;padding:10px 12px">
+        // Sticky onboarding banner: "Goal X of 14: Title" - more prominent for first few goals
+        const banner = ol.done ? '' : `
+          <div style="border-bottom:1px solid #2a1738;background:linear-gradient(180deg,#1a1028,#120c1c);padding:8px 12px;${ol.onboardingPulse ? 'animation:onboardPulse 2.5s ease-in-out infinite' : ''}">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#ffc94a;font-weight:700;letter-spacing:.3px">
+                Goal ${ol.goalIdx + 1} of ${ol.totalGoals}
+              </span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6f5885">
+                ${ol.n} / ${ol.total} complete
+              </span>
+            </div>
+          </div>
+        `;
+        return `${banner}<div style="border-bottom:1px solid #2a1738;background:#0d0814;padding:10px 12px">
           <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:4px">
             <div style="display:flex;align-items:center;gap:7px;min-width:0">
               <span style="width:6px;height:6px;border-radius:50%;background:${ol.done ? '#4ade80' : '#ff2d78'};box-shadow:0 0 7px ${ol.done ? '#4ade80' : '#ff2d78'};flex-shrink:0;animation:pulseDot 2.2s infinite"></span>

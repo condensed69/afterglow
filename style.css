@@ -22,6 +22,10 @@ a:hover { color: #67e8f9; }
 @keyframes hazeDrift { 0% { transform: translateX(-4%) scaleY(1); } 100% { transform: translateX(4%) scaleY(1.1); } }
 @keyframes crowdBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
 @keyframes pulseDot { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+@keyframes onboardPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,201,74,.15); border-color: #2a1738; }
+  50% { box-shadow: 0 0 12px 4px rgba(255,201,74,.35); border-color: #ffc94a; }
+}
 
 /* Hover/active states — the original Claude-artifact export encoded these as
    per-node style-hover/style-active props; plain CSS pseudo-classes do the
