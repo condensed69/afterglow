@@ -7,6 +7,49 @@ This is a dependency-free static website.
 - Review only the changed behavior unless the diff exposes a consequential existing defect.
 - Treat balance values as early-stage placeholders unless a task specifically concerns balance.
 
+## Branches
+
+- **Never run `git checkout -b`.** Start every branch with:
+
+  ```sh
+  .githooks/new-branch.sh <name>
+  ```
+
+  It fetches `origin/main` and cuts the branch from it. It refuses on a dirty
+  working tree, and refuses to silently reuse an existing branch name.
+
+- **Why this is mechanical and not a matter of care.** On 2026-08-12 a branch was
+  cut while still standing on another feature branch. That parent was then
+  squash-merged, so the carried commits became content-duplicates with different
+  SHAs, and the PR went `mergeable_state=dirty`. GitHub does not run
+  `pull_request`-triggered workflows against an unmergeable PR — it needs a
+  synthetic merge ref to check the code out and can't build one — so **no gates
+  and no review ran at all.** The work looked finished and nothing had verified
+  it. Prose alone ("rebase onto the latest `main`" — see Versioning below) did
+  not hold.
+
+- A `pre-push` hook now refuses any push whose branch is not rooted on the current
+  `origin/main`. If you see `PUSH REFUSED`, it prints the exact repair — which
+  commits to keep, which already landed on `main`, the `checkout -B` and
+  `cherry-pick` lines, the gate commands, and the push that follows. **Follow it
+  verbatim; do not improvise a fix.** Re-run all three gates afterward: the tree
+  changed, so the previous pass is stale.
+
+- **The hooks are tracked in this repo, at `.githooks/`** — reviewable in a diff
+  like any other file, not trusted sight-unseen from a container path. They run
+  only after a one-time opt-in per clone:
+
+  ```sh
+  git config core.hooksPath .githooks
+  ```
+
+  The Hermes agent container has this set already. Any other clone (human or
+  agent) working on this repo needs to run it once, or the guard is silently
+  inert — `git status` won't tell you it's missing.
+
+- `HERMES_ALLOW_STALE_BASE=1` bypasses the `pre-push` hook. Do not use it. It
+  exists for a human debugging the hook itself.
+
 ## Verification gates
 
 Run all three before opening or updating a PR. A PR is not ready until they pass.
@@ -116,35 +159,6 @@ a PR, grep the docs for every constant, count, or system you changed:
 
 A partial docs pass is the single most common review finding on this repo. Search,
 don't recall.
-
-## Branches
-
-- **Never run `git checkout -b`.** Start every branch with:
-
-  ```sh
-  bash /opt/data/.git-helpers/new-branch.sh <name>
-  ```
-
-  It fetches `origin/main` and cuts the branch from it. It refuses on a dirty
-  working tree, and refuses to silently reuse an existing branch name.
-
-- **Why this is mechanical and not a matter of care.** On 2026-08-12 a branch was
-  cut while still standing on another feature branch. That parent was then
-  squash-merged, so the carried commits became content-duplicates with different
-  SHAs; the PR went `mergeable_state=dirty`, and **GitHub creates no check runs at
-  all for a conflicted PR.** No gates, no review — the work looked finished and
-  nothing had verified it. The rule below this one already said "rebase onto the
-  latest `main`". Prose alone did not hold.
-
-- A `pre-push` hook now refuses any push whose branch is not rooted on the current
-  `origin/main`. If you see `PUSH REFUSED`, it prints the exact repair — which
-  commits to keep, which already landed on `main`, the `checkout -B` and
-  `cherry-pick` lines, the gate commands, and the push that follows. **Follow it
-  verbatim; do not improvise a fix.** Re-run all three gates afterward: the tree
-  changed, so the previous pass is stale.
-
-- `HERMES_ALLOW_STALE_BASE=1` bypasses the hook. Do not use it. It exists for a
-  human debugging the hook itself.
 
 ## Pull requests
 
