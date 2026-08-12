@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.10.8', build: 199, channel: 'alpha', date: '2026-08-09', codename: 'Neon Zero' };
+  VERSION = { num: '0.10.9', build: 200, channel: 'alpha', date: '2026-08-12', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -108,6 +108,12 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.10.9', date: '2026-08-12', codename: 'Neon Zero', notes: [
+      'Fix: hardReset() now clears lastAutoSave so a wiped club does not show the prior club\'s autosave timestamp.',
+      'Fix: importSaveFromText() includes lastAutoSave in the written payload so an imported save does not retain the previous session\'s autosave value.',
+      'Fix: render() hoists Date.now() to a single const in the header autosave display to avoid multiple calls per frame.',
+      'Test: economy.test.mjs adds save/import round-trip coverage for lastAutoSave — auto-save sets it, manual-save preserves it, init() rehydrates it.'
+    ] },
     { v: '0.10.8', date: '2026-08-09', codename: 'Neon Zero', notes: [
       'Change: the stage art is hidden on phones and other screens under 900px wide. It is scenery only — lights, haze, crowd — with nothing to press and nothing to read, so on a narrow screen it was a screenful of scrolling to get past before reaching the buttons. Work the room and Buy a round are now the first things under the Ledger. Nothing is hidden on desktop.'
     ] },
@@ -1002,7 +1008,7 @@ class Game {
       this.push(g, 'Save restored.', '#22d3ee');
       try {
         localStorage.setItem(this.KEY, JSON.stringify({
-          saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
+          saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g, lastAutoSave: this.state.lastAutoSave
         }));
       } catch (e) {
         // Persist failed: leave live club, tabStale, and autosave ownership untouched.
@@ -1031,13 +1037,14 @@ class Game {
   }
 
   init() {
-    let g = null, wiped = false, upgraded = false, prevVer = null, fromSaveVer = null;
+    let g = null, wiped = false, upgraded = false, prevVer = null, fromSaveVer = null, lastAutoSave = null;
     try {
       const raw = localStorage.getItem(this.KEY);
       if (raw) {
         const p = JSON.parse(raw);
         prevVer = p.ver || null;
         fromSaveVer = p.saveVer;
+        if (typeof p.lastAutoSave === 'number') lastAutoSave = p.lastAutoSave;
         if (p.saveVer === this.SAVE_VER && p.g && typeof p.g === 'object') {
           g = p.g;
         } else if (p.g && typeof p.g === 'object' && typeof p.saveVer === 'number' && p.saveVer < this.SAVE_VER) {
@@ -1076,6 +1083,7 @@ class Game {
       ? Math.min(Math.max(0, (nowMs - g.ts) / 1000), 28800)
       : 0;
     this.state.g = g;
+    this.state.lastAutoSave = wiped ? undefined : (lastAutoSave ?? undefined);
     this.push(g, 'Doors open. ' + this.VERSION.codename + ' build ' + this.VERSION.build + '.', '#22d3ee');
     if (wiped) this.push(g, 'Save format changed — previous save reset.', '#ff2d78');
     else if (upgraded) {
@@ -1749,11 +1757,15 @@ class Game {
     // Takeover is reload (takeOverTab) or successful import only.
     if (this.state.tabStale || !this.isTabOwner()) return;
     try {
-      localStorage.setItem(this.KEY, JSON.stringify({ saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g }));
+      // A manual save must not erase the autosave timestamp -- carry the
+      // previous value through rather than writing undefined over it.
+      const lastAutoSave = kind === 'auto' ? Date.now() : (this.state.lastAutoSave ?? undefined);
+      const payload = { saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g, lastAutoSave };
+      localStorage.setItem(this.KEY, JSON.stringify(payload));
       this.markTabOwner();
       this.state.tabStale = false;
       this.startAutosave();
-      this.setState({ tabStale: false, saveState: kind === 'auto' ? 'autosaved' : 'saved ✓' });
+      this.setState({ tabStale: false, lastAutoSave, saveState: kind === 'auto' ? 'autosaved' : 'saved ✓' });
     } catch (e) { this.setState({ saveState: 'save failed' }); }
   }
 
@@ -2008,6 +2020,8 @@ class Game {
       showChangelog: this.state.showChangelog, showSettings: this.state.showSettings, showPrestige: this.state.showPrestige,
       resetHint: this.state.resetArmed ? '⚠ Click "Wipe save and restart" again to confirm — this is permanent.' : '',
       resetLabel: this.state.resetArmed ? '⚠ Confirm — click again to wipe' : 'Wipe save and restart',
+      saveState: this.state.saveState,
+      lastAutoSave: this.state.lastAutoSave,
       resetStyle: {
         background: this.state.resetArmed ? '#4a0f1e' : '#22060f', border: '1px solid ' + (this.state.resetArmed ? '#ff2d78' : '#6b1130'),
         borderRadius: '7px', color: this.state.resetArmed ? '#fff' : '#ff7aa8', padding: '11px', cursor: 'pointer',
@@ -2079,6 +2093,7 @@ class Game {
         if (!this.state.resetArmed) { this.setState({ resetArmed: true }); return; }
         localStorage.removeItem(this.KEY);
         this.state.g = this.fresh();
+        this.state.lastAutoSave = undefined;
         this.push(this.state.g, 'Save wiped. Fresh club.', '#ff2d78');
         this.setState({ showSettings: false, resetArmed: false });
       },
@@ -2853,6 +2868,12 @@ class Game {
       <span>build ${v.verBuild}</span>
       <span style="color:#9c86ab">|</span>
       <span style="text-transform:uppercase;letter-spacing:1px;color:#ff2d78">${v.verChannel}</span>
+      <span style="font-size:9px;color:#9c86ab;white-space:nowrap">${(n => v.lastAutoSave
+                ? (n - v.lastAutoSave < 1000 ? 'Just now' :
+                   n - v.lastAutoSave < 60000 ? Math.floor((n - v.lastAutoSave) / 1000) + 's ago' :
+                   n - v.lastAutoSave < 3600000 ? Math.floor((n - v.lastAutoSave) / 60000) + 'm ago' :
+                   Math.floor((n - v.lastAutoSave) / 3600000) + 'h ago')
+                : 'never')(Date.now())}</span>
     </button>
 
     <div style="flex:1"></div>

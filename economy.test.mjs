@@ -3133,6 +3133,38 @@ test('owner save(manual) writes while not tabStale', () => {
   strictEqual(JSON.parse(raw).g.cash, 321);
 });
 
+test('save round-trip: auto-save sets lastAutoSave; manual-save preserves it; init() rehydrates it', () => {
+  const game = newGame(20);
+  game.markTabOwner();
+  game.state.tabStale = false;
+  game.state.g.cash = 100;
+  localStorage.removeItem(game.KEY);
+
+  // Auto-save: sets lastAutoSave
+  game.save('auto');
+  let raw = localStorage.getItem(game.KEY);
+  let payload = JSON.parse(raw);
+  ok(payload.lastAutoSave != null, 'auto-save writes lastAutoSave');
+  const autoTs = payload.lastAutoSave;
+  strictEqual(game.state.lastAutoSave, autoTs, 'game.state.lastAutoSave set to auto-save timestamp');
+
+  // Manual save: preserves lastAutoSave (does not clobber it)
+  game.state.g.cash = 200;
+  game.save('manual');
+  raw = localStorage.getItem(game.KEY);
+  payload = JSON.parse(raw);
+  strictEqual(payload.lastAutoSave, autoTs, 'manual save preserves lastAutoSave');
+  strictEqual(game.state.lastAutoSave, autoTs, 'game.state.lastAutoSave unchanged by manual save');
+
+  // init() rehydrates lastAutoSave from stored payload
+  const game2 = newGame(20);
+  game2.forceUpdate = () => {};
+  game2.init();
+  if (game2.timer) clearInterval(game2.timer);
+  if (game2.saver) clearInterval(game2.saver);
+  strictEqual(game2.state.lastAutoSave, autoTs, 'init() rehydrates lastAutoSave from disk');
+});
+
 test('live foreign lease blocks age-only claim', () => {
   const game = newGame(20);
   const g = game.fresh();
