@@ -2157,9 +2157,12 @@ class Game {
     ];
 
     const tabDefs = [
-      { id: 'club', label: 'Club' }
+      { id: 'club', label: 'Club' },
+      // Crew is always visible: the Hire Crew card is actionable from the first
+      // second, and the stage's "hire crew to open the stage" CTA routes here —
+      // gating it on g.crew > 0 would strand a new player on a hidden tab.
+      { id: 'crew', label: 'Crew' }
     ];
-    if ((g.crew || 0) > 0) tabDefs.push({ id: 'crew', label: 'Crew' });
     if (Object.values(g.b || {}).some(n => n > 0)) tabDefs.push({ id: 'up', label: 'Upgrades' });
     if ((g.clout || 0) > 0) tabDefs.push({ id: 'res', label: 'Research' });
     if (metaUnlocked) tabDefs.push({ id: 'perks', label: 'Perks' });

@@ -602,7 +602,7 @@ Main: three columns **`minmax(232px,300px) | minmax(320px,720px) | minmax(320px,
 | Header | Afterglow wordmark, version badge (opens changelog), **Franchise offer** (once the 25-regulars gate is met), shift name + bar + night/mult, settings ☰ |
 | Ledger | Cash/Hype/Buzz/Patrons/Regulars/Clout with rates + notes; **Legacy** row (gold `#d4af37`, “spent on permanent perks”); Floor stats (crew, on stage, structures, night time) |
 | Stage | CSS stage set only (lighting, haze, crowd silhouettes, marquee, lip) — **no performer figure**; Main Stage line, Room energy %, Work the room + Buy a round, Night log |
-| Systems | Tabs Club / Crew / Upgrades / Research / **Perks** (Perks gated on `prestiges > 0`); **Owner's List** under tabs; scrollable cards + crew assignments |
+| Systems | Tabs Club + Crew (always visible) / **Upgrades** (gated on first building owned) / **Research** (gated on first Clout earned) / **Perks** (gated on `prestiges > 0`); **Owner's List** under tabs; scrollable cards + crew assignments |
 | Footer | full version string, save format, saveState, tick count; multi-tab takeover banner above when stale |
 | Modals | Changelog history; **Achievements**; Settings (save I/O + wipe + Look & feel) |
 
