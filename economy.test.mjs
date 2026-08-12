@@ -2186,7 +2186,7 @@ test('Patrons ledger shows floor(g.patrons); sim value stays fractional', () => 
   const game = newGame(10);
   game.state.g.patrons = 3.87;
   const v = game.renderVals();
-  const row = v.resources.find(r => r.name === 'Patrons');
+  const row = v.resources.find(r => r.name && r.name.includes('Patrons'));
   ok(row, 'Patrons resource row present');
   // fmt(Math.floor(3.87)) → fmt(3) → "3.00" for values < 10
   strictEqual(row.val, game.fmt(3), `ledger must show floored patrons, got ${row.val}`);
@@ -2857,6 +2857,33 @@ test('crafted HTML in imported log is escaped at render, not stored as entities'
   ok(!renderedXss.msg.includes('<img'), 'render boundary has no raw <img');
 });
 
+// ── Help-icon jargon tooltips (PR #55) ────────────────────────────────────────
+console.log('\nHelp-icon jargon tooltips (PR #55)');
+
+test('helpIcon escapes quotes and angle brackets in title and aria-label', () => {
+  const game = newGame(10);
+  const out = game.helpIcon('Door Staff', 'Hired muscle. "VIPS" <b>cut</b> the line & skip the queue.');
+  ok(out.startsWith('<span'), 'helpIcon emits a span');
+  ok(!out.includes('title="Hired muscle. "'), 'double quote must not close the title attribute early');
+  ok(out.includes('&quot;'), 'double quotes entity-escaped');
+  ok(out.includes('&lt;b&gt;'), 'angle brackets entity-escaped');
+  ok(out.includes('&amp;'), 'ampersand entity-escaped');
+  ok(!out.includes('<b>'), 'no raw tags leak into the emitted markup');
+  ok(out.includes('aria-label="Door Staff: '), 'aria-label carries the term and definition');
+  ok(out.includes('aria-label="Door Staff: Hired muscle. &quot;'), 'quote in def is escaped inside aria-label too');
+  ok(out.includes('tabindex="0"'), 'icon is keyboard-reachable');
+});
+
+test('job row button titles use rawName, never the HTML-bearing name', () => {
+  const game = newGame(10);
+  const v = game.renderVals();
+  for (const j of v.jobs) {
+    ok(typeof j.rawName === 'string' && j.rawName.length > 0, `job ${j.id} has rawName`);
+    ok(!j.rawName.includes('<'), `job ${j.id} rawName has no markup`);
+    ok(j.name.includes('help'), `job ${j.id} name carries the icon helper`);
+  }
+});
+
 test('import → export → import leaves log text visually identical', () => {
   const game = newGame(10);
   const originalMsg = 'Hello & welcome <Peak> "VIP"';
@@ -2974,7 +3001,7 @@ test('crafted unknown g.b key is stripped; Structures stays numeric', () => {
   strictEqual(g.r.evilRes, undefined, 'unknown research key stripped');
   strictEqual(g.jobs.evilJob, undefined, 'unknown jobs key stripped');
   // Structures must be a plain number string — no HTML payload.
-  const structures = game.renderVals().stats.find(s => s.k === 'Structures');
+  const structures = game.renderVals().stats.find(s => s.k && s.k.includes('Structures'));
   ok(structures, 'Structures stat present');
   ok(/^\d+$/.test(structures.v), `Structures is numeric digits only: ${structures.v}`);
   ok(!structures.v.includes('<'), 'Structures has no raw angle bracket');
