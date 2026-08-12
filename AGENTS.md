@@ -173,8 +173,10 @@ don't recall.
 
 ## Pull requests
 
-- Write the PR body to a tracked file and commit it — an untracked `.pr-body.md`
-  never reaches the remote, and the PR ships with a stale or empty description.
+- Write the PR body to `.github/pr/<number>-<slug>.md` and commit it — an
+  untracked `.pr-body.md` never reaches the remote, and the PR ships with a
+  stale or empty description. This file is the durable record and is not
+  deleted after merge; see `.github/pr/` for existing examples.
 - The body must describe *this* branch. Copying a prior PR's body has happened; check it.
 - State explicitly in the body: gates run and their result, docs files touched, and
   whether `SAVE_VER` moved and why.
