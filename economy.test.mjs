@@ -883,6 +883,17 @@ test('special_5 unlocks at 5 specials and its Legacy credits legacyTotal', () =>
   strictEqual(g.legacyTotal, 13, 'special Legacy credited to legacyTotal');
 });
 
+test('special_1 does not unlock when completing Work the room goal (no special shift)', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  // Complete "Work the room" goal by clicking 5 times
+  g.clicks = 5;
+  g.specialsCount = 0;
+  game.noteGoals(g); // This runs checkAchievements internally
+  ok(!g.achievements.includes('special_1'), 'special_1 (Surprise Hit) must not unlock from tutorial completion');
+  strictEqual(g.specialsCount, 0, 'specialsCount must remain 0 after tutorial goal');
+});
+
 test('new building achievements unlock via buyBuildingMax', () => {
   // Each building gets a fresh game — a shared cash pool is drained by the
   // earlier buyBuildingMax loops (growth costs), starving the later ones.

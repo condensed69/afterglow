@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.10.13', build: 204, channel: 'alpha', date: '2026-08-12', codename: 'Neon Zero' };
+  VERSION = { num: '0.10.14', build: 205, channel: 'alpha', date: '2026-08-12', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -108,6 +108,10 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.10.14', date: '2026-08-12', codename: 'Neon Zero', notes: [
+      'Owner\'s List banner now reads "X of Y goals complete" for clarity (was "X / Y complete").',
+      'Test: economy.test.mjs adds regression coverage — special_1 (Surprise Hit) only unlocks from real special shifts, never from goal completion.'
+    ] },
     { v: '0.10.13', date: '2026-08-12', codename: 'Neon Zero', notes: [
       'UX: Systems tabs (UPGRADES, RESEARCH) now unlock progressively — Upgrades appears after first building, Research after first Clout earned. Club and Crew stay always visible: the Hire Crew card is actionable from the first second and the stage\'s "hire crew to open the stage" CTA routes to it. Addresses Barbara\'s YELLOW note: "Four tabs and I can\'t do anything in any of them."'
     ] },
@@ -3053,7 +3057,7 @@ class Game {
                 Goal ${ol.goalIdx + 1} of ${ol.totalGoals}
               </span>
               <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6f5885">
-                ${ol.n} / ${ol.total} complete
+                ${ol.n} of ${ol.total} goals complete
               </span>
             </div>
           </div>
