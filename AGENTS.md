@@ -50,6 +50,17 @@ This is a dependency-free static website.
 - `HERMES_ALLOW_STALE_BASE=1` bypasses the `pre-push` hook. Do not use it. It
   exists for a human debugging the hook itself.
 
+- **The hook fails open on network trouble.** If it can't reach `origin/main`
+  over ssh or an anonymous https fallback, it prints a warning and allows the
+  push unchecked rather than blocking it — a second, undocumented-until-now
+  bypass path alongside `HERMES_ALLOW_STALE_BASE`. Flagged in review as the
+  same failure mode this hook exists to prevent (a bad base slipping through
+  undetected), just reached via a network blip instead of a bad branch. Fail-
+  open was kept deliberately — failing closed would block every push whenever
+  GitHub is briefly unreachable — but if you see the "allowing push
+  UNCHECKED" line, treat it as a signal to verify the base by hand before
+  opening the PR, not as a clean pass.
+
 ## Verification gates
 
 Run all three before opening or updating a PR. A PR is not ready until they pass.

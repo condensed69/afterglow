@@ -31,13 +31,30 @@ fi
 # (see docs/runbooks/hermes-github-push.md in the homelab repo) and the
 # config-driven form has been observed to hang indefinitely. An explicit
 # refspec is immune to that.
+#
+# `timeout` isn't guaranteed to exist (e.g. bare BSD/macOS shells). Without it,
+# a hung fetch would block forever instead of falling through to the fallback
+# below, so degrade to running the fetch unwrapped rather than silently
+# skipping the timeout.
+TIMEOUT=""
+command -v timeout >/dev/null 2>&1 && TIMEOUT="timeout 45"
+
+# HTTPS fallback URL is derived from the actual `origin` remote, not
+# hardcoded, so a repo rename/move can't leave this pointing at a stale URL.
+ORIGIN_URL="$(git remote get-url origin 2>/dev/null || true)"
+HTTPS_URL="$(printf '%s' "$ORIGIN_URL" | sed -E 's#^git@github\.com:#https://github.com/#; s#^ssh://git@github\.com/#https://github.com/#')"
+
 REFSPEC="+refs/heads/$MAIN:refs/remotes/origin/$MAIN"
-if ! timeout 45 git fetch -q --no-tags origin "$REFSPEC" 2>/dev/null; then
+if ! $TIMEOUT git fetch -q --no-tags origin "$REFSPEC" 2>/dev/null; then
   # Some hosts (e.g. github.com:22 from a container) time out intermittently.
   # This repo is public, so an anonymous HTTPS fetch is a valid second opinion
   # on where main is.
-  if ! timeout 45 git fetch -q --no-tags \
-      "https://github.com/condensed69/stripper-dance.git" "$REFSPEC" 2>/dev/null; then
+  if [ -z "$HTTPS_URL" ] || ! $TIMEOUT git fetch -q --no-tags "$HTTPS_URL" "$REFSPEC" 2>/dev/null; then
+    # FAIL OPEN, deliberately: this is a second, undocumented-until-now bypass
+    # path alongside HERMES_ALLOW_STALE_BASE — a network blip here silently
+    # reproduces the exact "bad base slips through undetected" failure this
+    # hook exists to prevent. See AGENTS.md's Branches section for why this
+    # tradeoff was made instead of failing closed.
     echo "pre-push: could not reach origin/$MAIN over ssh or https; allowing push UNCHECKED." >&2
     exit 0
   fi
