@@ -1031,13 +1031,14 @@ class Game {
   }
 
   init() {
-    let g = null, wiped = false, upgraded = false, prevVer = null, fromSaveVer = null;
+    let g = null, wiped = false, upgraded = false, prevVer = null, fromSaveVer = null, lastAutoSave = null;
     try {
       const raw = localStorage.getItem(this.KEY);
       if (raw) {
         const p = JSON.parse(raw);
         prevVer = p.ver || null;
         fromSaveVer = p.saveVer;
+        if (typeof p.lastAutoSave === 'number') lastAutoSave = p.lastAutoSave;
         if (p.saveVer === this.SAVE_VER && p.g && typeof p.g === 'object') {
           g = p.g;
         } else if (p.g && typeof p.g === 'object' && typeof p.saveVer === 'number' && p.saveVer < this.SAVE_VER) {
@@ -1076,6 +1077,7 @@ class Game {
       ? Math.min(Math.max(0, (nowMs - g.ts) / 1000), 28800)
       : 0;
     this.state.g = g;
+    this.state.lastAutoSave = wiped ? undefined : (lastAutoSave ?? undefined);
     this.push(g, 'Doors open. ' + this.VERSION.codename + ' build ' + this.VERSION.build + '.', '#22d3ee');
     if (wiped) this.push(g, 'Save format changed — previous save reset.', '#ff2d78');
     else if (upgraded) {
@@ -1749,11 +1751,15 @@ class Game {
     // Takeover is reload (takeOverTab) or successful import only.
     if (this.state.tabStale || !this.isTabOwner()) return;
     try {
-      localStorage.setItem(this.KEY, JSON.stringify({ saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g }));
+      // A manual save must not erase the autosave timestamp -- carry the
+      // previous value through rather than writing undefined over it.
+      const lastAutoSave = kind === 'auto' ? Date.now() : (this.state.lastAutoSave ?? undefined);
+      const payload = { saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g, lastAutoSave };
+      localStorage.setItem(this.KEY, JSON.stringify(payload));
       this.markTabOwner();
       this.state.tabStale = false;
       this.startAutosave();
-      this.setState({ tabStale: false, saveState: kind === 'auto' ? 'autosaved' : 'saved ✓' });
+      this.setState({ tabStale: false, lastAutoSave, saveState: kind === 'auto' ? 'autosaved' : 'saved ✓' });
     } catch (e) { this.setState({ saveState: 'save failed' }); }
   }
 
@@ -2008,6 +2014,8 @@ class Game {
       showChangelog: this.state.showChangelog, showSettings: this.state.showSettings, showPrestige: this.state.showPrestige,
       resetHint: this.state.resetArmed ? '⚠ Click "Wipe save and restart" again to confirm — this is permanent.' : '',
       resetLabel: this.state.resetArmed ? '⚠ Confirm — click again to wipe' : 'Wipe save and restart',
+      saveState: this.state.saveState,
+      lastAutoSave: this.state.lastAutoSave ?? undefined,
       resetStyle: {
         background: this.state.resetArmed ? '#4a0f1e' : '#22060f', border: '1px solid ' + (this.state.resetArmed ? '#ff2d78' : '#6b1130'),
         borderRadius: '7px', color: this.state.resetArmed ? '#fff' : '#ff7aa8', padding: '11px', cursor: 'pointer',
@@ -2853,6 +2861,14 @@ class Game {
       <span>build ${v.verBuild}</span>
       <span style="color:#9c86ab">|</span>
       <span style="text-transform:uppercase;letter-spacing:1px;color:#ff2d78">${v.verChannel}</span>
+      <span style="font-size:9px;color:#9c86ab;white-space:nowrap">${
+        v.lastAutoSave 
+          ? (Date.now() - v.lastAutoSave < 1000 ? 'Just now' : 
+             Date.now() - v.lastAutoSave < 60000 ? Math.floor((Date.now() - v.lastAutoSave) / 1000) + 's ago' : 
+             Date.now() - v.lastAutoSave < 3600000 ? Math.floor((Date.now() - v.lastAutoSave) / 60000) + 'm ago' : 
+             Math.floor((Date.now() - v.lastAutoSave) / 3600000) + 'h ago')
+          : 'never'
+      }</span>
     </button>
 
     <div style="flex:1"></div>
