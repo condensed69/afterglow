@@ -2019,20 +2019,14 @@ class Game {
     return { width: Math.max(0, Math.min(100, pct)) + '%', height: '100%', background: color, borderRadius: '3px', transition: 'width .18s linear' };
   }
 
-  // Help icon tooltip for jargon terms — hover/tap for plain-English definition
-    // Native title tooltips aren't reliably exposed to screen readers or reachable by keyboard,
-    // so we also add aria-label + tabindex="0" for keyboard/AT users.
-    helpIcon(term, def) {
-      const escapeHtmlAttr = s => String(s)
-        .replace(/&/g, '&')
-        .replace(/"/g, '"')
-        .replace(/'/g, '\'')
-        .replace(/</g, '<')
-        .replace(/>/g, '>');
-      const safeDef = escapeHtmlAttr(def);
-      const safeTerm = escapeHtmlAttr(term);
-      return `<span class="help-icon" tabindex="0" style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;margin-left:4px;border:1px solid #3a2350;border-radius:50%;background:#100a19;color:#9c86ab;font-size:10px;font-weight:700;cursor:help;flex-shrink:0;position:relative" title="${safeDef}" aria-label="${safeTerm}: ${safeDef}">?</span>`;
-    }
+  // Help icon tooltip for jargon terms — hover/tap for plain-English definition.
+  // Native title tooltips aren't reliably exposed to screen readers or reachable by keyboard,
+  // so we also add aria-label + tabindex="0" for keyboard/AT users.
+  helpIcon(term, def) {
+    const safeTerm = this.escapeHtml(term);
+    const safeDef = this.escapeHtml(def);
+    return `<span tabindex="0" style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;margin-left:4px;border:1px solid #3a2350;border-radius:50%;background:#100a19;color:#9c86ab;font-size:10px;font-weight:700;cursor:help;flex-shrink:0;position:relative" title="${safeDef}" aria-label="${safeTerm}: ${safeDef}">?</span>`;
+  }
 
   renderVals() {
     const g = this.state.g;
