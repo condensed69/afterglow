@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.10.11', build: 202, channel: 'alpha', date: '2026-08-12', codename: 'Neon Zero' };
+  VERSION = { num: '0.10.12', build: 203, channel: 'alpha', date: '2026-08-12', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -108,6 +108,9 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.10.12', date: '2026-08-12', codename: 'Neon Zero', notes: [
+      'UX: Inline help icons (ⓘ) on all resources, stats, buildings, upgrades, research, perks, managers, and job assignments — hover/tap for plain-English definitions. Addresses Barbara\'s jargon complaint from adversarial UX test.'
+    ] },
     { v: '0.10.11', date: '2026-08-12', codename: 'Neon Zero', notes: [
       'UX: Stage "hire crew" caption and Crew tab Hire button show tooltip with needed cash when unaffordable, instead of silent no-op.'
     ] },
@@ -2016,6 +2019,21 @@ class Game {
     return { width: Math.max(0, Math.min(100, pct)) + '%', height: '100%', background: color, borderRadius: '3px', transition: 'width .18s linear' };
   }
 
+  // Help icon tooltip for jargon terms — hover/tap for plain-English definition
+    // Native title tooltips aren't reliably exposed to screen readers or reachable by keyboard,
+    // so we also add aria-label + tabindex="0" for keyboard/AT users.
+    helpIcon(term, def) {
+      const escapeHtmlAttr = s => String(s)
+        .replace(/&/g, '&')
+        .replace(/"/g, '"')
+        .replace(/'/g, '\'')
+        .replace(/</g, '<')
+        .replace(/>/g, '>');
+      const safeDef = escapeHtmlAttr(def);
+      const safeTerm = escapeHtmlAttr(term);
+      return `<span class="help-icon" tabindex="0" style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;margin-left:4px;border:1px solid #3a2350;border-radius:50%;background:#100a19;color:#9c86ab;font-size:10px;font-weight:700;cursor:help;flex-shrink:0;position:relative" title="${safeDef}" aria-label="${safeTerm}: ${safeDef}">?</span>`;
+    }
+
   renderVals() {
     const g = this.state.g;
     const V = this.VERSION;
@@ -2114,18 +2132,18 @@ class Game {
     const sign = v => (v >= 0 ? '+' : '') + this.fmt(v) + '/s';
 
     const resources = [
-      { name: 'Cash', val: '$' + this.fmt(g.cash), rate: sign(r.cash), pct: 100, color: '#ffc94a', note: r.strike ? 'crew unpaid — on strike' : (r.wage > 0 ? 'wages −$' + this.fmt(r.wage) + '/s' : 'no payroll yet') },
-      { name: 'Hype', val: this.fmt(g.hype), rate: sign(r.hype), pct: g.hype / cap.hype * 100, color: '#ff2d78', note: 'cap ' + cap.hype + ' · x' + (1 + g.hype / 140).toFixed(2) + ' income' },
-      { name: 'Buzz', val: this.fmt(g.buzz), rate: sign(r.buzz - r.buzzSpent), pct: g.buzz / cap.buzz * 100, color: '#22d3ee', note: 'cap ' + cap.buzz + ' · pulls patrons in' },
+      { name: 'Cash' + this.helpIcon('Cash', 'Money in the till. Used to hire crew, buy structures, upgrades, and rounds.'), val: '$' + this.fmt(g.cash), rate: sign(r.cash), pct: 100, color: '#ffc94a', note: r.strike ? 'crew unpaid — on strike' : (r.wage > 0 ? 'wages −$' + this.fmt(r.wage) + '/s' : 'no payroll yet') },
+      { name: 'Hype' + this.helpIcon('Hype', 'Room energy. Multiplies all cash income and click value. Decays over time — feed it with DJ Booths and the stage crew.'), val: this.fmt(g.hype), rate: sign(r.hype), pct: g.hype / cap.hype * 100, color: '#ff2d78', note: 'cap ' + cap.hype + ' · x' + (1 + g.hype / 140).toFixed(2) + ' income' },
+      { name: 'Buzz' + this.helpIcon('Buzz', 'Street awareness. Converts into patrons entering the club. Marquee Signs and Flyer Crews generate it.'), val: this.fmt(g.buzz), rate: sign(r.buzz - r.buzzSpent), pct: g.buzz / cap.buzz * 100, color: '#22d3ee', note: 'cap ' + cap.buzz + ' · pulls patrons in' },
       // Display whole people; sim keeps fractional g.patrons (PLAN §2.4).
-      { name: 'Patrons', val: this.fmt(Math.floor(g.patrons)), rate: sign(r.patrons), pct: g.patrons / cap.patrons * 100, color: '#a855f7', note: 'floor cap ' + cap.patrons },
-      { name: 'Regulars', val: this.fmt(g.regulars), rate: sign(r.regulars), pct: Math.min(100, g.regulars), color: '#4ade80', note: g.r.loop ? '$0.04/s each' : 'unlock Reputation Loop' },
-      { name: 'Clout', val: this.fmt(g.clout), rate: sign(r.clout), pct: Math.min(100, g.clout * 2), color: '#e879f9', note: 'spent on research' }
+      { name: 'Patrons' + this.helpIcon('Patrons', 'Bodies on the floor. They tip at Tip Rails and slowly become Regulars. Cap grows with structures.'), val: this.fmt(Math.floor(g.patrons)), rate: sign(r.patrons), pct: g.patrons / cap.patrons * 100, color: '#a855f7', note: 'floor cap ' + cap.patrons },
+      { name: 'Regulars' + this.helpIcon('Regulars', 'Loyal patrons who never leave. Each one generates Clout over time. With Reputation Loop, they also pay $0.04/s cash.'), val: this.fmt(g.regulars), rate: sign(r.regulars), pct: Math.min(100, g.regulars), color: '#4ade80', note: g.r.loop ? '$0.04/s each' : 'unlock Reputation Loop' },
+      { name: 'Clout' + this.helpIcon('Clout', 'Research currency. Earned from Regulars. Spent permanently on the Research tab for global upgrades.'), val: this.fmt(g.clout), rate: sign(r.clout), pct: Math.min(100, g.clout * 2), color: '#e879f9', note: 'spent on research' }
     ];
     // Legacy appears in the ledger only once meta is unlocked (first prestige or any lifetime Legacy).
     const metaUnlocked = (g.prestiges || 0) > 0 || (g.legacyTotal || 0) > 0 || Object.values(g.perks || {}).some(r => r > 0);
     if (metaUnlocked) {
-      resources.push({ name: 'Legacy', val: this.fmt(Math.floor(g.legacy || 0)), rate: 'perk shop', pct: Math.min(100, (g.legacy || 0) / 25 * 100), color: '#d4af37', note: 'spent on permanent perks' });
+      resources.push({ name: 'Legacy' + this.helpIcon('Legacy', 'Prestige meta-currency. Earned by selling the club (franchise deal). Spent on permanent perks and managers that persist across runs.'), val: this.fmt(Math.floor(g.legacy || 0)), rate: 'perk shop', pct: Math.min(100, (g.legacy || 0) / 25 * 100), color: '#d4af37', note: 'spent on permanent perks' });
     }
     const resourcesOut = resources.map(x => ({
       name: x.name, val: x.val, rate: x.rate, note: x.note,
@@ -2134,11 +2152,11 @@ class Game {
     }));
 
     const stats = [
-      { k: 'Crew', v: g.crew + ' / ' + cap.crew },
-      { k: 'On stage', v: String(g.jobs.stage) },
+      { k: 'Crew' + this.helpIcon('Crew', 'Hired dancers, bartenders, and hosts. Assign them to Main Stage (Hype), VIP (cash), or Floor (buzz + regulars). Wages tick every second.'), v: g.crew + ' / ' + cap.crew },
+      { k: 'On stage' + this.helpIcon('On stage', 'Crew assigned to Main Stage. Each one generates Hype. More Hype = higher income multiplier.'), v: String(g.jobs.stage) },
       // Sum only known building IDs (defense in depth vs unknown keys).
-      { k: 'Structures', v: String(this.BUILDINGS.reduce((a, d) => a + (g.b[d.id] || 0), 0)) },
-      { k: 'Night time', v: Math.floor(g.elapsed / 60) + 'm ' + Math.floor(g.elapsed % 60) + 's' }
+      { k: 'Structures' + this.helpIcon('Structures', 'Total buildings owned. Tip Rails, Back Bars, DJ Booths, Marquee Signs, Flyer Crews, VIP Booths, Door Staff, Dressing Rooms.'), v: String(this.BUILDINGS.reduce((a, d) => a + (g.b[d.id] || 0), 0)) },
+      { k: 'Night time' + this.helpIcon('Night time', 'Total time played this run. Shifts cycle: Early Doors → Peak Hours → Last Call → After Hours. After Hours is weak unless you research Late Kitchen.'), v: Math.floor(g.elapsed / 60) + 'm ' + Math.floor(g.elapsed % 60) + 's' }
     ];
 
     const tabDefs = [
@@ -2178,7 +2196,7 @@ class Game {
         let desc = d.desc;
         if (d.id === 'door') desc = desc.replace('(max 6)', '(max ' + max + ')');
         return {
-          name: d.name, desc: desc, owned: n > 0 ? '\u00d7' + n : '\u2014',
+          name: d.name + this.helpIcon(d.name, desc), desc: desc, owned: n > 0 ? '\u00d7' + n : '\u2014',
           btn: maxed ? 'Maxed' : 'Build $' + this.fmt(price),
           meta: maxed ? 'maxed' : (ok ? 'affordable' : 'need $' + this.fmt(price - g.cash)),
           locked: !ok, wrapStyle: cardWrap(!maxed), btnStyle: btn(ok),
@@ -2208,7 +2226,7 @@ class Game {
         const reqId = Object.keys(d.req)[0], need = d.req[reqId];
         const have = g.b[reqId] >= need, bought = g.u[d.id], ok = !bought && have && g.cash >= d.cost;
         const rn = this.BUILDINGS.find(b => b.id === reqId).name;
-        return { name: d.name, desc: d.desc, owned: bought ? 'owned' : '',
+        return { name: d.name + this.helpIcon(d.name, d.desc), desc: d.desc, owned: bought ? 'owned' : '',
           btn: bought ? 'Installed' : 'Buy $' + this.fmt(d.cost),
           meta: bought ? '' : (have ? (ok ? 'affordable' : 'need $' + this.fmt(d.cost - g.cash)) : 'requires ' + rn + ' ×' + need),
           locked: !ok, wrapStyle: cardWrap(have && !bought), btnStyle: btn(ok, '#ffc94a'), act: () => this.buyUpgrade(d) };
@@ -2222,7 +2240,7 @@ class Game {
         const reqMet = !d.req || this.perk(g, d.req) >= 1;
         const reqDef = d.req ? this.PRESTIGE_PERKS.find(p => p.id === d.req) : null;
         const ok = !maxed && reqMet && g.legacy >= d.cost;
-        return { name: d.name, desc: d.desc, owned: rank > 0 ? rank + '/' + d.max : '—',
+        return { name: d.name + this.helpIcon(d.name, d.desc), desc: d.desc, owned: rank > 0 ? rank + '/' + d.max : '—',
           btn: maxed ? 'Maxed' : d.cost + ' Legacy',
           meta: maxed ? 'maxed' : (!reqMet ? '' : (ok ? 'ready' : this.fmt(d.cost - g.legacy) + ' Legacy short')),
           reqLocked: !reqMet,
@@ -2238,7 +2256,7 @@ class Game {
         const max = bdef && bdef.id === 'door' ? this.doorMax(g) : bdef ? bdef.max : null;
         const atCap = max != null && n >= max;
         const ok = !hired && g.legacy >= d.cost;
-        return { name: d.name, desc: d.desc, owned: hired ? (paused ? 'paused' : 'hired') : '—',
+        return { name: d.name + this.helpIcon(d.name, d.desc), desc: d.desc, owned: hired ? (paused ? 'paused' : 'hired') : '—',
           btn: hired ? (paused ? 'Resume' : 'Pause') : d.cost + ' Legacy',
           meta: hired
             ? (paused ? 'paused — click to resume auto-buying ' + (bdef ? bdef.name : d.id)
@@ -2252,7 +2270,7 @@ class Game {
       tabHint = 'Research is paid in Clout, which accrues slowly from Regulars. Permanent, global effects.';
       cards = this.RESEARCH.map(d => {
         const bought = g.r[d.id], ok = !bought && g.clout >= d.cost;
-        return { name: d.name, desc: d.desc, owned: bought ? 'done' : '',
+        return { name: d.name + this.helpIcon(d.name, d.desc), desc: d.desc, owned: bought ? 'done' : '',
           btn: bought ? 'Researched' : d.cost + ' Clout',
           meta: bought ? '' : (ok ? 'ready' : this.fmt(d.cost - g.clout) + ' Clout short'),
           locked: !ok, wrapStyle: cardWrap(!bought), btnStyle: btn(ok, '#a855f7'), act: () => this.buyResearch(d) };
@@ -2262,10 +2280,10 @@ class Game {
     const jobs = this.JOBS.map(j => {
       if (j.id === 'off') {
         // Passive roster row: count only, no steppers (PLAN §1.7).
-        return { name: j.name, desc: j.desc, n: g.jobs.off, passive: true };
+        return { name: j.name + this.helpIcon(j.name, j.desc), rawName: j.name, desc: j.desc, n: g.jobs.off, passive: true };
       }
       return {
-        name: j.name, desc: j.desc, n: g.jobs[j.id], passive: false,
+        name: j.name + this.helpIcon(j.name, j.desc), rawName: j.name, desc: j.desc, n: g.jobs[j.id], passive: false,
         inc: () => this.moveJob(j.id, 1), dec: () => this.moveJob(j.id, -1),
         incLocked: g.jobs.off < 1,
         decLocked: g.jobs[j.id] < 1,
@@ -2753,9 +2771,9 @@ class Game {
           <div style="font-size:12px;font-weight:700;color:#e7d8f2">${j.name}</div>
           <div style="font-size:10px;color:#6f5885">${j.desc}</div>
         </div>
-        <button data-h="${this.bind(j.dec)}" ${j.decLocked ? 'disabled' : ''} title="${j.decLocked ? 'No crew assigned here' : `Remove crew from ${j.name}`}" style="${css(j.stepStyle(j.decLocked))}">−</button>
+        <button data-h="${this.bind(j.dec)}" ${j.decLocked ? 'disabled' : ''} title="${j.decLocked ? 'No crew assigned here' : `Remove crew from ${j.rawName}`}" style="${css(j.stepStyle(j.decLocked))}">−</button>
         <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#ffc94a;min-width:20px;text-align:center;font-weight:600">${j.n}</span>
-        <button data-h="${this.bind(j.inc)}" ${j.incLocked ? 'disabled' : ''} title="${j.incLocked ? 'No free crew available' : `Assign crew to ${j.name}`}" style="${css(j.stepStyle(j.incLocked))}">+</button>
+        <button data-h="${this.bind(j.inc)}" ${j.incLocked ? 'disabled' : ''} title="${j.incLocked ? 'No free crew available' : `Assign crew to ${j.rawName}`}" style="${css(j.stepStyle(j.incLocked))}">+</button>
       </div>`).join('');
 
     const assignments = v.crewOpen ? `

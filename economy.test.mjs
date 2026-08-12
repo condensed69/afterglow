@@ -2186,7 +2186,7 @@ test('Patrons ledger shows floor(g.patrons); sim value stays fractional', () => 
   const game = newGame(10);
   game.state.g.patrons = 3.87;
   const v = game.renderVals();
-  const row = v.resources.find(r => r.name === 'Patrons');
+  const row = v.resources.find(r => r.name && r.name.includes('Patrons'));
   ok(row, 'Patrons resource row present');
   // fmt(Math.floor(3.87)) → fmt(3) → "3.00" for values < 10
   strictEqual(row.val, game.fmt(3), `ledger must show floored patrons, got ${row.val}`);
@@ -2974,7 +2974,7 @@ test('crafted unknown g.b key is stripped; Structures stays numeric', () => {
   strictEqual(g.r.evilRes, undefined, 'unknown research key stripped');
   strictEqual(g.jobs.evilJob, undefined, 'unknown jobs key stripped');
   // Structures must be a plain number string — no HTML payload.
-  const structures = game.renderVals().stats.find(s => s.k === 'Structures');
+  const structures = game.renderVals().stats.find(s => s.k && s.k.includes('Structures'));
   ok(structures, 'Structures stat present');
   ok(/^\d+$/.test(structures.v), `Structures is numeric digits only: ${structures.v}`);
   ok(!structures.v.includes('<'), 'Structures has no raw angle bracket');
