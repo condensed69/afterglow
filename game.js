@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.10.10', build: 201, channel: 'alpha', date: '2026-08-12', codename: 'Neon Zero' };
+  VERSION = { num: '0.10.11', build: 202, channel: 'alpha', date: '2026-08-12', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -108,6 +108,9 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.10.11', date: '2026-08-12', codename: 'Neon Zero', notes: [
+      'UX: Stage "hire crew" caption and Crew tab Hire button show tooltip with needed cash when unaffordable, instead of silent no-op.'
+    ] },
     { v: '0.10.10', date: '2026-08-12', codename: 'Neon Zero', notes: [
       'Onboarding: sticky "Goal X of 14" banner with progress counter at top of Owner\'s List panel; pulse animation on first 3 goals.'
     ] },
@@ -2197,7 +2200,8 @@ class Game {
       cards = [{ name: 'Hire Crew', desc: 'Dancers, bartenders, hosts. New hires start on Main Stage — reassign below. Capacity comes from Dressing Rooms.',
         owned: g.crew + ' / ' + cap.crew, btn: room ? 'Hire $' + this.fmt(price) : 'At capacity',
         meta: room ? (ok ? 'affordable' : 'need $' + this.fmt(price - g.cash)) : 'build a Dressing Room',
-        locked: !ok, wrapStyle: cardWrap(true), btnStyle: btn(ok), act: () => this.hireCrew() }];
+        locked: !ok, wrapStyle: cardWrap(true), btnStyle: btn(ok), act: () => this.hireCrew(),
+        btnTooltip: !ok && room ? 'Need $' + this.fmt(price - g.cash) + ' cash to hire' : '' }];
     } else if (this.state.tab === 'up') {
       tabHint = 'One-time purchases. Each unlocks once you own enough of the required structure.';
       cards = this.UPGRADES.map(d => {
@@ -2304,6 +2308,10 @@ class Game {
         : (g.crew === 0
           ? 'hire crew to open the stage'
           : (g.jobs.off > 0 ? 'assign crew · Crew tab' : 'nobody on stage')),
+      // Tooltip for the empty-stage caption when unaffordable
+      stageLineTooltip: g.jobs.stage === 0 && g.crew === 0 && g.cash < 280
+        ? 'Need $' + this.fmt(280 - g.cash) + ' cash to hire first crew'
+        : '',
       // Empty-stage badge jumps to Crew so the next action is one click away.
       stageLineAct: g.jobs.stage > 0 ? null : () => this.setState({ tab: 'crew' }),
       energyPct: Math.round(g.hype / cap.hype * 100) + '%',
@@ -2727,7 +2735,7 @@ class Game {
                   <button data-h="${this.bind(cd.multi.x10.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.multi.x10.locked ? 'disabled' : ''} style="${css({ ...cd.multi.x10.style, minWidth: '40px', padding: '8px 6px' })}">${cd.multi.x10.label}</button>
                   <button data-h="${this.bind(cd.multi.max.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.multi.max.locked ? 'disabled' : ''} style="${css({ ...cd.multi.max.style, minWidth: '48px', padding: '8px 6px' })}">${cd.multi.max.label}</button>
                 </div>`
-              : `<button data-h="${this.bind(cd.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.locked ? 'disabled' : ''} ${cd.buildingId ? 'title="Shift-click to buy the maximum affordable"' : ''} style="${css(cd.btnStyle)}">${cd.btn}</button>`}
+              : `<button data-h="${this.bind(cd.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.locked ? 'disabled' : ''} ${cd.buildingId ? 'title="Shift-click to buy the maximum affordable"' : ''} ${cd.btnTooltip ? `title="${cd.btnTooltip}"` : ''} style="${css(cd.btnStyle)}">${cd.btn}</button>`}
           <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#6f5885;text-align:right;flex:1">${cd.meta}</span>
         </div>
       </div>`).join('');
@@ -2955,8 +2963,8 @@ class Game {
         <div style="position:absolute;left:14px;top:14px;display:flex;flex-direction:column;gap:5px">
           <div style="font-size:9px;letter-spacing:2.6px;text-transform:uppercase;color:#7b5f90;font-weight:700">Main Stage</div>
           ${v.stageLineAct
-            ? `<button data-h="${this.bind(v.stageLineAct)}" class="hv-pink" title="Open Crew tab" style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#ff2d78;background:transparent;border:0;padding:0;cursor:pointer;text-align:left;text-decoration:underline;text-underline-offset:3px">${v.stageLine}</button>`
-            : `<div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#ff2d78">${v.stageLine}</div>`}
+            ? `<button data-h="${this.bind(v.stageLineAct)}" class="hv-pink" title="${v.stageLineTooltip || 'Open Crew tab'}" style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#ff2d78;background:transparent;border:0;padding:0;cursor:pointer;text-align:left;text-decoration:underline;text-underline-offset:3px">${v.stageLine}</button>`
+            : `<div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#ff2d78" title="${v.stageLineTooltip}">${v.stageLine}</div>`}
         </div>
 
         <div style="position:absolute;right:14px;top:14px;text-align:right">
