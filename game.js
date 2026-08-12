@@ -1040,7 +1040,9 @@ class Game {
       this.state.tabStale = false;
       this.markTabOwner();
       this.startAutosave();
-      this.setState({ tabStale: false, saveState: 'imported' });
+      // Imported g may not have the current tab's unlock (Upgrades/Research/Perks
+      // gate on buildings/clout/prestiges) — fall back to Club like doPrestige.
+      this.setState({ tabStale: false, saveState: 'imported', tab: 'club' });
       return true;
     } catch (e) {
       this.setState({ saveState: 'import failed' });
@@ -2116,7 +2118,9 @@ class Game {
         this.state.g = this.fresh();
         this.state.lastAutoSave = undefined;
         this.push(this.state.g, 'Save wiped. Fresh club.', '#ff2d78');
-        this.setState({ showSettings: false, resetArmed: false });
+        // Fresh g may not have the current tab's unlock (Upgrades/Research/Perks
+        // gate on buildings/clout/prestiges) — fall back to Club like doPrestige.
+        this.setState({ showSettings: false, resetArmed: false, tab: 'club' });
       },
       tickCount: this.state.tick, saveState: this.state.saveState,
       tabStale: this.state.tabStale,

@@ -3428,6 +3428,39 @@ test('owner hardReset wipes disk after double-confirm', () => {
   ok(game.isTabOwner(), 'owner remains owner of fresh club');
 });
 
+test('hardReset and import fall back to Club when gating hides the current tab', () => {
+  // Park on Upgrades, then wipe: fresh g has no buildings, so Upgrades is no
+  // longer in tabDefs — the tab bar must not silently render stale content
+  // with no highlighted tab (same class doPrestige already guards).
+  const game = newGame(20);
+  game.markTabOwner();
+  game.state.tabStale = false;
+  game.state.g.b.rail = 1; // Upgrades unlocked
+  game.state.tab = 'up';
+  const hr = game.renderVals().hardReset;
+  hr(); // arm
+  hr(); // wipe
+  strictEqual(game.state.tab, 'club', 'hardReset resets tab to Club');
+  const labels = game.renderVals().tabs.map(t => t.label);
+  ok(labels.includes('Club') && labels.includes('Crew'), 'fresh bar keeps Club + Crew');
+  ok(!labels.includes('Upgrades'), 'fresh bar has no Upgrades');
+  strictEqual(game.renderVals().tabs.some(t => t.label === 'Upgrades'), false, 'no stale Upgrades tab');
+
+  // Import a fresh/lower-progress save while parked on Research.
+  const game2 = newGame(20);
+  game2.state.g.clout = 5; // Research unlocked
+  game2.state.tab = 'res';
+  const payload = {
+    saveVer: game2.SAVE_VER, ver: game2.VERSION.num, build: game2.VERSION.build,
+    g: game2.fresh()
+  };
+  strictEqual(game2.importSaveFromText(JSON.stringify(payload)), true);
+  strictEqual(game2.state.tab, 'club', 'import resets tab to Club');
+  const labels2 = game2.renderVals().tabs.map(t => t.label);
+  ok(labels2.includes('Club') && labels2.includes('Crew'), 'imported bar keeps Club + Crew');
+  ok(!labels2.includes('Research'), 'imported bar has no Research');
+});
+
 // ── Managers (PLAN.md §4.1) ──────────────────────────────────────────────────
 console.log('\\nManagers (PLAN.md §4.1)');
 
