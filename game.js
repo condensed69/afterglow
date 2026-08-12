@@ -2363,7 +2363,6 @@ class Game {
         const total = this.GOALS.length;
         const done = Array.isArray(g.goals) ? g.goals.length : 0;
         const goal = this.activeGoal(g);
-        const goalIdx = goal ? this.GOALS.findIndex(x => x.id === goal.id) : total;
         if (!goal) {
           return {
             done: true, n: total, total,
@@ -2393,7 +2392,7 @@ class Game {
           reward: rparts.join(' '),
           progress,
           flash: done > 0 && this.state.tick > 0,
-          goalIdx,
+          goalIdx: done,
           totalGoals: total,
           onboardingPulse
         };
@@ -3017,6 +3016,7 @@ class Game {
             </div>`
           : '';
         // Sticky onboarding banner: "Goal X of 14: Title" - more prominent for first few goals
+        // Wrapped in single outer div to preserve the 3-row grid in sys-col (tab bar, ownersList, scrollable)
         const banner = ol.done ? '' : `
           <div style="border-bottom:1px solid #2a1738;background:linear-gradient(180deg,#1a1028,#120c1c);padding:8px 12px;${ol.onboardingPulse ? 'animation:onboardPulse 2.5s ease-in-out infinite' : ''}">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
@@ -3029,7 +3029,7 @@ class Game {
             </div>
           </div>
         `;
-        return `${banner}<div style="border-bottom:1px solid #2a1738;background:#0d0814;padding:10px 12px">
+        return `<div style="border-bottom:1px solid #2a1738;background:#0d0814;padding:10px 12px">${banner}
           <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:4px">
             <div style="display:flex;align-items:center;gap:7px;min-width:0">
               <span style="width:6px;height:6px;border-radius:50%;background:${ol.done ? '#4ade80' : '#ff2d78'};box-shadow:0 0 7px ${ol.done ? '#4ade80' : '#ff2d78'};flex-shrink:0;animation:pulseDot 2.2s infinite"></span>
