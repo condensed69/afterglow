@@ -276,13 +276,14 @@ Persisted: `g.goals[]` (completed ids), `g.clicks`, `g.rounds`. Not required by 
 
 ### 7.2 Engine
 
-- `activeGoal(g)` → first incomplete, or `null` (resting copy: “Club runs itself”, 14/14).  
-- `noteGoals(g, { live })` evaluates **only** the active goal; on complete: pay reward once, push id, log `Owner's list: <title> — <reward>`.  
+- `activeGoal(g)` → first incomplete, or `null` (resting copy: "Club runs itself", 14/14).
+- `noteGoals(g, { live })` evaluates **only** the active goal; on complete: pay reward once, push id, log `Owner's list: <title> — <reward>`.
 - Call sites:
   - **Live `step`:** after each sim slice **before** shift rollover (`live: true`). A tick that starts in Peak Hours and ends in Last Call can still complete **peak** mid-loop; post-loop-only evaluation would miss it.
   - **Offline `catchUp`:** each offline slice (`live: false`); also once after load / large-gap `catchUp` (`live: false`).
   - **Actions:** after `buyBuilding`, `buyUpgrade`, `buyResearch`, `hireCrew`, `moveJob`, `workCrowd`, `buyRound` (default `live: true`).
 - Goal **`peak`**: completes only when `live !== false` — never offline.
+- **Presentation:** a sticky banner at the top of the panel shows "Goal X of 14" with progress counter. For the first 3 goals, a subtle pulse animation (`onboardPulse`) draws attention to the active step.
 
 ### 7.3 Arc (post-C rewards)
 
