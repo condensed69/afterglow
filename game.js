@@ -109,9 +109,7 @@ class Game {
 
   CHANGELOG = [
     { v: '0.10.10', date: '2026-08-12', codename: 'Neon Zero', notes: [
-      'Onboarding: sticky "Goal X of 14" banner at top of Owner\'s List panel with progress counter.',
-      'Onboarding: pulse animation on active goal banner for first 3 goals to draw attention to next step.',
-      'UX: Owner\'s List panel now shows goal index (1-14) and total completed count in prominent banner.'
+      'Onboarding: sticky "Goal X of 14" banner with progress counter at top of Owner\'s List panel; pulse animation on first 3 goals.'
     ] },
     { v: '0.10.9', date: '2026-08-12', codename: 'Neon Zero', notes: [
       'Fix: hardReset() now clears lastAutoSave so a wiped club does not show the prior club\'s autosave timestamp.',
@@ -2381,8 +2379,7 @@ class Game {
           const p = goal.progress(g);
           if (p && p.max > 0) progress = { cur: Math.max(0, p.cur), max: p.max, pct: Math.min(100, (p.cur / p.max) * 100) };
         }
-        // Onboarding pulse: true for first 3 goals or when player has no completed goals
-        // This drives a more prominent pulse animation on the active goal banner
+        // Onboarding pulse: true for first 3 goals (done < 3)
         const onboardingPulse = done < 3;
         return {
           done: false, n: done, total,
@@ -3037,7 +3034,6 @@ class Game {
             </div>
             <div style="display:flex;align-items:center;gap:7px;flex-shrink:0">
               ${ol.reward ? `<span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#ffc94a;font-weight:600">${ol.reward}</span>` : ''}
-              <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#7b5f90">${ol.n} / ${ol.total}</span>
             </div>
           </div>
           <div style="font-size:10.5px;color:#6f5885;font-style:italic;line-height:1.4;margin-bottom:4px">${ol.why}</div>
