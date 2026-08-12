@@ -44,6 +44,31 @@ was brought current with `main` via a merge commit) flagged:
 - Section placement, at the end of the file, read oddly for something
   chronologically first. **Fixed** — moved above `## Verification gates`.
 
+## Review changes from v2
+
+A third `claude` review pass flagged:
+
+- `pre-push` fails open (allows the push UNCHECKED) if it can't reach
+  `origin/main` over ssh or https, undocumented. **Fixed** — the fallback is
+  now documented in `AGENTS.md` next to `HERMES_ALLOW_STALE_BASE`, with the
+  tradeoff (fail-open, not fail-closed) stated explicitly.
+- `timeout` isn't guaranteed to exist; its absence would silently no-op the
+  fetch guard. **Fixed** — degrades to running the fetch unwrapped instead of
+  skipping it when `timeout` is unavailable.
+- The https fallback URL was hardcoded. **Fixed** — derived from
+  `git remote get-url origin`.
+- `.pr-body.md` at repo root broke this repo's own `.github/pr/<n>-<slug>.md`
+  convention. **Fixed** — moved to `.github/pr/56-branch-base-rule.md`, and
+  `AGENTS.md`'s Pull requests section now names the convention explicitly
+  instead of using `.pr-body.md` as an ambiguous example.
+- A markdown line-wrap split "Fail-open" across a hyphen, rendering as
+  "Fail- open". **Fixed** — reworded to avoid the hyphen break.
+- Noted but not changed (design tradeoffs, not blockers): the DROP/KEEP
+  heuristic matches on commit subject text only and could mislabel two
+  unrelated commits sharing a subject; `git push --no-verify` bypasses the
+  hook entirely and isn't called out; `core.hooksPath` opt-in is honor-system
+  with nothing that fails loudly if unset.
+
 ## Gates
 
 All three re-run after the merge from `main` and after the `.githooks/` addition:

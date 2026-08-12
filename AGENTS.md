@@ -55,11 +55,11 @@ This is a dependency-free static website.
   push unchecked rather than blocking it — a second, undocumented-until-now
   bypass path alongside `HERMES_ALLOW_STALE_BASE`. Flagged in review as the
   same failure mode this hook exists to prevent (a bad base slipping through
-  undetected), just reached via a network blip instead of a bad branch. Fail-
-  open was kept deliberately — failing closed would block every push whenever
-  GitHub is briefly unreachable — but if you see the "allowing push
-  UNCHECKED" line, treat it as a signal to verify the base by hand before
-  opening the PR, not as a clean pass.
+  undetected), just reached via a network blip instead of a bad branch. This
+  fail-open behavior was kept deliberately — failing closed would block every
+  push whenever GitHub is briefly unreachable — but if you see the "allowing
+  push UNCHECKED" line, treat it as a signal to verify the base by hand
+  before opening the PR, not as a clean pass.
 
 ## Verification gates
 
