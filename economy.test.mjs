@@ -658,6 +658,29 @@ test('every bound click handler is invocable without a scope error', () => {
   );
 });
 
+test('fresh club keeps Club + Crew tabs; Upgrades/Research appear on unlock', () => {
+  const game = newGame(10);
+  const labels = () => game.renderVals().tabs.map(t => t.label);
+  ok(labels().includes('Club'), 'Club tab always visible');
+  ok(labels().includes('Crew'), 'Crew tab always visible (stage CTA routes to it)');
+  ok(!labels().includes('Upgrades'), 'Upgrades hidden before first building');
+  ok(!labels().includes('Research'), 'Research hidden before first Clout');
+
+  // Unlock path: first building reveals Upgrades, first Clout reveals Research.
+  game.state.g.b.rail = 1;
+  ok(labels().includes('Upgrades'), 'Upgrades appears after first building');
+  ok(!labels().includes('Research'), 'Research still hidden without Clout');
+
+  game.state.g.clout = 1;
+  ok(labels().includes('Research'), 'Research appears after first Clout');
+
+  // The stage CTA must never point at a tab missing from the bar.
+  const v = game.renderVals();
+  if (v.stageLineAct) {
+    ok(labels().includes('Crew'), 'stage CTA target (crew) is visible in the tab bar');
+  }
+});
+
 test('golden claim actions from renderVals() resolve the offer when invoked', () => {
   const game = newGame(500);
   const g = game.state.g;
