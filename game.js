@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.10.14', build: 205, channel: 'alpha', date: '2026-08-12', codename: 'Neon Zero' };
+  VERSION = { num: '0.10.15', build: 206, channel: 'alpha', date: '2026-08-13', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -108,6 +108,9 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.10.15', date: '2026-08-13', codename: 'Neon Zero', notes: [
+      'Fix: on phones the app root used height:100vh — the URL-bar-collapsed height — so with the browser chrome visible the footer and the last strip of content sat below the viewport and could not be scrolled into view (the root clips at 100vh with overflow:hidden and the document has nothing left to scroll). Now height:100dvh with a 100vh fallback, so the app tracks the dynamic viewport and the bottom of the page is always reachable.'
+    ] },
     { v: '0.10.14', date: '2026-08-12', codename: 'Neon Zero', notes: [
       'Owner\'s List banner now reads "X of Y goals complete" for clarity (was "X / Y complete").',
       'Test: economy.test.mjs adds regression coverage — special_1 (Surprise Hit) only unlocks from real special shifts, never from goal completion.'
@@ -2897,7 +2900,7 @@ class Game {
       </div>` : '';
 
     this.root.innerHTML = `
-<div style="height:100vh;display:grid;grid-template-rows:auto 1fr auto;grid-template-columns:minmax(0,1fr);background:radial-gradient(1200px 700px at 50% -10%,#1a0e26 0%,#07050c 62%);overflow:hidden">
+<div style="height:100vh;height:100dvh;display:grid;grid-template-rows:auto 1fr auto;grid-template-columns:minmax(0,1fr);background:radial-gradient(1200px 700px at 50% -10%,#1a0e26 0%,#07050c 62%);overflow:hidden">
 
   <header style="display:flex;align-items:center;gap:20px;padding:0 18px;height:62px;border-bottom:1px solid #2a1738;background:linear-gradient(180deg,#140b1f,#0b0712);position:relative;z-index:20">
     <div style="display:flex;align-items:baseline;gap:12px">
