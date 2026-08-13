@@ -20,17 +20,20 @@ One CSS rule inside the ≤900px media query:
 
 ```css
 #app button,
-#look-panel button {
+#look-panel button:not(.lk-seg) {
   min-height: 44px !important;
   min-width: 44px !important;
 }
+#look-panel button.lk-seg {
+  min-height: 44px !important;
+}
 ```
 
-`min-height`/`min-width` override the inline `height`/`width`/`padding` from `game.js` (a min-constraint beats a fixed size), so one rule covers the shell, header, modals (inside `#app`) and the body-mounted Look panel. `!important` is needed only where the multi-buy row carries an inline `min-width:40px` that would otherwise win on specificity. **Desktop is untouched** — the rule lives inside the media query, matching the v0.10.7/v0.10.8/v0.10.16 pattern.
+`min-height`/`min-width` override the inline `height`/`width`/`padding` from `game.js` (a min-constraint beats a fixed size), so the rule covers the shell, header, modals (inside `#app`) and the body-mounted Look panel. **The Look panel's mood/motion segments (`.lk-seg`) are exempt from the width floor only** — they carry an inline `min-width:0` so they can flex-shrink below content width and ellipsize; a 44px floor would silently defeat that if a fourth option is ever added. They keep the 44px height floor, since they are tap targets too. `!important` is needed only where the multi-buy row carries an inline `min-width:40px` that would otherwise win on specificity. **Desktop is untouched** — the rule lives inside the media query, matching the v0.10.7/v0.10.8/v0.10.16 pattern.
 
 ### Verification
 
-Headless Chrome at mobile width, all `#app button` + `#look-panel button` measured: **41 buttons, all ≥44×44** (the single 0×0 exception is the hire-crew CTA inside `#stage`, which is `display:none` on phones and is not a target). Settings modal and Look panel re-checked while open — all ≥44px.
+Headless Chrome at mobile width, all `#app button` + `#look-panel button:not(.lk-seg)` measured: **41 buttons, all ≥44×44** (the single 0×0 exception is the hire-crew CTA inside `#stage`, which is `display:none` on phones and is not a target). Settings modal and Look panel re-checked while open — all ≥44px, with `.lk-seg` segments at 44px tall and free to shrink horizontally (69×44 live at 320px, ellipsis intact).
 
 ### Gates
 
