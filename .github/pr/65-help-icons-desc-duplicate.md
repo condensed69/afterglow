@@ -25,6 +25,7 @@ Bonus fix found while editing: the building-card owned marker was double-escaped
 
 ### Docs touched
 
+- `README.md` — new "Help & tooltips" section: card surfaces show their description directly; `?` remains only where the tooltip adds information (Ledger resources, stats)
 - `PRESTIGE.md` §9.5 — notes the 0.10.21 removal of the inline help icon from perk/manager cards (blurb stays visible in the DOM)
 - `CHANGELOG` entry for `0.10.21`; `VERSION` → 0.10.21 / build 212 (sits above #64's merged 0.10.20/211)
 
