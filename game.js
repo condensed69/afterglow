@@ -2553,7 +2553,7 @@ class Game {
     const l = this.look;
     const seg = (key, map) => Object.keys(map).map(k => {
       const on = l[key] === k, lab = typeof map[k] === 'string' ? map[k] : map[k].label;
-      return '<button data-lk="' + key + ':' + k + '" style="flex:1;min-width:0;padding:7px 4px;cursor:pointer;font-family:inherit;' +
+      return '<button data-lk="' + key + ':' + k + '" class="lk-seg" style="flex:1;min-width:0;padding:7px 4px;cursor:pointer;font-family:inherit;' +
         'font-size:10px;font-weight:700;letter-spacing:.4px;border-radius:6px;border:1px solid ' + (on ? '#ff2d78' : '#311d44') + ';' +
         'background:' + (on ? 'rgba(255,45,120,.16)' : '#150d21') + ';color:' + (on ? '#ff8bb4' : '#9c86ab') + ';' +
         'white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + lab + '</button>';

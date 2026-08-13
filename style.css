@@ -229,11 +229,19 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
      header (☰, version badge, Franchise offer), the modals (inside #app) and
      the Look panel (mounted on body, #look-panel). !important is required
      because the multi-buy buttons carry an inline min-width:40px that would
-     otherwise win on specificity. */
+     otherwise win on specificity.
+     .lk-seg is exempt from the width floor: the Look panel's mood/motion
+     segments carry an inline min-width:0 so they can flex-shrink below content
+     width and ellipsize (game.js paintLookPanel). A 44px floor would silently
+     defeat that shrink-to-ellipsis if a fourth option is ever added — they keep
+     the height floor (they're tap targets too) but not the width one. */
   #app button,
-  #look-panel button {
+  #look-panel button:not(.lk-seg) {
     min-height: 44px !important;
     min-width: 44px !important;
+  }
+  #look-panel button.lk-seg {
+    min-height: 44px !important;
   }
 
   /* Both interior grids distribute a height they no longer have once the shell
