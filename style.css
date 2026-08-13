@@ -141,6 +141,12 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
   overflow: auto;
 }
 
+/* Ledger collapse toggle: hidden on desktop (the Ledger is always expanded
+   ≥901px and the button only appears inside the narrow-screen media query). */
+.ledger-toggle {
+  display: none;
+}
+
 /* Small screens: stack Ledger / Stage / Systems vertically, no horizontal scroll.
    Below the sum of the three column minimums (232+320+320 = 872px) the fixed
    mins would force a page-level horizontal scrollbar; single-column removes it. */
@@ -193,6 +199,23 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
      (`getElementById('stage')` for the click brightness pulse and the keyboard
      tip-floater anchor) both stay non-null and no-op. Desktop is untouched. */
   #stage {
+    display: none;
+  }
+
+  /* Ledger collapses to the CASH row on narrow screens (v0.10.16). The full
+     Ledger — six resource rows plus the Floor block — measured 776px tall on a
+     390px phone, taller than the whole viewport, and sat first in the stacked
+     column: the primary action (Work the room) and the Systems tabs were both
+     below the fold. Collapsed, the Ledger is ~70px: CASH stays visible (the
+     number idle players watch), the toggle re-expands the rest. The toggle
+     button and the collapse rule both live inside this media query, so desktop
+     (≥901px) keeps the always-expanded Ledger and never sees the button. */
+  .ledger-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .ledger-collapsed .ledger-detail {
     display: none;
   }
 
