@@ -18,7 +18,7 @@ function css(o) {
 // getOwnPropertyDescriptor forward to the target, so JSON.stringify emits the
 // real v9 shape.
 function clubProxy(g) {
-  const active = () => (g && g.clubs && g.clubs[g.activeClub]) ? g.activeClub : 'main';
+  const active = () => (g && g.clubs && Object.prototype.hasOwnProperty.call(g.clubs, g.activeClub)) ? g.activeClub : 'main';
   return new Proxy(g, {
     get(t, k) {
       if (k in t) return t[k];
@@ -87,7 +87,7 @@ class Game {
       // sanitizeG (also run inside MIGRATIONS[3] for very old saves) may have
       // already built the clubs map from top-level fields — never clobber it.
       if (g.clubs && typeof g.clubs === 'object' && g.clubs.main) {
-        g.activeClub = (typeof g.activeClub === 'string' && g.clubs[g.activeClub]) ? g.activeClub : 'main';
+        g.activeClub = (typeof g.activeClub === 'string' && Object.prototype.hasOwnProperty.call(g.clubs, g.activeClub)) ? g.activeClub : 'main';
         return g;
       }
       const clubFields = ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'b', 'u',
@@ -728,7 +728,9 @@ class Game {
   // function reading club-level state goes through this — no scattered
   // g.clubs[g.activeClub].
   club(g, id = g && g.activeClub) {
-    const c = g && g.clubs && g.clubs[id];
+    // Own-property lookup only — inherited Object.prototype keys ('constructor',
+    // 'toString', ...) must never resolve to a club entry (fail closed to main).
+    const c = g && g.clubs && Object.prototype.hasOwnProperty.call(g.clubs, id) ? g.clubs[id] : undefined;
     return c || (g && g.clubs && g.clubs.main) || g;
   }
 
@@ -942,7 +944,7 @@ class Game {
       }
       g.clubs = { main };
     }
-    g.activeClub = (typeof g.activeClub === 'string' && g.clubs[g.activeClub]) ? g.activeClub : 'main';
+    g.activeClub = (typeof g.activeClub === 'string' && Object.prototype.hasOwnProperty.call(g.clubs, g.activeClub)) ? g.activeClub : 'main';
     // Normalize every club's run fields (numbers, maps, fail-closed specials).
     for (const clubId of Object.keys(g.clubs)) {
       const c = g.clubs[clubId];
@@ -1068,7 +1070,7 @@ class Game {
         .filter(k => g[k] !== undefined);
       if (stray.length) return false;
     }
-    g.activeClub = (typeof g.activeClub === 'string' && g.clubs[g.activeClub]) ? g.activeClub : 'main';
+    g.activeClub = (typeof g.activeClub === 'string' && Object.prototype.hasOwnProperty.call(g.clubs, g.activeClub)) ? g.activeClub : 'main';
     for (const clubId of Object.keys(g.clubs)) {
       const c = g.clubs[clubId];
       if (!c || typeof c !== 'object' || Array.isArray(c)) return false;

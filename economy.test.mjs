@@ -168,42 +168,16 @@ function newGame(startingCash) {
   const game = new Game(root);
   // Suppress render() during tests (actions call forceUpdate → render).
   game.forceUpdate = () => {};
-  // SAVE_VER 9: state.g is the clubs-map shape; wrap it in a proxy so the suite's
-  // flat-g assertions (g.cash, g.b, g.hype...) keep working against the ACTIVE
-  // club. game.js routes every state.g replacement through wrapState, so the
-  // wrap survives prestige/reset/import inside the same test.
-  game.wrapState = (g) => clubProxy(g);
-  // fresh() returns a wrapped object too: tests mutate candidates directly
-  // (g.cash = 777, g.b.rail = 2, g.perks.x = 1) and those must land in the
-  // active club / account exactly like live code, and JSON payloads built from
-  // fresh() must serialize as native v9.
+  // SAVE_VER 9: state.g is the clubs-map shape. game.js's own wrapState (club
+  // proxy) handles flat-g reads against the ACTIVE club and survives every
+  // state.g replacement (prestige/reset/import) — no override needed here.
+  // fresh() is wrapped so direct candidate mutations (g.cash = 777) land in the
+  // active club like live code, and JSON payloads built from it serialize as v9.
   const rawFresh = game.fresh.bind(game);
   game.fresh = () => game.wrapState(rawFresh());
   if (startingCash !== undefined) game.props.startingCash = startingCash;
   game.state.g = game.fresh();
   return game;
-}
-
-// Read/write proxy: top-level (account) fields hit g directly; club-level fields
-// (cash/hype/buzz/patrons/regulars/b/u/elapsed/night/shift*/_special/_whale)
-// fall through to the active club. Serialization (JSON.stringify) still emits the
-// real v9 shape because ownKeys/getOwnPropertyDescriptor forward to the target.
-function clubProxy(g) {
-  const active = () => (g.clubs && g.clubs[g.activeClub]) ? g.activeClub : 'main';
-  return new Proxy(g, {
-    get(t, k) {
-      if (k in t) return t[k];
-      const c = g.clubs && g.clubs[active()];
-      return c && k in c ? c[k] : undefined;
-    },
-    set(t, k, v) {
-      if (k in t) { t[k] = v; return true; }
-      const c = g.clubs && g.clubs[active()];
-      if (c && k in c) { c[k] = v; return true; }
-      t[k] = v;
-      return true;
-    }
-  });
 }
 
 function buildingById(game, id) {
@@ -2220,6 +2194,30 @@ test('club(g) resolves active club with main fallback; flat reads follow activeC
   g.activeClub = 'annex';
   strictEqual(game.club(g).cash, 42);
   strictEqual(g.cash, 42, 'flat read follows activeClub through the compat layer');
+  // Inherited Object.prototype keys ('constructor', ...) must never resolve to a
+  // club entry — fail closed to main, not to a function.
+  g.activeClub = 'constructor';
+  strictEqual(game.club(g), g.clubs.main, "inherited key can't hijack activeClub");
+  strictEqual(g.cash, 20, 'flat reads land on main for an inherited activeClub');
+  strictEqual(game.club(g, 'toString'), g.clubs.main, 'toString falls back to main');
+  g.activeClub = 'main';
+});
+
+test('v9 import sanitizes inherited-key activeClub to main (own-property check)', () => {
+  const game = newGame(20);
+  const payload = JSON.stringify({
+    saveVer: 9,
+    g: {
+      clubs: { main: { ...game.fresh().clubs.main, cash: 66 } },
+      activeClub: 'constructor',
+      clout: 0, crew: 0,
+      jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      goals: [], clicks: 0, rounds: 0
+    }
+  });
+  strictEqual(game.importSaveFromText(payload), true);
+  strictEqual(game.state.g.activeClub, 'main', 'inherited key sanitized to main');
+  strictEqual(game.state.g.cash, 66, 'main club intact');
 });
 
 test('fresh() v9: clubs.main carries the full club field set, account level is clean', () => {

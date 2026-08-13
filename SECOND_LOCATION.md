@@ -1,7 +1,7 @@
 # SECOND_LOCATION.md — Second Club Design
 
 **Status:** design lock for first implementation; save-shape groundwork shipped (SAVE_VER 9)  
-**Scope:** document only (no `game.js` change in this PR)  
+**Scope:** this doc + the save-shape slice of the implementation (Slice A shipped 0.11.0); second-room gameplay pending  
 **Depends on:** prestige/shift/achievement systems shipped through v0.10.4 (SAVE_VER 8)
 **Save format:** SAVE_VER 8 → **9** (shipped in 0.11.0)
 

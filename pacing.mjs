@@ -290,32 +290,10 @@ function botSecond(game) {
 function newGame() {
   const game = new Game(root);
   game.forceUpdate = () => {};
-  // SAVE_VER 9: wrap state.g so flat-g reads (g.cash, g.b, g.hype...) hit the
-  // ACTIVE club. game.js routes every state.g replacement through wrapState, so
-  // the wrap survives prestige/reset inside the bot run.
-  game.wrapState = (g) => clubProxy(g);
+  // SAVE_VER 9: game.js's own wrapState (club proxy) handles flat-g reads against
+  // the ACTIVE club and survives prestige/reset inside the bot run.
   game.state.g = game.wrapState(game.fresh());
   return game;
-}
-
-// Read/write proxy: account fields hit g directly; club-level fields fall
-// through to the active club. Serialization still emits the real v9 shape.
-function clubProxy(g) {
-  const active = () => (g.clubs && g.clubs[g.activeClub]) ? g.activeClub : 'main';
-  return new Proxy(g, {
-    get(t, k) {
-      if (k in t) return t[k];
-      const c = g.clubs && g.clubs[active()];
-      return c && k in c ? c[k] : undefined;
-    },
-    set(t, k, v) {
-      if (k in t) { t[k] = v; return true; }
-      const c = g.clubs && g.clubs[active()];
-      if (c && k in c) { c[k] = v; return true; }
-      t[k] = v;
-      return true;
-    }
-  });
 }
 
 function simulate(game, stopCondition, maxSec = SIM_HOURS * 3600, opts = {}) {
