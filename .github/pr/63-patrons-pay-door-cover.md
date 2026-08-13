@@ -47,7 +47,7 @@ The bot and offline paths were seed-dependent in different ways: the pacing bot'
 
 - The pacing bot and offline catch-up never roll whales or specials — `pacing.mjs` is deterministic (two runs, byte-identical output).
 - Offline away-time stays on the base 4-shift rotation; whales and specials are live-session texture only (as their docs always claimed).
-- The bot-determinism test is tightened from all-miss rolls to a single all-hit roll (`withRandom([0.0], step)`) — if any roll leaked into the bot path it would fire the special/whale and fail the assertions, and a second draw would trip `withRandom`'s overrun throw. The special-shift mechanism tests set `_live = true` explicitly, since that path is now live-only.
+- The bot-determinism test is a **zero-draw spy**: it stubs `Math.random` to count calls, runs a boundary-crossing `step()` in the not-live path, restores in `finally`, and asserts zero draws (plus the event-state assertions as belt-and-braces). Any leaked roll — whale, special-shift, critic, golden, or a future event — fails the count. (A single-value `withRandom([0.0], step)` pin was considered first, but its overrun throw only guards multi-value scripts — a one-value list cycles by design — so a value pin can pass while a non-live path draws. The spy cannot.) The special-shift mechanism tests set `_live = true` explicitly, since that path is now live-only.
 
 ### Gates
 
