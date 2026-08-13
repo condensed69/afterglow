@@ -1069,6 +1069,10 @@ class Game {
         'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown']
         .filter(k => g[k] !== undefined);
       if (stray.length) return false;
+      // A v9 body with an EMPTY clubs map performs zero validations and then
+      // makes club(g) fall back to the account object (missing c.b) — abort
+      // startup instead of crashing in the first caps()/render.
+      if (!Object.keys(g.clubs).length) return false;
     }
     g.activeClub = (typeof g.activeClub === 'string' && Object.prototype.hasOwnProperty.call(g.clubs, g.activeClub)) ? g.activeClub : 'main';
     for (const clubId of Object.keys(g.clubs)) {
@@ -2210,6 +2214,23 @@ class Game {
 
     // Build post-prestige candidate from fresh() defaults.
     const next = this.fresh();
+    // Preserve every club (v9 multi-club saves): reset each non-main club's run
+    // fields exactly like fresh() does for main, and keep activeClub pointing at
+    // its club — prestige resets run state, it does not delete rooms.
+    for (const id of Object.keys(g.clubs)) {
+      if (id === 'main') continue;
+      const b2 = {}, u2 = {};
+      this.BUILDINGS.forEach(x => b2[x.id] = 0);
+      this.UPGRADES.forEach(x => u2[x.id] = false);
+      next.clubs[id] = {
+        cash: (this.props && this.props.startingCash) ?? 20, hype: 0, buzz: 0, patrons: 0, regulars: 0,
+        b: b2, u: u2, elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0,
+        _specialShift: null, _whaleCooldown: 0
+      };
+    }
+    if (typeof g.activeClub === 'string' && Object.prototype.hasOwnProperty.call(next.clubs, g.activeClub)) {
+      next.activeClub = g.activeClub;
+    }
     next.legacy = snapshot.legacy + gain;
     next.legacyTotal = snapshot.legacyTotal + gain;
     next.perks = snapshot.perks;

@@ -2203,6 +2203,43 @@ test('club(g) resolves active club with main fallback; flat reads follow activeC
   g.activeClub = 'main';
 });
 
+test('v9 import rejects an EMPTY clubs map (no usable club)', () => {
+  const game = newGame(20);
+  const payload = JSON.stringify({
+    saveVer: 9,
+    g: {
+      clubs: {},
+      activeClub: 'main',
+      clout: 0, crew: 0,
+      jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      goals: [], clicks: 0, rounds: 0
+    }
+  });
+  strictEqual(game.importSaveFromText(payload), false, 'empty clubs map is malformed, not a fresh start');
+  strictEqual(game.state.g.clubs.main.cash, 20, 'live club untouched by rejected import');
+});
+
+test('prestige resets run state but preserves every club and activeClub', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  const f = game.fresh().clubs.main;
+  g.clubs.annex = { ...f, b: { ...f.b }, u: { ...f.u }, cash: 500 };
+  g.activeClub = 'annex';
+  g.clubs.annex.b.rail = 3;
+  g.clubs.annex.regulars = 40;
+  g.clubs.main.regulars = 10;
+  game.confirmPrestige();
+  const a = game.state.g;
+  ok(a.clubs.annex, 'annex survives prestige');
+  ok(a.clubs.main, 'main survives prestige');
+  strictEqual(a.activeClub, 'annex', 'activeClub preserved');
+  strictEqual(a.clubs.annex.b.rail, 0, 'annex run buildings reset');
+  strictEqual(a.clubs.annex.regulars, 0, 'annex run regulars reset');
+  strictEqual(a.clubs.main.regulars, 0, 'main run regulars reset');
+  strictEqual(a.clubs.annex.cash, 20, 'annex cash back to startingCash');
+  strictEqual(a.prestiges, 1, 'prestige counted');
+});
+
 test('v9 import sanitizes inherited-key activeClub to main (own-property check)', () => {
   const game = newGame(20);
   const payload = JSON.stringify({

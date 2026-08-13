@@ -513,13 +513,21 @@ Achievements live in the Settings modal. Backfill on load credits already-earned
 | Autosave | every 10 s (`save('auto')`) |
 | Manual | Settings → Save now |
 
-### 13.1 `g` shape (v8)
+### 13.1 `g` shape (v9)
 
 ```
-cash, hype, buzz, patrons, regulars, clout,
-crew, jobs: { stage, vipjob, floor, off },
-b: { …building counts }, u: { …upgrade bools }, r: { …research bools },
-elapsed, night, shiftIdx, shiftT, log[], ts,
+clubs: {
+  main: {
+    cash, hype, buzz, patrons, regulars,
+    b: { …building counts }, u: { …upgrade bools },
+    elapsed, night, shiftIdx, shiftT,
+    _specialShift, _whaleCooldown
+  },
+  // future rooms: <id>: { same run-state shape } (SECOND_LOCATION.md §4)
+},
+activeClub,                       // id of the club being played ('main' today)
+clout, crew, jobs: { stage, vipjob, floor, off },
+r: { …research bools }, log[], ts,
 goals[], clicks, rounds,
 legacy, legacyTotal, perks: { id: rank }, prestiges,
 achievements[],
@@ -527,6 +535,8 @@ whalesCount, specialsCount,  // 0.10.1 burst-event counters (additive)
 golden,                      // 0.10.2 golden-ticket offer (additive UI state: { at } | null)
 managers: { id: bool }, managerPaused: { id: bool }
 ```
+
+Club-level run fields live under `g.clubs[<id>]`; account/shared fields stay top-level. `club(g)` reads/writes the active club (SECOND_LOCATION.md §5), so club fields must never be treated as top-level. Flat `g.cash`-style access exists only through the `wrapState` compat proxy (same shape on disk: `JSON.stringify` emits the real v9 layout).
 
 Additive fields (`managerPaused`, the 0.10.1 counters `whalesCount` / `specialsCount`, and the 0.10.2 `golden` offer) default to 0/false/null when absent — not required by `isValidSavePayload`, so they never force a SAVE_VER bump on their own.
 
@@ -565,6 +575,7 @@ If `setItem` throws (or any earlier step fails) → `saveState: 'import failed'`
 | 5 → 6 | Prestige meta: legacy/legacyTotal/perks/prestiges; array perks replaced with map, ranks clamped to max |
 | 6 → 7 | Achievements: `achievements[]`, backfill already-earned via `checkAchievements` |
 | 7 → 8 | Managers: `managers` map, default all false |
+| 8 → 9 | Club fields into `g.clubs.main` (run state under the clubs map; `activeClub` added; `MIGRATIONS[8]` never clobbers a map sanitizeG already built on older chains) |
 
 Future saveVer or missing step → wipe on load (localStorage path) or import failed (clipboard/file).
 
