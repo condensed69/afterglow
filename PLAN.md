@@ -69,7 +69,7 @@ Run: `node economy.test.mjs`. This joins `node --check game.js` as the per-chang
 ### 1.6 Consolidate double patron income
 
 **Bug:** Patrons pay twice — `min(patrons, rail*6) * 0.05` (line 308) and an uncapped `patrons * 0.012` (line 311).
-**Fix:** Delete the `0.012` term. Patron-driven cash flows through the rail only; the flat `0.08` base already covers the door. Changelog notes the consolidation.
+**Fix (v0.10.19 amendment):** The `0.012` term is deleted as originally specified, but the flat `0.08` base is *also* replaced — the door take is now a per-patron cover (`patrons × 0.02`, v0.10.19). This keeps the original intent (one patron cash channel, no stacked flat rate → no free money at an empty room) while fixing the "patrons are decorative past the rail cap" complaint: a packed floor now pays more at any size. Patron *tips* still flow through the rail only. Changelog notes the consolidation.
 
 ### 1.7 Off Shift row: display-only
 

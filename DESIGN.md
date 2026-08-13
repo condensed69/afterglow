@@ -104,12 +104,17 @@ cloutMult = 1 + 0.25 × clout25 perk rank                      // multiplies Clo
 
 ```
 railCap     = rail × 6
-nonCrewCash = (0.08 + min(patrons, railCap) × 0.06 + bar × 0.45) × cashMult × houseCut
+nonCrewCash = (patrons × 0.02 + min(patrons, railCap) × 0.06 + bar × 0.45) × cashMult × houseCut
             + vip × 1.25 × bottle × cashMult × houseCut
             + (loop ? regulars × 0.04 × cashMult × houseCut : 0)
 ```
 
-- Flat **0.08** is the door trickle (uncapped patrons do **not** pay outside the rail).  
+- **Door cover: patrons × $0.02/head** (v0.10.19). Replaces the old flat $0.08 trickle, so
+  the door take scales with the crowd — a packed floor always pays more and income never
+  flatlines against patron count, while an empty room earns ~nothing (no free money). The
+  patron cap bounds the early game. This supersedes the earlier PLAN §1.6
+  "no uncapped patrons×0.012" decision: that rejected a flat per-patron rate stacked *on
+  top of* the door; the cover *replaces* the door trickle instead.
 - Rail tips: up to **6 patrons per rail** at **+$0.06/s** each, then × `cashMult` × `houseCut`.
 
 **Crew cash & wages**
@@ -127,7 +132,7 @@ if nonCrewCash < wage:
   strike = true
 ```
 
-Recovery is **not** “cash > 0”. Buildings must cover payroll via non-crew revenue so strike ticks cannot alternate with production via the door trickle.
+Recovery is **not** “cash > 0”. Buildings must cover payroll via non-crew revenue so strike ticks cannot alternate with production via the door take.
 
 ```
 cash = nonCrewCash + vipCrewCash − wage   // net $/s

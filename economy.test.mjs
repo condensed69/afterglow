@@ -1607,17 +1607,18 @@ test('strike edge-triggered log fires once on onset', () => {
   strictEqual(after.length, 1, 'strike log remains edge-triggered (not per-tick)');
 });
 
-test('door trickle does not alternate an underfunded strike into production', () => {
+test('door cover does not alternate an underfunded strike into production', () => {
   const game = newGame(0);
   const g = game.state.g;
   g.crew = 2;
   g.jobs = { stage: 1, vipjob: 0, floor: 1, off: 0 };
+  g.patrons = 8; // cover 8×0.02 = 0.16/s gross (0.112 net at Early Doors) < wage 0.40
   game.step(1);
-  ok(g.cash > 0, 'non-crew door revenue accumulates during strike');
+  ok(g.cash > 0, 'non-crew door-cover revenue accumulates during strike');
   const hype = g.hype;
   const buzz = g.buzz;
   game.step(1);
-  strictEqual(game.rates(g).strike, true, 'crew remain on strike with positive trickle cash');
+  strictEqual(game.rates(g).strike, true, 'crew remain on strike with positive cover cash');
   strictEqual(g.hype, hype, 'stage crew do not produce on the next tick');
   strictEqual(g.buzz, buzz, 'floor crew do not produce on the next tick');
 });
@@ -1679,11 +1680,13 @@ test('rail + walk-in patrons earn cash with zero buzz', () => {
   ok(g.cash > cashBefore, `cash must grow via rail tips with zero buzz (${cashBefore} → ${g.cash})`);
 });
 
-// PLAN §1.6 — no uncapped patrons*0.012; patron cash via rail only (+ base door)
-test('patrons without rail earn only base door cash (no flat patron rate)', () => {
+// 0.10.19 — PLAN §1.6 "no uncapped patrons×0.012" is superseded: the door take is
+// now a per-patron cover (patrons × 0.02) REPLACING the flat 0.08 trickle, so an
+// empty room earns ~nothing (no free money) while a packed floor pays more at any
+// size. Patron TIPS still only via rail (that part of §1.6 stands).
+test('patrons pay door cover scaled by head count, empty room earns nothing', () => {
   const game = newGame(100);
   const g = game.state.g;
-  g.patrons = 100;
   g.b.rail = 0;
   g.b.bar = 0;
   g.b.vip = 0;
@@ -1693,11 +1696,15 @@ test('patrons without rail earn only base door cash (no flat patron rate)', () =
   g.regulars = 0;
   g.shiftIdx = 0; // Early Doors mult 0.7
   g.u = {};
-  const r = game.rates(g);
-  // cashMult = 1 * 1 * 0.7; expected non-crew = 0.08 * 0.7 only
-  const expected = 0.08 * 0.7;
+  g.patrons = 0;
+  let r = game.rates(g);
+  strictEqual(r.cash, 0, 'empty room earns no door money (cover replaces flat 0.08)');
+  g.patrons = 100;
+  r = game.rates(g);
+  // cashMult = 1 * 1 * 0.7; expected cover = 100 * 0.02 * 0.7 = 1.40 (no rail tips)
+  const expected = 100 * 0.02 * 0.7;
   ok(Math.abs(r.cash - expected) < 1e-9,
-    `no uncapped patrons×0.012: cash=${r.cash}, expected base door ${expected}`);
+    `uncapped cover: cash=${r.cash}, expected ${expected}`);
 });
 
 test('Tip Rail desc mentions per-rail patron cap', () => {
