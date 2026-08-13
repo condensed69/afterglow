@@ -25,32 +25,43 @@ after:  (patrons × 0.02 + min(patrons, rail×6) × 0.06 + bar × 0.45) × cashM
 - **Supersedes PLAN §1.6** ("no uncapped patrons×0.012") — that decision rejected a flat per-patron rate stacked *on top of* the door; this cover *replaces* the door trickle instead. Patron tips still flow through the rail only.
 - Help-copy updated so the effect is discoverable: "They pay cover at the door ($0.02/head), tip at Tip Rails, and slowly become Regulars."
 
-### Verification — pacing.mjs, 6 runs each
+### Verification — pacing.mjs (deterministic, single run)
 
-| Milestone | Before (range) | After (range) | Band |
-|---|---|---|---|
-| First building | 1.52–1.57m | 1.53m | 1.50–2.50m PASS |
-| First crew | 7.53–8.20m | 7.53–7.83m | 3.75–10.00m PASS |
-| 10 patrons | 5.68–5.73m | 5.67–5.70m | 4.50–7.50m PASS |
-| First upgrade | 14.62–15.05m | 14.02–14.62m | 8.40–23.40m PASS |
-| First research | 17.90–19.05m | 19.80–20.52m | 17.50–32.50m PASS |
-| All upgrades | 32.78–35.67m | 36.62–41.72m | 31.50–58.50m PASS |
-| Prestige delta | −1.78 to −2.55m | −1.07 to −3.17m | < 0 PASS (run2 faster every run) |
+This PR also fixes pacing determinism (see below): the bot/offline path now draws **zero** randoms, so `pacing.mjs` is bit-identical across runs and one run is the verification.
+
+| Milestone | Hit | Band |
+|---|---|---|
+| First building | 1.53m | 1.50–2.50m PASS |
+| First crew | 7.83m | 3.75–10.00m PASS |
+| 10 patrons | 5.70m | 4.50–7.50m PASS |
+| First upgrade | 14.67m | 8.40–23.40m PASS |
+| First research | 20.63m | 17.50–32.50m PASS |
+| All upgrades | 39.97m | 31.50–58.50m PASS |
+| Prestige delta | −1.87m | < 0 PASS (run2 faster) |
 
 Side benefit: the cover cascade shifted first research and all upgrades **closer to their ~25m/~45m design intents** than before (the crowd income smooths the mid-game). All bands hold with margin.
+
+### Determinism fix (review finding)
+
+Both `pacing.mjs` (this bot) and the offline `catchUp` were seed-dependent: the whale roll (`step()`) and the special-shift roll (`advanceShift()`) consumed `Math.random()` even with `_live = false` — the whale comment said "live only" but the guard was missing. Milestone times therefore varied run to run (~±2 min on the late milestones), so a "6-run range" was six different random experiments, not a verification. Both rolls are now gated behind `this._live` (the same convention the critic/golden events use), so:
+
+- The pacing bot and offline catch-up never roll whales or specials — `pacing.mjs` is deterministic (two runs, byte-identical output).
+- Offline away-time stays on the base 4-shift rotation; whales and specials are live-session texture only (as their docs always claimed).
+- The bot-determinism test is tightened from all-miss rolls to a single all-hit roll (`withRandom([0.0], step)`) — if any roll leaked into the bot path it would fire the special/whale and fail the assertions, and a second draw would trip `withRandom`'s overrun throw. The special-shift mechanism tests set `_live = true` explicitly, since that path is now live-only.
 
 ### Gates
 
 - `node --check game.js` ✅
-- `node economy.test.mjs` ✅ (210 passed, 1 skipped, 0 failed — the old "no uncapped patrons×0.012" regression test is rewritten as "patrons pay door cover scaled by head count, empty room earns nothing"; the strike-alternation test now seeds patrons so cover revenue accumulates while underfunded)
-- `node pacing.mjs` ✅ (all milestones within band, prestige scenario passed)
+- `node economy.test.mjs` ✅ (209 passed, 1 skipped, 0 failed — the old "no uncapped patrons×0.012" regression test is rewritten as "patrons pay door cover scaled by head count, empty room earns nothing"; the strike-alternation test now seeds patrons so cover revenue accumulates while underfunded; the determinism pin and five special-shift mechanism tests now run with `_live = true`)
+- `node pacing.mjs` ✅ (all milestones within band, prestige scenario passed; two runs bit-identical)
 
 ### Docs touched
 
-- `DESIGN.md` §4.2 — non-crew cash formula + door-cover bullet (supersedes the "uncapped patrons do not pay outside the rail" note); strike-recovery wording "door trickle" → "door take"
+- `DESIGN.md` §4.2 — non-crew cash formula + door-cover bullet (supersedes the "uncapped patrons do not pay outside the rail" note); strike-recovery wording "door trickle" → "door take"; §11.1 special shifts and §11.2 whale now document the `_live` gate
 - `PLAN.md` §1.6 — amended with the v0.10.19 decision (delete `0.012`, replace flat `0.08` with per-head cover)
-- `CHANGELOG` entry for `0.10.19`; `VERSION` → 0.10.19 / build 210 (sits above #62's 0.10.18/209)
+- `CHANGELOG` entry for `0.10.19` (two notes: door cover + determinism fix); `VERSION` → 0.10.19 / build 210 (sits above #62's 0.10.18/209)
+- `.github/pr/63-patrons-pay-door-cover.md` — this durable body, committed with the branch
 
 ### SAVE_VER
 
-- Unchanged (8) — income formula only, no save shape change
+- Unchanged (8) — income formula + roll gating only, no save shape change

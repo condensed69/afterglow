@@ -866,6 +866,7 @@ test('whale_10 unlocks at 10 whales and its Legacy credits legacyTotal', () => {
 test('specialsCount increments when a special shift triggers', () => {
   const game = newGame(20);
   const g = game.state.g;
+  game._live = true; // 0.10.19: the special roll is live-only (pacing-bot determinism)
   g._specialShift = null;
   g.shiftIdx = 0;
   g.shiftT = 0;
@@ -879,6 +880,7 @@ test('specialsCount increments when a special shift triggers', () => {
 test('specialsCount does not increment on a normal shift rollover', () => {
   const game = newGame(20);
   const g = game.state.g;
+  game._live = true; // 0.10.19: the special roll is live-only (pacing-bot determinism)
   g._specialShift = null;
   g.shiftIdx = 0;
   g.shiftT = 0;
@@ -1092,12 +1094,18 @@ test('burst events stay off when not live (pacing-bot determinism)', () => {
   g.shiftIdx = 3;
   const r = game.rates(g);
   g.shiftT = r.shift.len - 0.05;
-  // All rolls miss (0.99) — golden/critic never even roll without _live, and the
-  // pre-existing special-shift roll is allowed to miss cleanly.
-  withRandom([0.99, 0.99, 0.99, 0.99], () => game.step(0.1));
+  // 0.10.19: a single all-HIT roll (0.0) is the tightest determinism pin — the
+  // bot path must draw ZERO randoms. If special-shift or whale rolls leaked into
+  // the not-live path, 0.0 < SPECIAL_CHANCE and 0.0 < whale threshold would fire
+  // them here (and the _specialShift / cash assertions below would fail); if the
+  // code drew more than one random, withRandom would throw on the overrun. The
+  // old comment about "the pre-existing special-shift roll is allowed to miss
+  // cleanly" no longer applies — that roll is now gated behind _live.
+  withRandom([0.0], () => game.step(0.1));
   strictEqual(g.golden, null, 'no golden offer in bot path');
   ok(g.clout < 0.001, 'no critic clout in bot path');
   strictEqual(g._specialShift, null, 'no special shift in bot path');
+  strictEqual(g.whalesCount || 0, 0, 'no whale spawn in bot path');
 });
 
 test('takeGolden is a no-op on a stale (non-owning) tab', () => {
@@ -3814,6 +3822,7 @@ console.log('\nspecial shifts (PLAN §4.2)');
 test('special-shift override does not corrupt the base SHIFTS rotation on the next boundary', () => {
   const game = newGame();
   const g = game.state.g;
+  game._live = true; // 0.10.19: the special roll is live-only (pacing-bot determinism)
   g.shiftIdx = 1; // Peak Hours
   g.shiftT = 0;
   // Sub-chance roll forces a special on this boundary.
@@ -3846,6 +3855,7 @@ test('special-shift override does not corrupt the base SHIFTS rotation on the ne
 test('weighted selection respects the no-repeat constraint', () => {
   const game = newGame();
   const g = game.state.g;
+  game._live = true; // 0.10.19: the special roll is live-only (pacing-bot determinism)
   g.shiftIdx = 0;
   g.shiftT = 0;
   // Two consecutive sub-chance rolls: the first triggers a special, the second must
@@ -3887,6 +3897,7 @@ test('special shifts work inside catchUp() (offline-progress slices)', () => {
 test('special shifts work inside live step() and resolve on the next boundary', () => {
   const game = newGame();
   const g = game.state.g;
+  game._live = true; // 0.10.19: the special roll is live-only (pacing-bot determinism)
   g.b.bar = 2;
   g.cash = 500;
   g.patrons = 20;
@@ -3924,6 +3935,7 @@ test('special shifts are a pure modifier — base SHIFTS shape untouched', () =>
 test('special announced even on a night-wrap rollover (review nit fix)', () => {
   const game = newGame();
   const g = game.state.g;
+  game._live = true; // 0.10.19: the special roll is live-only (pacing-bot determinism)
   g.b.bar = 2;
   g.cash = 500;
   g.patrons = 20;
