@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.10.12', build: 203, channel: 'alpha', date: '2026-08-12', codename: 'Neon Zero' };
+  VERSION = { num: '0.10.13', build: 204, channel: 'alpha', date: '2026-08-12', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -108,6 +108,9 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.10.13', date: '2026-08-12', codename: 'Neon Zero', notes: [
+      'UX: Systems tabs (UPGRADES, RESEARCH) now unlock progressively — Upgrades appears after first building, Research after first Clout earned. Club and Crew stay always visible: the Hire Crew card is actionable from the first second and the stage\'s "hire crew to open the stage" CTA routes to it. Addresses Barbara\'s YELLOW note: "Four tabs and I can\'t do anything in any of them."'
+    ] },
     { v: '0.10.12', date: '2026-08-12', codename: 'Neon Zero', notes: [
       'UX: Inline help icons (ⓘ) on all resources, stats, buildings, upgrades, research, perks, managers, and job assignments — hover/tap for plain-English definitions. Addresses Barbara\'s jargon complaint from adversarial UX test.'
     ] },
@@ -1037,7 +1040,9 @@ class Game {
       this.state.tabStale = false;
       this.markTabOwner();
       this.startAutosave();
-      this.setState({ tabStale: false, saveState: 'imported' });
+      // Imported g may not have the current tab's unlock (Upgrades/Research/Perks
+      // gate on buildings/clout/prestiges) — fall back to Club like doPrestige.
+      this.setState({ tabStale: false, saveState: 'imported', tab: 'club' });
       return true;
     } catch (e) {
       this.setState({ saveState: 'import failed' });
@@ -2113,7 +2118,9 @@ class Game {
         this.state.g = this.fresh();
         this.state.lastAutoSave = undefined;
         this.push(this.state.g, 'Save wiped. Fresh club.', '#ff2d78');
-        this.setState({ showSettings: false, resetArmed: false });
+        // Fresh g may not have the current tab's unlock (Upgrades/Research/Perks
+        // gate on buildings/clout/prestiges) — fall back to Club like doPrestige.
+        this.setState({ showSettings: false, resetArmed: false, tab: 'club' });
       },
       tickCount: this.state.tick, saveState: this.state.saveState,
       tabStale: this.state.tabStale,
@@ -2154,9 +2161,14 @@ class Game {
     ];
 
     const tabDefs = [
-      { id: 'club', label: 'Club' }, { id: 'crew', label: 'Crew' },
-      { id: 'up', label: 'Upgrades' }, { id: 'res', label: 'Research' }
+      { id: 'club', label: 'Club' },
+      // Crew is always visible: the Hire Crew card is actionable from the first
+      // second, and the stage's "hire crew to open the stage" CTA routes here —
+      // gating it on g.crew > 0 would strand a new player on a hidden tab.
+      { id: 'crew', label: 'Crew' }
     ];
+    if (Object.values(g.b || {}).some(n => n > 0)) tabDefs.push({ id: 'up', label: 'Upgrades' });
+    if ((g.clout || 0) > 0) tabDefs.push({ id: 'res', label: 'Research' });
     if (metaUnlocked) tabDefs.push({ id: 'perks', label: 'Perks' });
     const tabs = tabDefs.map(t => ({
       label: t.label, go: () => this.setState({ tab: t.id }),
