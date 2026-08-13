@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.10.15', build: 206, channel: 'alpha', date: '2026-08-13', codename: 'Neon Zero' };
+  VERSION = { num: '0.10.16', build: 207, channel: 'alpha', date: '2026-08-13', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -108,6 +108,9 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.10.16', date: '2026-08-13', codename: 'Neon Zero', notes: [
+      'Mobile: the Ledger now collapses to the CASH row by default on narrow screens (tap ▸ to expand). The full Ledger — six resource rows plus the Floor block — measured 776px on a 390px phone, taller than the whole viewport, and sat first in the stacked column: Work the room and the Systems tabs were both below the fold. Collapsed it is ~70px, so the primary action and navigation are reachable without a long scroll. Desktop keeps the always-expanded Ledger and never sees the toggle.'
+    ] },
     { v: '0.10.15', date: '2026-08-13', codename: 'Neon Zero', notes: [
       'Fix: on phones the app root used height:100vh — the URL-bar-collapsed height — so with the browser chrome visible the footer and the last strip of content sat below the viewport and could not be scrolled into view (the root clips at 100vh with overflow:hidden and the document has nothing left to scroll). Now height:100dvh with a 100vh fallback, so the app tracks the dynamic viewport and the bottom of the page is always reachable.'
     ] },
@@ -639,6 +642,10 @@ class Game {
     tab: 'club', showChangelog: false, showSettings: false, showPrestige: false, showAchievements: false, tick: 0, saveState: 'idle', resetArmed: false,
     // Golden-ticket expanded state: badge is small by default; player taps to expand.
     goldenOpen: false,
+    // Ledger collapse on narrow screens: mobile players get the CASH row only and
+    // tap to expand the rest (the full Ledger is taller than the viewport).
+    // Desktop ignores the collapsed class (CSS only hides below 900px).
+    ledgerOpen: false,
     // true when another tab wrote KEY — autosave is off until reload (PLAN §2.3).
     tabStale: false,
     g: null
@@ -2060,6 +2067,8 @@ class Game {
       toggleChangelog: () => this.setState(s => ({ showChangelog: !s.showChangelog })),
       toggleSettings: () => this.setState(s => ({ showSettings: !s.showSettings, resetArmed: false })),
       togglePrestige: () => this.setState(s => ({ showPrestige: !s.showPrestige })),
+      ledgerOpen: this.state.ledgerOpen,
+      toggleLedger: () => this.setState(s => ({ ledgerOpen: !s.ledgerOpen })),
       saveNow: () => this.save('manual'),
       openLook: () => { this.setState({ showSettings: false }); this.toggleLook(true); },
       // File + clipboard share one payload shape so either restore path accepts either export.
@@ -2719,7 +2728,7 @@ class Game {
     });
     const v = this.renderVals();
 
-    const resourceRows = v.resources.map(r => `
+    const resRow = r => `
       <div style="border:1px solid #221434;border-radius:7px;background:#0f0a18;padding:8px 9px">
         <div style="display:flex;align-items:baseline;justify-content:space-between;gap:6px">
           <span style="font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:#9c86ab;font-weight:700">${r.name}</span>
@@ -2732,7 +2741,11 @@ class Game {
           <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6f5885;min-width:56px;text-align:right">${r.rate}</span>
         </div>
         <div style="font-size:10px;color:#9c86ab;margin-top:3px">${r.note}</div>
-      </div>`).join('');
+      </div>`;
+    // CASH stays visible when the Ledger is collapsed on narrow screens (mobile
+    // players always see the money); the rest folds behind the tap-to-expand.
+    const cashRow = v.resources[0] ? resRow(v.resources[0]) : '';
+    const ledgerDetailRows = v.resources.slice(1).map(resRow).join('');
 
     const statRows = v.stats.map(s => `
       <div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;font-size:11px">
@@ -2948,12 +2961,17 @@ class Game {
 
   <main data-scroll="main" class="shell-grid">
 
-    <aside data-scroll="ledger" style="border-right:1px solid #2a1738;background:#0a0611;overflow-y:auto;padding:14px 12px">
-      <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700;margin-bottom:10px">Ledger</div>
-      <div style="display:flex;flex-direction:column;gap:9px">${resourceRows}</div>
-
-      <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700;margin:18px 0 8px">Floor</div>
-      <div style="border:1px solid #221434;border-radius:7px;background:#0f0a18;padding:9px">${statRows}</div>
+    <aside data-scroll="ledger" class="${v.ledgerOpen ? '' : 'ledger-collapsed'}" style="border-right:1px solid #2a1738;background:#0a0611;overflow-y:auto;padding:14px 12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700">Ledger</div>
+        <button data-h="${this.bind(v.toggleLedger)}" class="ledger-toggle hv-pink" title="${v.ledgerOpen ? 'Collapse ledger' : 'Expand ledger'}" style="width:44px;height:44px;border:1px solid #2f1c42;border-radius:8px;background:#100a19;color:#9c86ab;cursor:pointer;font-size:16px;line-height:1">${v.ledgerOpen ? '▾' : '▸'}</button>
+      </div>
+      <div class="ledger-cash" style="display:flex;flex-direction:column;gap:9px">${cashRow}</div>
+      <div class="ledger-detail">
+        <div style="display:flex;flex-direction:column;gap:9px">${ledgerDetailRows}</div>
+        <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700;margin:18px 0 8px">Floor</div>
+        <div style="border:1px solid #221434;border-radius:7px;background:#0f0a18;padding:9px">${statRows}</div>
+      </div>
     </aside>
 
     <section class="stage-col" style="display:grid;grid-template-rows:minmax(190px,1fr) auto 132px;min-height:0;min-width:0">

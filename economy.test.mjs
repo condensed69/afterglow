@@ -681,6 +681,22 @@ test('fresh club keeps Club + Crew tabs; Upgrades/Research appear on unlock', ()
   }
 });
 
+test('ledger collapses to CASH row by default and toggles open', () => {
+  const game = newGame(20);
+  const v = game.renderVals();
+  strictEqual(v.ledgerOpen, false, 'ledger starts collapsed on narrow screens');
+  ok(v.resources.length >= 2, 'ledger has CASH plus other resources');
+  strictEqual(typeof v.toggleLedger, 'function', 'toggle action exposed');
+
+  v.toggleLedger();
+  strictEqual(game.renderVals().ledgerOpen, true, 'toggle expands the ledger');
+  v.toggleLedger();
+  strictEqual(game.renderVals().ledgerOpen, false, 'toggle collapses again');
+
+  // CASH is always the first resource row — the one that stays visible collapsed.
+  ok(v.resources[0].name.includes('Cash'), 'CASH row first in the ledger');
+});
+
 test('golden claim actions from renderVals() resolve the offer when invoked', () => {
   const game = newGame(500);
   const g = game.state.g;
