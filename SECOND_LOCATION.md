@@ -1,9 +1,9 @@
 # SECOND_LOCATION.md — Second Club Design
 
-**Status:** design lock for first implementation  
+**Status:** design lock for first implementation; save-shape groundwork shipped (SAVE_VER 9)  
 **Scope:** document only (no `game.js` change in this PR)  
 **Depends on:** prestige/shift/achievement systems shipped through v0.10.4 (SAVE_VER 8)
-**Save format when implemented:** SAVE_VER 8 → **9**
+**Save format:** SAVE_VER 8 → **9** (shipped in 0.11.0)
 
 This doc is intentionally complete enough for a later implementation PR: no open design questions for the first second-club ship. Numbers cite the post-0.10.4 balance intent; if live costs drift, re-check the worked tables and the second-room pacing scenario, not the fantasy.
 
@@ -135,7 +135,8 @@ research (r), managers, managerPaused, achievements,
 goals, clicks, rounds,
 whalesCount, specialsCount, golden,
 ts, log (shared night log, see §8),
-crew, jobs
+crew, jobs,
+clubs, activeClub
 ```
 
 ### Migration sketch (v8 → v9)

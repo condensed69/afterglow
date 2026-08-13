@@ -1,7 +1,7 @@
 # DESIGN.md — Afterglow Club Idle
 
 **Game:** Afterglow Club Idle (repo: stripper-dance)  
-**Spec target:** post-workstreams A–D and post-0.9.x systems — file save, Owner's List, balance + `pacing.mjs`, prestige, achievements, managers, special shifts, whales, multi-tab ownership (`game.js` v0.9.5, SAVE_VER 8)  
+**Spec target:** post-workstreams A–D and post-0.9.x systems — file save, Owner's List, balance + `pacing.mjs`, prestige, achievements, managers, special shifts, whales, multi-tab ownership, second-location save shape (`game.js` v0.11.0, SAVE_VER 9)  
 **Source of truth for numbers:** `game.js` (`caps()`, `rates()`, constant tables) — re-diff this file when those change  
 **Related:** `PRESTIGE.md` (prestige deep design, shipped 0.8.0), `PLAN.md` (logic-fix predecessor, shipped), `AGENTS.md` (repo gates). Workstream sequencing lived in a local orchestrator plan (not published in the repo tree).  
 **Ancestry:** this branch stacks A (file save) → B (Owner's List) → C (`pacing.mjs` + balance) → D (`PRESTIGE.md`) → 0.7.x stage work → 0.8.x prestige/achievements/whale → 0.9.x managers/special shifts/perk tree → 0.9.5 legacyTotal fix, so every claim below is present in-tree.
@@ -508,7 +508,7 @@ Achievements live in the Settings modal. Backfill on load credits already-earned
 | Field | Value |
 |-------|--------|
 | localStorage key | `afterglow.save` |
-| SAVE_VER | **8** |
+| SAVE_VER | **9** |
 | Envelope | `{ saveVer, ver, build, g }` |
 | Autosave | every 10 s (`save('auto')`) |
 | Manual | Settings → Save now |
@@ -546,7 +546,7 @@ Files and clipboard are interchangeable by design.
 Safety-critical order is **log → persist → replace** (not replace-first). A quota/storage failure must not leave the player on an imported club that never hit disk.
 
 1. `JSON.parse`  
-2. `isValidSavePayload` (saveVer finite; cash/hype/buzz/patrons/regulars/clout/crew numbers; jobs object)  
+2. `isValidSavePayload` (saveVer finite; club resources cash/hype/buzz/patrons/regulars numeric — read from `g.clubs.main` for v9 payloads, top-level for pre-v9; clout/crew numbers; jobs object)  
 3. If `saveVer !== SAVE_VER`: `migrateFrom` chain; missing step → fail  
 4. `completeImportedG` (fill defaults, reject unsafe values)  
 5. Stamp `ts = now` on the **candidate** `g` (not yet live)  
