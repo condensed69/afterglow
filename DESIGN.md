@@ -437,7 +437,7 @@ Rave and pan are logged with distinct colors. Like `spawnWhale`, the handler res
 A rare floating offer — “VIP booked the booth” — **live only** (inside the `_live` tick), requires `hype > 0`, one offer at a time:
 
 ```
-per-slice chance = GOLDEN_CHANCE × (chunk / SIM)          // 0.005 × slice-time fraction, whale-style
+per-slice chance = GOLDEN_CHANCE × (chunk / SIM)          // 0.001 × slice-time fraction, whale-style (≈1 offer per ~2 min at the 10Hz sim — 0.10.20, was 0.005 ≈ one per 20s)
 state: g.golden = { at: Date.now() }                      // additive; null when absent
 TTL:  GOLDEN_TTL = 30 s wall-clock (live tick or catchUp expiry — expireGolden)
 take the $:    cash += floor(25 × cashIncomeMult(g))      // income-scaled tip

@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.10.19', build: 210, channel: 'alpha', date: '2026-08-13', codename: 'Neon Zero' };
+  VERSION = { num: '0.10.20', build: 211, channel: 'alpha', date: '2026-08-13', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -108,6 +108,9 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.10.20', date: '2026-08-13', codename: 'Neon Zero', notes: [
+      'Golden-ticket VIP cadence: GOLDEN_CHANCE 0.005 → 0.001 per live tick. The 0.10.2 changelog called it "rare" but 0.5% per tick at the 10Hz sim is ~3 offers a minute — the VIP badge and "VIP booked the booth" log line were on screen roughly 60% of a session (one spawn attempt every ~20s against a 30s TTL). Now ~one offer per ~2 min: still a regular treat, no longer wallpaper. Live-only event, so pacing bands are untouched.'
+    ] },
     { v: '0.10.19', date: '2026-08-13', codename: 'Neon Zero', notes: [
       'Patrons now pay the door: the flat $0.08 door trickle is replaced by a per-head cover ($0.02/patron/s), so a packed floor earns more at any size and income no longer flatlines past the rail-tip cap (before, cash was identical from 12 to 72 patrons — the crowd was decorative). An empty room earns ~nothing, so there is no free money, and the patron cap bounds the early game. Supersedes the PLAN §1.6 "no uncapped patrons×0.012" decision, which rejected a flat rate stacked ON TOP of the door; the cover replaces the door instead. Pacing improved: first research ~20m and all upgrades ~39m (both closer to their ~25m/~45m intents), all bands still pass.',
       'Determinism fix: whale and special-shift rolls are now gated behind the _live flag like the critic/golden events. Both were documented as "live only" but the guard was missing: the pacing bot rolled whales AND special shifts, and the offline catchUp loop rolled special shifts (it calls advanceShift but never the whale block) — so pacing.mjs was seed-dependent (milestones varied run to run). Now the bot/offline path draws zero randoms and pacing.mjs is bit-identical across runs. Offline away-time stays on the base 4-shift rotation; whales and specials are live-session texture only.'
@@ -392,7 +395,7 @@ class Game {
   // bot and offline catchUp drive step() with _live = false, so these random rolls
   // can never flake pacing.mjs (a hard gate).
   CRITIC_CHANCE = 0.02;  // per night at rollover, requires hype >= 30
-  GOLDEN_CHANCE = 0.005; // per live tick at hype > 0
+  GOLDEN_CHANCE = 0.001; // per live tick at hype > 0 — 0.001/tick at the 10Hz sim ≈ one offer per ~2 min (0.10.20: was 0.005 ≈ one per 20s; the 0.10.2 changelog said "rare" but 0.5%/tick at 10 ticks/s is ~3/min — the VIP badge and log line were up ~60% of a session)
   GOLDEN_TTL = 30;       // seconds a golden offer stays clickable
   _live = false;         // true only inside the live tick interval
   _lastRender = 0;       // 0.10.4: render throttle — forceUpdate only if 250ms since last DOM write
