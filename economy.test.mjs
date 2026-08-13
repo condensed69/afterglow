@@ -886,10 +886,13 @@ test('special_5 unlocks at 5 specials and its Legacy credits legacyTotal', () =>
 test('special_1 does not unlock when completing Work the room goal (no special shift)', () => {
   const game = newGame(20);
   const g = game.state.g;
-  // Complete "Work the room" goal by clicking 5 times
+  // Complete "Work the room" goal by clicking 5 times, then run the same
+  // noteGoals + checkAchievements pair every real call site uses.
   g.clicks = 5;
   g.specialsCount = 0;
-  game.noteGoals(g); // This runs checkAchievements internally
+  game.noteGoals(g);
+  ok(g.goals.includes('work'), 'Work the room goal actually completed');
+  game.checkAchievements(g);
   ok(!g.achievements.includes('special_1'), 'special_1 (Surprise Hit) must not unlock from tutorial completion');
   strictEqual(g.specialsCount, 0, 'specialsCount must remain 0 after tutorial goal');
 });
