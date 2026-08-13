@@ -1094,14 +1094,21 @@ test('burst events stay off when not live (pacing-bot determinism)', () => {
   g.shiftIdx = 3;
   const r = game.rates(g);
   g.shiftT = r.shift.len - 0.05;
-  // 0.10.19: a single all-HIT roll (0.0) is the tightest determinism pin — the
-  // bot path must draw ZERO randoms. If special-shift or whale rolls leaked into
-  // the not-live path, 0.0 < SPECIAL_CHANCE and 0.0 < whale threshold would fire
-  // them here (and the _specialShift / cash assertions below would fail); if the
-  // code drew more than one random, withRandom would throw on the overrun. The
-  // old comment about "the pre-existing special-shift roll is allowed to miss
-  // cleanly" no longer applies — that roll is now gated behind _live.
-  withRandom([0.0], () => game.step(0.1));
+  // 0.10.19: count actual Math.random calls instead of pinning a single all-hit
+  // value. withRandom's overrun throw only guards multi-value scripts (single-value
+  // lists cycle by design), so [0.0] would still pass if a non-live path drew a
+  // random that happened not to fire the asserted events. A spy asserting ZERO
+  // draws is the tightest determinism pin: any leaked roll — whale, special-shift,
+  // critic, golden, or a future event — fails the count.
+  const origRandom = Math.random;
+  let draws = 0;
+  Math.random = () => { draws++; return 0.0; };
+  try {
+    game.step(0.1);
+  } finally {
+    Math.random = origRandom;
+  }
+  strictEqual(draws, 0, 'bot path draws zero randoms (whale/special/critic/golden all gated)');
   strictEqual(g.golden, null, 'no golden offer in bot path');
   ok(g.clout < 0.001, 'no critic clout in bot path');
   strictEqual(g._specialShift, null, 'no special shift in bot path');

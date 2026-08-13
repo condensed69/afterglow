@@ -43,7 +43,7 @@ Side benefit: the cover cascade shifted first research and all upgrades **closer
 
 ### Determinism fix (review finding)
 
-Both `pacing.mjs` (this bot) and the offline `catchUp` were seed-dependent: the whale roll (`step()`) and the special-shift roll (`advanceShift()`) consumed `Math.random()` even with `_live = false` — the whale comment said "live only" but the guard was missing. Milestone times therefore varied run to run (~±2 min on the late milestones), so a "6-run range" was six different random experiments, not a verification. Both rolls are now gated behind `this._live` (the same convention the critic/golden events use), so:
+The bot and offline paths were seed-dependent in different ways: the pacing bot's `step()` path rolled **both** whales (ungated in `step()`) and special shifts (ungated in `advanceShift()`), while the offline `catchUp()` loop rolled **special shifts only** — its independent loop calls `advanceShift()` but never the whale block. Both rolls were documented as "live only" but the guard was missing, so milestone times varied run to run (~±2 min on the late milestones) and a "6-run range" was six different random experiments, not a verification. Both rolls are now gated behind `this._live` (the same convention the critic/golden events use), so:
 
 - The pacing bot and offline catch-up never roll whales or specials — `pacing.mjs` is deterministic (two runs, byte-identical output).
 - Offline away-time stays on the base 4-shift rotation; whales and specials are live-session texture only (as their docs always claimed).
@@ -52,7 +52,7 @@ Both `pacing.mjs` (this bot) and the offline `catchUp` were seed-dependent: the 
 ### Gates
 
 - `node --check game.js` ✅
-- `node economy.test.mjs` ✅ (209 passed, 1 skipped, 0 failed — the old "no uncapped patrons×0.012" regression test is rewritten as "patrons pay door cover scaled by head count, empty room earns nothing"; the strike-alternation test now seeds patrons so cover revenue accumulates while underfunded; the determinism pin and five special-shift mechanism tests now run with `_live = true`)
+- `node economy.test.mjs` ✅ (209 passed, 1 skipped, 0 failed — the old "no uncapped patrons×0.012" regression test is rewritten as "patrons pay door cover scaled by head count, empty room earns nothing"; the strike-alternation test now seeds patrons so cover revenue accumulates while underfunded; the bot-determinism test now spies `Math.random` and asserts **zero draws** in the not-live path, and five special-shift mechanism tests run with `_live = true`)
 - `node pacing.mjs` ✅ (all milestones within band, prestige scenario passed; two runs bit-identical)
 
 ### Docs touched
