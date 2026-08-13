@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.10.16', build: 207, channel: 'alpha', date: '2026-08-13', codename: 'Neon Zero' };
+  VERSION = { num: '0.10.17', build: 208, channel: 'alpha', date: '2026-08-13', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -108,6 +108,9 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.10.17', date: '2026-08-13', codename: 'Neon Zero', notes: [
+      'Mobile: every button gets a 44px minimum tap target below 900px — the multi-buy ×1/×5/×10/×Max row was 40×30px (Barbara\'s thumb covered two at once), the tab bar 38px tall, the ☰ menu 34×34, the job steppers 26×26. The shell, header, modals, and Look panel all covered by one rule (min-height/min-width beat the inline sizes). Desktop is untouched.'
+    ] },
     { v: '0.10.16', date: '2026-08-13', codename: 'Neon Zero', notes: [
       'Mobile: the Ledger now collapses to the CASH row by default on narrow screens (tap ▸ to expand). The full Ledger — six resource rows plus the Floor block — measured 776px on a 390px phone, taller than the whole viewport, and sat first in the stacked column: Work the room and the Systems tabs were both below the fold. Collapsed it is ~70px, so the primary action and navigation are reachable without a long scroll. Desktop keeps the always-expanded Ledger and never sees the toggle.'
     ] },
@@ -2550,7 +2553,7 @@ class Game {
     const l = this.look;
     const seg = (key, map) => Object.keys(map).map(k => {
       const on = l[key] === k, lab = typeof map[k] === 'string' ? map[k] : map[k].label;
-      return '<button data-lk="' + key + ':' + k + '" style="flex:1;min-width:0;padding:7px 4px;cursor:pointer;font-family:inherit;' +
+      return '<button data-lk="' + key + ':' + k + '" class="lk-seg" style="flex:1;min-width:0;padding:7px 4px;cursor:pointer;font-family:inherit;' +
         'font-size:10px;font-weight:700;letter-spacing:.4px;border-radius:6px;border:1px solid ' + (on ? '#ff2d78' : '#311d44') + ';' +
         'background:' + (on ? 'rgba(255,45,120,.16)' : '#150d21') + ';color:' + (on ? '#ff8bb4' : '#9c86ab') + ';' +
         'white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + lab + '</button>';
