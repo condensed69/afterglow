@@ -1764,6 +1764,26 @@ test('step(0) does not mutate resources', () => {
 
 console.log('\nbuyUpgrade enforces building req (PLAN §1.8)');
 
+test('pacing anchors: loop cheapest research, residency most expensive upgrade (0.10.18 balance)', () => {
+  // 0.10.18 balance pass pins the two pacing knobs so future retunes are
+  // deliberate: Reputation Loop (cost 12) is the first research bought — it
+  // anchors the "first research" milestone — and Weekly Residency (cost 8000)
+  // is the last upgrade bought under the §C bot's cheapest-first policy, so it
+  // anchors "all upgrades owned". Residency must stay the max so the milestone
+  // bottleneck cannot silently move to Bottle Service.
+  const game = newGame(1e9);
+  const loop = game.RESEARCH.find(r => r.id === 'loop');
+  const residency = game.UPGRADES.find(u => u.id === 'residency');
+  ok(loop, 'loop research must exist');
+  ok(residency, 'residency upgrade must exist');
+  strictEqual(loop.cost, 12, 'loop cost pins the first-research gate (~22m under §C bot)');
+  strictEqual(residency.cost, 8000, 'residency cost pins the all-upgrades gate (~46m under §C bot)');
+  const researchCosts = game.RESEARCH.map(r => r.cost);
+  strictEqual(Math.min(...researchCosts), loop.cost, 'loop stays the cheapest research (milestone anchor)');
+  const upgradeCosts = game.UPGRADES.map(u => u.cost);
+  strictEqual(Math.max(...upgradeCosts), residency.cost, 'residency stays the most expensive upgrade (milestone anchor)');
+});
+
 test('buyUpgrade rejects purchase when building req unmet', () => {
   const game = newGame(1e9);
   const g = game.state.g;
