@@ -608,7 +608,7 @@ Main: three columns **`minmax(232px,300px) | minmax(320px,720px) | minmax(320px,
 
 Typography (loaded in `index.html`): **Monoton** (wordmark), **Space Grotesk** (UI), **IBM Plex Mono** (numbers). Palette is magenta `#ff2d78`, cyan `#22d3ee`, gold `#ffc94a` on near-black `#07050c`.
 
-**Narrow screens — one scroller, not four (v0.10.7).** The app root is `height:100vh; overflow:hidden`, and Ledger, Log and the Systems tab body each carry an inline `overflow-y:auto`. Side by side that is correct: each of the three columns owns a full-height viewport. Stacked into a single column below **900px** they instead share `100vh − header − footer`, so every panel becomes a ~100px window with its own scrollbar nested inside the shell's. Below 900px:
+**Narrow screens — one scroller, not four (v0.10.7).** The app root is `height:100dvh; overflow:hidden` (with `100vh` fallback for browsers without dynamic viewport units), and Ledger, Log and the Systems tab body each carry an inline `overflow-y:auto`. Side by side that is correct: each of the three columns owns a full-height viewport. Stacked into a single column below **900px** they instead share `100dvh − header − footer`, so every panel becomes a ~100px window with its own scrollbar nested inside the shell's. Below 900px:
 
 - the three inner panels go `overflow:visible !important` and size to content — `.shell-grid` (which already carries `data-scroll="main"`, so the existing save/restore in §14.2 covers it) is the only scroller;
 - the Stage `section` (`.stage-col`) and Systems `aside` (`.sys-col`) switch from `minmax(190px,1fr) auto 132px` / `auto auto minmax(0,1fr)` to content-sized rows — two rows for `.stage-col`, since `#stage` itself is hidden here (below);

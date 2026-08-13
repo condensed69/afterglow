@@ -151,7 +151,7 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
     overflow-y: auto;
     overflow-x: hidden;
     /* min-content, not the `auto` default. As a scroll container inside the
-       100vh app root this grid has a *definite* height, so `auto` rows are
+       100dvh app root this grid has a *definite* height, so `auto` rows are
        shrunk to fit it: the Ledger's content claims the whole ~620px and the
        Stage and Systems rows resolve to zero, their contents spilling out and
        painting on top of each other. Measured, not theorised — `auto` and
@@ -166,11 +166,11 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
     min-width: 0;
   }
 
-  /* One scroller, not four (v0.10.7). The app root is height:100vh;overflow:hidden,
+  /* One scroller, not four (v0.10.7). The app root is height:100dvh;overflow:hidden,
      and Ledger, Log and the Systems tab body each carry their own inline
      `overflow-y:auto`. Side by side as three desktop columns that is right: each
      column owns a full-height viewport. Stacked into one mobile column they all
-     share 100vh minus header and footer, so every panel becomes a ~100px window
+     share 100dvh minus header and footer, so every panel becomes a ~100px window
      with its own scrollbar nested inside the shell's — two visible tracks, and a
      card list you read three rows at a time.
 
