@@ -1144,15 +1144,15 @@ test('maybeGolden scales its roll by chunk like the whale roll', () => {
   const game = newGame(20);
   const g = game.state.g;
   g.hype = 50;
-  // Partial chunk (0.05s): scaled chance = 0.005 * 0.05/0.1 = 0.0025.
-  withRandom([0.0024], () => { game.maybeGolden(g, 0.05); });
+  // Partial chunk (0.05s): scaled chance = 0.001 * 0.05/0.1 = 0.0005.
+  withRandom([0.0004], () => { game.maybeGolden(g, 0.05); });
   ok(g.golden, 'roll under the scaled threshold spawns');
   g.golden = null;
-  withRandom([0.0026], () => { game.maybeGolden(g, 0.05); });
-  strictEqual(g.golden, null, 'partial chunk uses the scaled (lower) chance — a flat 0.5% roll would have spawned');
-  // Full chunk (SIM = 0.1s): chance back to the documented 0.5%.
-  withRandom([0.004], () => { game.maybeGolden(g, 0.1); });
-  ok(g.golden, 'full chunk rolls at the documented 0.5%');
+  withRandom([0.0006], () => { game.maybeGolden(g, 0.05); });
+  strictEqual(g.golden, null, 'partial chunk uses the scaled (lower) chance — a flat 0.1% roll would have spawned');
+  // Full chunk (SIM = 0.1s): chance back to the documented 0.1%.
+  withRandom([0.0009], () => { game.maybeGolden(g, 0.1); });
+  ok(g.golden, 'full chunk rolls at the documented 0.1%');
 });
 
 test('takeGolden runs achievement checks after resolving (like other handlers)', () => {
