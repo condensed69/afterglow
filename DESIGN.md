@@ -104,12 +104,17 @@ cloutMult = 1 + 0.25 × clout25 perk rank                      // multiplies Clo
 
 ```
 railCap     = rail × 6
-nonCrewCash = (0.08 + min(patrons, railCap) × 0.06 + bar × 0.45) × cashMult × houseCut
+nonCrewCash = (patrons × 0.02 + min(patrons, railCap) × 0.06 + bar × 0.45) × cashMult × houseCut
             + vip × 1.25 × bottle × cashMult × houseCut
             + (loop ? regulars × 0.04 × cashMult × houseCut : 0)
 ```
 
-- Flat **0.08** is the door trickle (uncapped patrons do **not** pay outside the rail).  
+- **Door cover: patrons × $0.02/head** (v0.10.19). Replaces the old flat $0.08 trickle, so
+  the door take scales with the crowd — a packed floor always pays more and income never
+  flatlines against patron count, while an empty room earns ~nothing (no free money). The
+  patron cap bounds the early game. This supersedes the earlier PLAN §1.6
+  "no uncapped patrons×0.012" decision: that rejected a flat per-patron rate stacked *on
+  top of* the door; the cover *replaces* the door trickle instead.
 - Rail tips: up to **6 patrons per rail** at **+$0.06/s** each, then × `cashMult` × `houseCut`.
 
 **Crew cash & wages**
@@ -127,7 +132,7 @@ if nonCrewCash < wage:
   strike = true
 ```
 
-Recovery is **not** “cash > 0”. Buildings must cover payroll via non-crew revenue so strike ticks cannot alternate with production via the door trickle.
+Recovery is **not** “cash > 0”. Buildings must cover payroll via non-crew revenue so strike ticks cannot alternate with production via the door take.
 
 ```
 cash = nonCrewCash + vipCrewCash − wage   // net $/s
@@ -392,7 +397,7 @@ One auto-buyer per building type, purchased with Legacy from the Perks tab, max 
 
 ### 11.1 Special shifts (`SPECIAL_SHIFTS`) — shipped 0.9.0
 
-At each shift rollover (`advanceShift`, shared live/offline path), a normal shift that just ended rolls **`SPECIAL_CHANCE = 0.10`** to start a special on the next instance. A special that just ended is cleared and never re-rolls → **never two in a row**. When the roll succeeds, the specific special is picked **by weight** (table below, default 1). `g.shiftIdx` keeps advancing the base 4-shift rotation underneath, so a special never corrupts it. `g._specialShift` (index into `SPECIAL_SHIFTS`) round-trips through disk, so a save mid-special resumes it correctly; bad/foreign values fall through to the base shift (fail-closed).
+At each shift rollover (`advanceShift`), a normal shift that just ended rolls **`SPECIAL_CHANCE = 0.10`** to start a special on the next instance — **live only** (0.10.19: gated by the `_live` flag like the critic/golden/whale rolls; the pacing bot and offline `catchUp` stay on the base 4-shift rotation, keeping `pacing.mjs` deterministic). A special that just ended is cleared and never re-rolls → **never two in a row**. When the roll succeeds, the specific special is picked **by weight** (table below, default 1). `g.shiftIdx` keeps advancing the base 4-shift rotation underneath, so a special never corrupts it. `g._specialShift` (index into `SPECIAL_SHIFTS`) round-trips through disk, so a save mid-special resumes it correctly (offline `catchUp` runs its remaining length and clears it on rollover); bad/foreign values fall through to the base shift (fail-closed).
 
 | id | Name | Mult | Length (s) | Tint | Weight |
 |----|------|-----:|-----------:|------|-------:|
@@ -404,7 +409,7 @@ At each shift rollover (`advanceShift`, shared live/offline path), a normal shif
 
 ### 11.2 Whale (`spawnWhale`) — shipped 0.8.1
 
-Random high-roller burst, **live only** (inside `step`), requires `hype > 0`:
+Random high-roller burst, **live only** — gated by the `_live` flag (0.10.19; the doc always claimed live-only but the guard was missing, letting the pacing bot roll whales and making `pacing.mjs` seed-dependent) — requires `hype > 0`:
 
 ```
 per-tick chance = 0.0008 × chunk × (1 + hype / 200)     // ~1 per 3 min at base, scales with hype

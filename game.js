@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.10.18', build: 209, channel: 'alpha', date: '2026-08-13', codename: 'Neon Zero' };
+  VERSION = { num: '0.10.19', build: 210, channel: 'alpha', date: '2026-08-13', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -108,6 +108,10 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.10.19', date: '2026-08-13', codename: 'Neon Zero', notes: [
+      'Patrons now pay the door: the flat $0.08 door trickle is replaced by a per-head cover ($0.02/patron/s), so a packed floor earns more at any size and income no longer flatlines past the rail-tip cap (before, cash was identical from 12 to 72 patrons — the crowd was decorative). An empty room earns ~nothing, so there is no free money, and the patron cap bounds the early game. Supersedes the PLAN §1.6 "no uncapped patrons×0.012" decision, which rejected a flat rate stacked ON TOP of the door; the cover replaces the door instead. Pacing improved: first research ~20m and all upgrades ~39m (both closer to their ~25m/~45m intents), all bands still pass.',
+      'Determinism fix: whale and special-shift rolls are now gated behind the _live flag like the critic/golden events. Both were documented as "live only" but the guard was missing: the pacing bot rolled whales AND special shifts, and the offline catchUp loop rolled special shifts (it calls advanceShift but never the whale block) — so pacing.mjs was seed-dependent (milestones varied run to run). Now the bot/offline path draws zero randoms and pacing.mjs is bit-identical across runs. Offline away-time stays on the base 4-shift rotation; whales and specials are live-session texture only.'
+    ] },
     { v: '0.10.18', date: '2026-08-13', codename: 'Neon Zero', notes: [
       'Balance pass: first research now lands ~22m (was ~18m, design intent ~25m) and all upgrades ~46m (was ~34m, intent ~45m). Reputation Loop cost 8→12 Clout — the front-loaded achievement Clout made the old 8 reachable in 18m, undercutting the ~25m gate the regulars/clout rates were paced for. Weekly Residency cost 5800→8000 — the last upgrade the pacing bot buys, it now anchors the top of the chain at ~12× a Dressing Room, inside the 10–100× tier-upgrade range, and lands the all-upgrades beat on its ~45m intent. Prestige acceleration unchanged (run2 first LED still ~13m vs ~15m).'
     ] },
@@ -1505,7 +1509,11 @@ class Game {
     g.shiftIdx = (g.shiftIdx + 1) % 4;
     if (g.shiftIdx === 0) g.night++;
     g._specialShift = null;
-    if (!specialJustEnded && Math.random() < this.SPECIAL_CHANCE) {
+    // 0.10.19: the special roll is live-only like the critic/golden/whale rolls —
+    // without this, the pacing bot and offline catchUp (which drive step() with
+    // _live = false) rolled special shifts and made pacing.mjs seed-dependent.
+    // Gating here keeps offline away-time on the base 4-shift rotation.
+    if (!specialJustEnded && this._live && Math.random() < this.SPECIAL_CHANCE) {
       g._specialShift = this.pickSpecialShift(g);
       // 0.10.1: lifetime special-shift counter (drives special_1/special_5).
       g.specialsCount = (g.specialsCount || 0) + 1;
@@ -1524,11 +1532,16 @@ class Game {
     const bottle = g.u.bottle ? 2.2 : 1;
 
     const railCap = g.b.rail * 6;
-    // Non-crew cash: base door + tip rail + bar + VIP rooms + regulars loop.
-    // Patron tips only via rail (PLAN §1.6); flat 0.08 covers the door.
-    // House cut prestige perk multiplies all cash income (not wages).
+    // Non-crew cash: door cover + tip rail + bar + VIP rooms + regulars loop.
+    // 0.10.19: the door take scales with the crowd (cover = patrons × 0.02) instead
+    // of the old flat 0.08 — a packed floor pays more, an empty room ~nothing, and
+    // income never flatlines against patron count. This supersedes PLAN §1.6's
+    // "no uncapped patrons×0.012" (that rejected a flat rate ON TOP of the door;
+    // here the cover REPLACES the door trickle, so an empty room earns less, not
+    // more, and the patron cap bounds the early game). Patron tips still only via
+    // rail (PLAN §1.6). House cut prestige perk multiplies all cash income.
     const houseCut = this.cashIncomeMult(g);
-    let nonCrewCash = (0.08 + Math.min(g.patrons, railCap) * 0.06 + g.b.bar * 0.45) * cashMult * houseCut;
+    let nonCrewCash = (g.patrons * 0.02 + Math.min(g.patrons, railCap) * 0.06 + g.b.bar * 0.45) * cashMult * houseCut;
     nonCrewCash += g.b.vip * 1.25 * bottle * cashMult * houseCut;
     if (g.r.loop) nonCrewCash += g.regulars * 0.04 * cashMult * houseCut;
 
@@ -1686,10 +1699,14 @@ class Game {
       this.noteGoals(g, { live: true });
       // Per-slice achievement check so stat/night thresholds reached mid-window unlock.
       this.checkAchievements(g);
-      // Whale event: ~1 per 3 min at base, scales with hype (live only, requires hype > 0)
+      // Whale event: ~1 per 3 min at base, scales with hype. 0.10.19: the roll is
+      // gated behind _live like the other burst events (comment said "live only"
+      // but the guard was missing) — without it the pacing bot rolled whales and
+      // cash bonuses made pacing.mjs seed-dependent. The cooldown decrement stays
+      // ungated (deterministic), so a return to live resumes the window correctly.
       if (!g._whaleCooldown) g._whaleCooldown = 0;
       g._whaleCooldown -= chunk;
-      if (g.hype > 0 && g._whaleCooldown <= 0 && Math.random() < 0.0008 * chunk * (1 + g.hype / 200)) {
+      if (this._live && g.hype > 0 && g._whaleCooldown <= 0 && Math.random() < 0.0008 * chunk * (1 + g.hype / 200)) {
         this.spawnWhale(g);
         g._whaleCooldown = 120 + Math.random() * 180; // 2-5 min
       }
@@ -2159,7 +2176,7 @@ class Game {
       { name: 'Hype' + this.helpIcon('Hype', 'Room energy. Multiplies all cash income and click value. Decays over time — feed it with DJ Booths and the stage crew.'), val: this.fmt(g.hype), rate: sign(r.hype), pct: g.hype / cap.hype * 100, color: '#ff2d78', note: 'cap ' + cap.hype + ' · x' + (1 + g.hype / 140).toFixed(2) + ' income' },
       { name: 'Buzz' + this.helpIcon('Buzz', 'Street awareness. Converts into patrons entering the club. Marquee Signs and Flyer Crews generate it.'), val: this.fmt(g.buzz), rate: sign(r.buzz - r.buzzSpent), pct: g.buzz / cap.buzz * 100, color: '#22d3ee', note: 'cap ' + cap.buzz + ' · pulls patrons in' },
       // Display whole people; sim keeps fractional g.patrons (PLAN §2.4).
-      { name: 'Patrons' + this.helpIcon('Patrons', 'Bodies on the floor. They tip at Tip Rails and slowly become Regulars. Cap grows with structures.'), val: this.fmt(Math.floor(g.patrons)), rate: sign(r.patrons), pct: g.patrons / cap.patrons * 100, color: '#a855f7', note: 'floor cap ' + cap.patrons },
+      { name: 'Patrons' + this.helpIcon('Patrons', 'Bodies on the floor. They pay cover at the door ($0.02/head), tip at Tip Rails, and slowly become Regulars. Cap grows with structures.'), val: this.fmt(Math.floor(g.patrons)), rate: sign(r.patrons), pct: g.patrons / cap.patrons * 100, color: '#a855f7', note: 'floor cap ' + cap.patrons },
       { name: 'Regulars' + this.helpIcon('Regulars', 'Loyal patrons who never leave. Each one generates Clout over time. With Reputation Loop, they also pay $0.04/s cash.'), val: this.fmt(g.regulars), rate: sign(r.regulars), pct: Math.min(100, g.regulars), color: '#4ade80', note: g.r.loop ? '$0.04/s each' : 'unlock Reputation Loop' },
       { name: 'Clout' + this.helpIcon('Clout', 'Research currency. Earned from Regulars. Spent permanently on the Research tab for global upgrades.'), val: this.fmt(g.clout), rate: sign(r.clout), pct: Math.min(100, g.clout * 2), color: '#e879f9', note: 'spent on research' }
     ];

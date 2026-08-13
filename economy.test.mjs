@@ -866,6 +866,7 @@ test('whale_10 unlocks at 10 whales and its Legacy credits legacyTotal', () => {
 test('specialsCount increments when a special shift triggers', () => {
   const game = newGame(20);
   const g = game.state.g;
+  game._live = true; // 0.10.19: the special roll is live-only (pacing-bot determinism)
   g._specialShift = null;
   g.shiftIdx = 0;
   g.shiftT = 0;
@@ -879,6 +880,7 @@ test('specialsCount increments when a special shift triggers', () => {
 test('specialsCount does not increment on a normal shift rollover', () => {
   const game = newGame(20);
   const g = game.state.g;
+  game._live = true; // 0.10.19: the special roll is live-only (pacing-bot determinism)
   g._specialShift = null;
   g.shiftIdx = 0;
   g.shiftT = 0;
@@ -1092,12 +1094,25 @@ test('burst events stay off when not live (pacing-bot determinism)', () => {
   g.shiftIdx = 3;
   const r = game.rates(g);
   g.shiftT = r.shift.len - 0.05;
-  // All rolls miss (0.99) — golden/critic never even roll without _live, and the
-  // pre-existing special-shift roll is allowed to miss cleanly.
-  withRandom([0.99, 0.99, 0.99, 0.99], () => game.step(0.1));
+  // 0.10.19: count actual Math.random calls instead of pinning a single all-hit
+  // value. withRandom's overrun throw only guards multi-value scripts (single-value
+  // lists cycle by design), so [0.0] would still pass if a non-live path drew a
+  // random that happened not to fire the asserted events. A spy asserting ZERO
+  // draws is the tightest determinism pin: any leaked roll — whale, special-shift,
+  // critic, golden, or a future event — fails the count.
+  const origRandom = Math.random;
+  let draws = 0;
+  Math.random = () => { draws++; return 0.0; };
+  try {
+    game.step(0.1);
+  } finally {
+    Math.random = origRandom;
+  }
+  strictEqual(draws, 0, 'bot path draws zero randoms (whale/special/critic/golden all gated)');
   strictEqual(g.golden, null, 'no golden offer in bot path');
   ok(g.clout < 0.001, 'no critic clout in bot path');
   strictEqual(g._specialShift, null, 'no special shift in bot path');
+  strictEqual(g.whalesCount || 0, 0, 'no whale spawn in bot path');
 });
 
 test('takeGolden is a no-op on a stale (non-owning) tab', () => {
@@ -1607,17 +1622,18 @@ test('strike edge-triggered log fires once on onset', () => {
   strictEqual(after.length, 1, 'strike log remains edge-triggered (not per-tick)');
 });
 
-test('door trickle does not alternate an underfunded strike into production', () => {
+test('door cover does not alternate an underfunded strike into production', () => {
   const game = newGame(0);
   const g = game.state.g;
   g.crew = 2;
   g.jobs = { stage: 1, vipjob: 0, floor: 1, off: 0 };
+  g.patrons = 8; // cover 8×0.02 = 0.16/s gross (0.112 net at Early Doors) < wage 0.40
   game.step(1);
-  ok(g.cash > 0, 'non-crew door revenue accumulates during strike');
+  ok(g.cash > 0, 'non-crew door-cover revenue accumulates during strike');
   const hype = g.hype;
   const buzz = g.buzz;
   game.step(1);
-  strictEqual(game.rates(g).strike, true, 'crew remain on strike with positive trickle cash');
+  strictEqual(game.rates(g).strike, true, 'crew remain on strike with positive cover cash');
   strictEqual(g.hype, hype, 'stage crew do not produce on the next tick');
   strictEqual(g.buzz, buzz, 'floor crew do not produce on the next tick');
 });
@@ -1679,11 +1695,13 @@ test('rail + walk-in patrons earn cash with zero buzz', () => {
   ok(g.cash > cashBefore, `cash must grow via rail tips with zero buzz (${cashBefore} → ${g.cash})`);
 });
 
-// PLAN §1.6 — no uncapped patrons*0.012; patron cash via rail only (+ base door)
-test('patrons without rail earn only base door cash (no flat patron rate)', () => {
+// 0.10.19 — PLAN §1.6 "no uncapped patrons×0.012" is superseded: the door take is
+// now a per-patron cover (patrons × 0.02) REPLACING the flat 0.08 trickle, so an
+// empty room earns ~nothing (no free money) while a packed floor pays more at any
+// size. Patron TIPS still only via rail (that part of §1.6 stands).
+test('patrons pay door cover scaled by head count, empty room earns nothing', () => {
   const game = newGame(100);
   const g = game.state.g;
-  g.patrons = 100;
   g.b.rail = 0;
   g.b.bar = 0;
   g.b.vip = 0;
@@ -1693,11 +1711,15 @@ test('patrons without rail earn only base door cash (no flat patron rate)', () =
   g.regulars = 0;
   g.shiftIdx = 0; // Early Doors mult 0.7
   g.u = {};
-  const r = game.rates(g);
-  // cashMult = 1 * 1 * 0.7; expected non-crew = 0.08 * 0.7 only
-  const expected = 0.08 * 0.7;
+  g.patrons = 0;
+  let r = game.rates(g);
+  strictEqual(r.cash, 0, 'empty room earns no door money (cover replaces flat 0.08)');
+  g.patrons = 100;
+  r = game.rates(g);
+  // cashMult = 1 * 1 * 0.7; expected cover = 100 * 0.02 * 0.7 = 1.40 (no rail tips)
+  const expected = 100 * 0.02 * 0.7;
   ok(Math.abs(r.cash - expected) < 1e-9,
-    `no uncapped patrons×0.012: cash=${r.cash}, expected base door ${expected}`);
+    `uncapped cover: cash=${r.cash}, expected ${expected}`);
 });
 
 test('Tip Rail desc mentions per-rail patron cap', () => {
@@ -3807,6 +3829,7 @@ console.log('\nspecial shifts (PLAN §4.2)');
 test('special-shift override does not corrupt the base SHIFTS rotation on the next boundary', () => {
   const game = newGame();
   const g = game.state.g;
+  game._live = true; // 0.10.19: the special roll is live-only (pacing-bot determinism)
   g.shiftIdx = 1; // Peak Hours
   g.shiftT = 0;
   // Sub-chance roll forces a special on this boundary.
@@ -3839,6 +3862,7 @@ test('special-shift override does not corrupt the base SHIFTS rotation on the ne
 test('weighted selection respects the no-repeat constraint', () => {
   const game = newGame();
   const g = game.state.g;
+  game._live = true; // 0.10.19: the special roll is live-only (pacing-bot determinism)
   g.shiftIdx = 0;
   g.shiftT = 0;
   // Two consecutive sub-chance rolls: the first triggers a special, the second must
@@ -3880,6 +3904,7 @@ test('special shifts work inside catchUp() (offline-progress slices)', () => {
 test('special shifts work inside live step() and resolve on the next boundary', () => {
   const game = newGame();
   const g = game.state.g;
+  game._live = true; // 0.10.19: the special roll is live-only (pacing-bot determinism)
   g.b.bar = 2;
   g.cash = 500;
   g.patrons = 20;
@@ -3917,6 +3942,7 @@ test('special shifts are a pure modifier — base SHIFTS shape untouched', () =>
 test('special announced even on a night-wrap rollover (review nit fix)', () => {
   const game = newGame();
   const g = game.state.g;
+  game._live = true; // 0.10.19: the special roll is live-only (pacing-bot determinism)
   g.b.bar = 2;
   g.cash = 500;
   g.patrons = 20;
