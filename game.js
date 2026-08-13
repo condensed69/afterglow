@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.10.20', build: 211, channel: 'alpha', date: '2026-08-13', codename: 'Neon Zero' };
+  VERSION = { num: '0.10.21', build: 212, channel: 'alpha', date: '2026-08-13', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -108,6 +108,9 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.10.21', date: '2026-08-13', codename: 'Neon Zero', notes: [
+      'UX: removed the duplicate help icons (?) from building, upgrade, research, perk, manager, and job cards — each card already displays its description text under the name, so the icon repeated it verbatim. The icons stay on the Ledger resources and stats, where the tooltip adds a plain-English definition the label does not show. (Also fixed the building-card owned marker, which was double-escaped and rendered as a literal "\\u00d7" instead of ×.)'
+    ] },
     { v: '0.10.20', date: '2026-08-13', codename: 'Neon Zero', notes: [
       'Golden-ticket VIP cadence: GOLDEN_CHANCE 0.005 → 0.001 per live tick. The 0.10.2 changelog called it "rare" but 0.5% per tick at the 10Hz sim is ~3 offers a minute — the VIP badge and "VIP booked the booth" log line were on screen roughly 60% of a session (one spawn attempt every ~20s against a 30s TTL). Now ~one offer per ~2 min: still a regular treat, no longer wallpaper. Live-only event, so pacing bands are untouched.'
     ] },
@@ -2244,7 +2247,7 @@ class Game {
         let desc = d.desc;
         if (d.id === 'door') desc = desc.replace('(max 6)', '(max ' + max + ')');
         return {
-          name: d.name + this.helpIcon(d.name, desc), desc: desc, owned: n > 0 ? '\u00d7' + n : '\u2014',
+          name: d.name, desc: desc, owned: n > 0 ? '×' + n : '—',
           btn: maxed ? 'Maxed' : 'Build $' + this.fmt(price),
           meta: maxed ? 'maxed' : (ok ? 'affordable' : 'need $' + this.fmt(price - g.cash)),
           locked: !ok, wrapStyle: cardWrap(!maxed), btnStyle: btn(ok),
@@ -2274,7 +2277,7 @@ class Game {
         const reqId = Object.keys(d.req)[0], need = d.req[reqId];
         const have = g.b[reqId] >= need, bought = g.u[d.id], ok = !bought && have && g.cash >= d.cost;
         const rn = this.BUILDINGS.find(b => b.id === reqId).name;
-        return { name: d.name + this.helpIcon(d.name, d.desc), desc: d.desc, owned: bought ? 'owned' : '',
+        return { name: d.name, desc: d.desc, owned: bought ? 'owned' : '',
           btn: bought ? 'Installed' : 'Buy $' + this.fmt(d.cost),
           meta: bought ? '' : (have ? (ok ? 'affordable' : 'need $' + this.fmt(d.cost - g.cash)) : 'requires ' + rn + ' ×' + need),
           locked: !ok, wrapStyle: cardWrap(have && !bought), btnStyle: btn(ok, '#ffc94a'), act: () => this.buyUpgrade(d) };
@@ -2288,7 +2291,7 @@ class Game {
         const reqMet = !d.req || this.perk(g, d.req) >= 1;
         const reqDef = d.req ? this.PRESTIGE_PERKS.find(p => p.id === d.req) : null;
         const ok = !maxed && reqMet && g.legacy >= d.cost;
-        return { name: d.name + this.helpIcon(d.name, d.desc), desc: d.desc, owned: rank > 0 ? rank + '/' + d.max : '—',
+        return { name: d.name, desc: d.desc, owned: rank > 0 ? rank + '/' + d.max : '—',
           btn: maxed ? 'Maxed' : d.cost + ' Legacy',
           meta: maxed ? 'maxed' : (!reqMet ? '' : (ok ? 'ready' : this.fmt(d.cost - g.legacy) + ' Legacy short')),
           reqLocked: !reqMet,
@@ -2304,7 +2307,7 @@ class Game {
         const max = bdef && bdef.id === 'door' ? this.doorMax(g) : bdef ? bdef.max : null;
         const atCap = max != null && n >= max;
         const ok = !hired && g.legacy >= d.cost;
-        return { name: d.name + this.helpIcon(d.name, d.desc), desc: d.desc, owned: hired ? (paused ? 'paused' : 'hired') : '—',
+        return { name: d.name, desc: d.desc, owned: hired ? (paused ? 'paused' : 'hired') : '—',
           btn: hired ? (paused ? 'Resume' : 'Pause') : d.cost + ' Legacy',
           meta: hired
             ? (paused ? 'paused — click to resume auto-buying ' + (bdef ? bdef.name : d.id)
@@ -2318,7 +2321,7 @@ class Game {
       tabHint = 'Research is paid in Clout, which accrues slowly from Regulars. Permanent, global effects.';
       cards = this.RESEARCH.map(d => {
         const bought = g.r[d.id], ok = !bought && g.clout >= d.cost;
-        return { name: d.name + this.helpIcon(d.name, d.desc), desc: d.desc, owned: bought ? 'done' : '',
+        return { name: d.name, desc: d.desc, owned: bought ? 'done' : '',
           btn: bought ? 'Researched' : d.cost + ' Clout',
           meta: bought ? '' : (ok ? 'ready' : this.fmt(d.cost - g.clout) + ' Clout short'),
           locked: !ok, wrapStyle: cardWrap(!bought), btnStyle: btn(ok, '#a855f7'), act: () => this.buyResearch(d) };
@@ -2328,10 +2331,10 @@ class Game {
     const jobs = this.JOBS.map(j => {
       if (j.id === 'off') {
         // Passive roster row: count only, no steppers (PLAN §1.7).
-        return { name: j.name + this.helpIcon(j.name, j.desc), rawName: j.name, desc: j.desc, n: g.jobs.off, passive: true };
+        return { name: j.name, rawName: j.name, desc: j.desc, n: g.jobs.off, passive: true };
       }
       return {
-        name: j.name + this.helpIcon(j.name, j.desc), rawName: j.name, desc: j.desc, n: g.jobs[j.id], passive: false,
+        name: j.name, rawName: j.name, desc: j.desc, n: g.jobs[j.id], passive: false,
         inc: () => this.moveJob(j.id, 1), dec: () => this.moveJob(j.id, -1),
         incLocked: g.jobs.off < 1,
         decLocked: g.jobs[j.id] < 1,

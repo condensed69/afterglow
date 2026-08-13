@@ -2969,13 +2969,16 @@ test('helpIcon escapes quotes and angle brackets in title and aria-label', () =>
   ok(out.includes('tabindex="0"'), 'icon is keyboard-reachable');
 });
 
-test('job row button titles use rawName, never the HTML-bearing name', () => {
+test('job row names are plain text (no icon markup) and rawName stays markup-free', () => {
   const game = newGame(10);
   const v = game.renderVals();
   for (const j of v.jobs) {
     ok(typeof j.rawName === 'string' && j.rawName.length > 0, `job ${j.id} has rawName`);
     ok(!j.rawName.includes('<'), `job ${j.id} rawName has no markup`);
-    ok(j.name.includes('help'), `job ${j.id} name carries the icon helper`);
+    // 0.10.21: help icons were removed from job rows (the desc is displayed right
+    // under the name, so the ? repeated it verbatim). Names are now plain text.
+    ok(!j.name.includes('<') && !j.name.includes('cursor:help'), `job ${j.id} name has no icon markup`);
+    strictEqual(j.name, j.rawName, `job ${j.id} name is plain text, matching rawName`);
   }
 });
 

@@ -364,6 +364,7 @@ Use the actual gain, not a hardcoded 7. Color: gold/amber (`#ffc94a`) to match m
 - Each row: name, effect blurb, cost, rank `cur/max`, buy button.  
 - `cash10` shows rank and "×5 max".  
 - Insufficient Legacy: button disabled with "N Legacy short" (same meta pattern as research).
+- **No inline help icon on perk or manager cards (0.10.21).** The card renders the effect blurb (`desc`) directly under the name, so the `?` tooltip repeated it verbatim; the focusable help control was removed from these cards. The Ledger's meta rows (Legacy) keep their `?` because those tooltips add a plain-English definition the label does not show. The blurb text remains in the DOM, so screen readers and keyboard users lose nothing.
 
 ### 9.6 Owner's List interaction
 
