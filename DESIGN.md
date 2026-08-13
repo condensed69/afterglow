@@ -216,13 +216,13 @@ Costs and growth from post-C tables. Building price: `floor(cost × growth^owned
 | coat | Coat Check | 850 | door ×2 | +20 floor cap |
 | photog | House Photographer | 1700 | marquee ×2 | Buzz gen ×1.5 |
 | bottle | Bottle Service | 3800 | vip ×3 | VIP cash ×2.2 (room + VIP crew) |
-| residency | Weekly Residency | 5800 | dress ×2 | Crew output ×1.4 |
+| residency | Weekly Residency | 8000 | dress ×2 | Crew output ×1.4 |
 
 ### 5.3 Research (`RESEARCH`) — one-shot, Clout
 
 | id | Name | Cost | Effect |
 |----|------|-----:|--------|
-| loop | Reputation Loop | 8 | Regulars +$0.04/s each (× cashMult) |
+| loop | Reputation Loop | 12 | Regulars +$0.04/s each (× cashMult) |
 | latemenu | Late Kitchen | 12 | After Hours mult 0.45 → 0.95 |
 | promo | Promoter Network | 20 | Buzz→patron basis ×1.6 (“60% faster” in copy) |
 | payroll | Payroll Software | 32 | Wages ×0.6 (40% cut) |

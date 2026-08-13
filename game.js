@@ -11,7 +11,7 @@ function css(o) {
 }
 
 class Game {
-  VERSION = { num: '0.10.17', build: 208, channel: 'alpha', date: '2026-08-13', codename: 'Neon Zero' };
+  VERSION = { num: '0.10.18', build: 209, channel: 'alpha', date: '2026-08-13', codename: 'Neon Zero' };
   SAVE_VER = 8;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -108,6 +108,9 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.10.18', date: '2026-08-13', codename: 'Neon Zero', notes: [
+      'Balance pass: first research now lands ~22m (was ~18m, design intent ~25m) and all upgrades ~46m (was ~34m, intent ~45m). Reputation Loop cost 8→12 Clout — the front-loaded achievement Clout made the old 8 reachable in 18m, undercutting the ~25m gate the regulars/clout rates were paced for. Weekly Residency cost 5800→8000 — the last upgrade the pacing bot buys, it now anchors the top of the chain at ~12× a Dressing Room, inside the 10–100× tier-upgrade range, and lands the all-upgrades beat on its ~45m intent. Prestige acceleration unchanged (run2 first LED still ~13m vs ~15m).'
+    ] },
     { v: '0.10.17', date: '2026-08-13', codename: 'Neon Zero', notes: [
       'Mobile: every button gets a 44px minimum tap target below 900px — the multi-buy ×1/×5/×10/×Max row was 40×30px (Barbara\'s thumb covered two at once), the tab bar 38px tall, the ☰ menu 34×34, the job steppers 26×26. The shell, header, modals, and Look panel all covered by one rule (min-height/min-width beat the inline sizes). Desktop is untouched.'
     ] },
@@ -413,11 +416,11 @@ class Game {
     { id: 'coat', name: 'Coat Check', cost: 850, req: { door: 2 }, desc: '+20 floor capacity.' },
     { id: 'photog', name: 'House Photographer', cost: 1700, req: { marquee: 2 }, desc: 'Buzz generation x1.5.' },
     { id: 'bottle', name: 'Bottle Service', cost: 3800, req: { vip: 3 }, desc: 'VIP cash x2.2.' },
-    { id: 'residency', name: 'Weekly Residency', cost: 5800, req: { dress: 2 }, desc: 'Crew output x1.4.' }
+    { id: 'residency', name: 'Weekly Residency', cost: 8000, req: { dress: 2 }, desc: 'Crew output x1.4.' }
   ];
 
   RESEARCH = [
-    { id: 'loop', name: 'Reputation Loop', cost: 8, desc: 'Regulars each add $0.04/s on their own.' },
+    { id: 'loop', name: 'Reputation Loop', cost: 12, desc: 'Regulars each add $0.04/s on their own.' },
     { id: 'latemenu', name: 'Late Kitchen', cost: 12, desc: 'After Hours multiplier 0.45 → 0.95.' },
     { id: 'promo', name: 'Promoter Network', cost: 20, desc: 'Buzz converts to patrons 60% faster.' },
     { id: 'payroll', name: 'Payroll Software', cost: 32, desc: 'Crew wages drop 40%.' }
