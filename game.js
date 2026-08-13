@@ -2961,10 +2961,10 @@ class Game {
 
   <main data-scroll="main" class="shell-grid">
 
-    <aside data-scroll="ledger" class="ledger-col${v.ledgerOpen ? '' : ' ledger-collapsed'}" style="border-right:1px solid #2a1738;background:#0a0611;overflow-y:auto;padding:14px 12px">
+    <aside data-scroll="ledger" class="${v.ledgerOpen ? '' : 'ledger-collapsed'}" style="border-right:1px solid #2a1738;background:#0a0611;overflow-y:auto;padding:14px 12px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700">Ledger</div>
-        <button data-h="${this.bind(v.toggleLedger)}" class="ledger-toggle hv-pink" title="${v.ledgerOpen ? 'Collapse ledger' : 'Expand ledger'}" style="width:30px;height:30px;border:1px solid #2f1c42;border-radius:6px;background:#100a19;color:#9c86ab;cursor:pointer;font-size:13px;line-height:1">${v.ledgerOpen ? '▾' : '▸'}</button>
+        <button data-h="${this.bind(v.toggleLedger)}" class="ledger-toggle hv-pink" title="${v.ledgerOpen ? 'Collapse ledger' : 'Expand ledger'}" style="width:44px;height:44px;border:1px solid #2f1c42;border-radius:8px;background:#100a19;color:#9c86ab;cursor:pointer;font-size:16px;line-height:1">${v.ledgerOpen ? '▾' : '▸'}</button>
       </div>
       <div class="ledger-cash" style="display:flex;flex-direction:column;gap:9px">${cashRow}</div>
       <div class="ledger-detail">
