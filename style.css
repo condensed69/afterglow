@@ -219,6 +219,23 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
     display: none;
   }
 
+  /* Tap targets (v0.10.17): every button gets a 44px minimum hit area on
+     touch. min-height/min-width override the inline height/width and padding
+     from game.js (a min-constraint beats a fixed height), and the rule lives
+     inside this media query so desktop keeps its compact controls. The multi-
+     buy ×1/×5/×10/×0 row — the most-tapped controls in the game — was 40×30px:
+     Barbara's thumb covered two at once and she bought the wrong thing twice.
+     Covers the shell (tabs, multi-buy, job steppers, card buttons), the
+     header (☰, version badge, Franchise offer), the modals (inside #app) and
+     the Look panel (mounted on body, #look-panel). !important is required
+     because the multi-buy buttons carry an inline min-width:40px that would
+     otherwise win on specificity. */
+  #app button,
+  #look-panel button {
+    min-height: 44px !important;
+    min-width: 44px !important;
+  }
+
   /* Both interior grids distribute a height they no longer have once the shell
      is the scroller: with no free space, the stage's minmax(190px,1fr) collapses
      to its 190px floor and the Systems body's minmax(0,1fr) resolves to zero and
