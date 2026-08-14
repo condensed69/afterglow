@@ -444,8 +444,159 @@ function prestigeRun() {
   console.log('\n✅ Prestige scenario passed: run2 first LED is faster.\n');
 }
 
+function secondRoomRun() {
+  const totalSec = SIM_HOURS * 3600;
+  const ledMilestone = MILESTONES.find((m) => m.id === 'upgrade');
+
+  console.log('\n=== Second-room scenario (SECOND_LOCATION.md §12) ===\n');
+
+  // Run 1: fresh club, no perks/research. Capture t1 = first LED — the
+  // no-account-progress baseline — then play on to the first prestige gate.
+  const game = newGame();
+  let t1 = null;
+  const g1 = simulate(game, (g, wall) => {
+    if (t1 == null && ledMilestone.check(g)) t1 = wall;
+    return g.regulars >= 25 && g.night >= 10;
+  }, totalSec, { stopOnMilestones: false }).g;
+  if (g1.regulars < 25) {
+    console.log(`FAIL: prestige gate not reached (regulars=${g1.regulars.toFixed(1)} < 25 at wall cap ${fmtMin(totalSec)})`);
+    process.exit(1);
+  }
+
+  // Prestige 1 → cash10 rank 1. Run 2 in main (faster with the perk) →
+  // prestige 2, which funds cash10 rank 2 + the manager (10 Legacy) the
+  // second-room gate requires.
+  game.confirmPrestige();
+  const cash10Def = game.PRESTIGE_PERKS.find((d) => d.id === 'cash10');
+  game.buyPerk(cash10Def);
+  const g2 = simulate(game, (g) => g.regulars >= 25 && g.night >= 10, totalSec, { stopOnMilestones: false }).g;
+  if (g2.regulars < 25) {
+    console.log('FAIL: second prestige gate not reached within the wall cap.');
+    process.exit(1);
+  }
+  game.confirmPrestige();
+  game.buyPerk(cash10Def);
+  if (game.perk(game.state.g, 'cash10') !== 2) {
+    console.log(`FAIL: expected cash10 rank 2 after second purchase, got ${game.perk(game.state.g, 'cash10')}.`);
+    process.exit(1);
+  }
+  const managerDef = game.MANAGERS.find((d) => d.id === 'rail');
+  game.buyManager(managerDef);
+  if (!game.state.g.managers.rail) {
+    console.log('FAIL: could not afford a manager after two prestiges (needs 10 Legacy) — gate unreachable.');
+    process.exit(1);
+  }
+
+  // Seed research after the final prestige (confirmPrestige resets g.r via
+  // fresh()) so the annex measures account progress with research intact.
+  // Buy the two cheapest research items to exercise carry-over.
+  const researchDefs = game.RESEARCH.filter((d) => !game.state.g.r[d.id]).sort((a, b) => a.cost - b.cost);
+  for (const rd of researchDefs.slice(0, 2)) {
+    game.state.g.clout += rd.cost; // ensure affordable in the bot harness
+    game.buyResearch(rd);
+  }
+  const seededResearch = Object.keys(game.state.g.r).filter((k) => game.state.g.r[k]);
+  if (seededResearch.length < 2) {
+    console.log(`FAIL: expected ≥2 research items seeded after prestige, got ${seededResearch.length}.`);
+    process.exit(1);
+  }
+
+  // Unlock the annex and switch: the second room starts fresh but inherits the
+  // account's cash10 perk, research tree, and manager delegation.
+  if (!game.canOpenRoom()) {
+    console.log('FAIL: second-room gate not met after prestige + manager.');
+    process.exit(1);
+  }
+  game.confirmOpenRoom();
+  if (!game.state.g.clubs.annex) {
+    console.log('FAIL: confirmOpenRoom did not create the annex.');
+    process.exit(1);
+  }
+  // Pause the rail manager for the measurement: managers auto-buy UNBOUNDED on
+  // their building (no max on rail), so an active manager redirects the shared
+  // till and the run would measure the manager's spend pattern, not whether
+  // account progress makes the fresh room faster. Pausing isolates perks +
+  // research carry-over; delegation is exercised in live play.
+  game.state.g.managerPaused.rail = true;
+  game.setActiveClub('annex');
+  // Verify the switch actually landed — without this, a silent no-op would
+  // measure the main room (fresh post-prestige) and produce a false pass.
+  if (game.state.g.activeClub !== 'annex') {
+    console.log(`FAIL: setActiveClub('annex') did not switch (activeClub=${game.state.g.activeClub}).`);
+    process.exit(1);
+  }
+  // Verify the annex starts truly fresh — if confirmOpenRoom ever creates it
+  // with the LED upgrade already owned, the milestone predicate fires on tick 1
+  // and the scenario passes trivially without measuring anything.
+  const annexClub = game.club(game.state.g);
+  if (annexClub.u.led) {
+    console.log('FAIL: annex created with LED upgrade already owned — not a fresh room.');
+    process.exit(1);
+  }
+  // Verify the hired manager survives the room switch.
+  if (!game.state.g.managers.rail) {
+    console.log('FAIL: manager lost after setActiveClub(\'annex\') — carry-over broken.');
+    process.exit(1);
+  }
+  // Verify seeded research survived the switch (confirmPrestige resets g.r;
+  // we re-seeded above — the annex must see it).
+  const annexResearch = Object.keys(game.state.g.r).filter((k) => game.state.g.r[k]);
+  if (annexResearch.length < 2) {
+    console.log(`FAIL: research not preserved after annex switch (expected ≥2, got ${annexResearch.length}).`);
+    process.exit(1);
+  }
+  // Verify research actually affects annex rates — not just flag persistence.
+  // Temporarily set regulars=1 so the loop research has a measurable effect,
+  // then compare rates with loop on vs off.
+  const savedRegulars = annexClub.regulars;
+  annexClub.regulars = 1;
+  const rWithLoop = game.rates(game.state.g);
+  game.state.g.r.loop = false;
+  const rWithoutLoop = game.rates(game.state.g);
+  game.state.g.r.loop = true;
+  annexClub.regulars = savedRegulars;
+  if (rWithLoop.cash <= rWithoutLoop.cash) {
+    console.log('FAIL: loop research has no effect on annex cash rate — research is cosmetic.');
+    process.exit(1);
+  }
+  // Verify cash10 perk affects annex rates — not just flag persistence.
+  // cashIncomeMult = 1 + 0.15 * rank; toggling rank 2 → 0 must lower the rate.
+  // Need a non-zero income source for the multiplier to scale — set patrons=1
+  // (door cover = 0.02/s) so the house cut has something to multiply.
+  const savedPatrons = annexClub.patrons;
+  annexClub.patrons = 1;
+  const savedPerks = game.state.g.perks.cash10;
+  game.state.g.perks.cash10 = 0;
+  const rNoPerk = game.rates(game.state.g);
+  game.state.g.perks.cash10 = savedPerks;
+  const rWithPerk = game.rates(game.state.g);
+  annexClub.patrons = savedPatrons;
+  if (rWithPerk.cash <= rNoPerk.cash) {
+    console.log('FAIL: cash10 perk has no effect on annex cash rate — perk is cosmetic.');
+    process.exit(1);
+  }
+
+  // Run 3: the same bot plays the annex to its first LED.
+  let t2 = null;
+  simulate(game, (g, wall) => {
+    if (t2 == null && ledMilestone.check(g)) { t2 = wall; return true; }
+    return false;
+  }, totalSec, { stopOnMilestones: false });
+
+  const delta = (t1 != null && t2 != null) ? t2 - t1 : null;
+  console.log(`  run1 first LED (fresh, no perks):            ${fmtMin(t1)}`);
+  console.log(`  annex first LED (cash10×2 + ${seededResearch.length} research seeded, manager paused): ${fmtMin(t2)}`);
+  console.log(`  delta: ${delta != null ? (delta / 60).toFixed(2) + 'm' : '—'} (must be < 0: account progress makes the second room faster)`);
+  if (delta == null || delta >= 0) {
+    console.log('\n❌ Second-room scenario failed: annex did not reach first LED faster than the fresh baseline.\n');
+    process.exit(1);
+  }
+  console.log('\n✅ Second-room scenario passed: annex first LED is faster.\n');
+}
+
 run();
 prestigeRun();
+secondRoomRun();
 // Force exit on success: confirmPrestige() starts an autosave setInterval that
 // keeps the event loop alive. On the pre-existing failure path process.exit(1)
 // is called; on the success path node otherwise hangs indefinitely.
