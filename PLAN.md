@@ -177,7 +177,7 @@ Currently a flat list of 6 perks, all purchasable in any order once unlocked (PR
 
 ## Deferred / out of scope
 
-- **Second location** — design pass **done**: `SECOND_LOCATION.md`. Implementation still deferred beyond 0.9.0; `franchise` removal in 1.9 keeps the door open.
+- **Second location** — design pass **done**: `SECOND_LOCATION.md`. Save-shape groundwork shipped in 0.11.0 (SAVE_VER 9: run state moved into `g.clubs.main`, v8→v9 migration, `club()` accessor threaded through the sim); second-room gameplay still deferred. `franchise` removal in 1.9 keeps the door open.
 - **DESIGN.md full rewrite** — after Phase 3, as a writing task. (Phase 3 shipped; rewrite itself remains undone as of this audit.)
 - **Render throttle** (10fps full-innerHTML is wasteful but functional) — only if profiling shows a problem; the performer-node preservation already handles the animation-sensitive part.
 - **Balance tuning** — numbers stay placeholders per AGENTS.md until the mechanics above are stable.

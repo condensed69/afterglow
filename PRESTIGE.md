@@ -40,7 +40,7 @@ Do **not** reuse Clout as prestige currency. Do not rename Clout. UI copy may sa
 
 ## 2. Gate
 
-**Condition (locked):** `g.regulars >= 25`.
+**Condition (locked):** the active club's `regulars >= 25` (reads through `club(g)` since SAVE_VER 9).
 
 This is deliberately identical to Owner's List goal 14 (`name` — "A name in this town"). Onboarding ends exactly where prestige begins. Completing goal 14 is **not** required to prestige (a migrated mid-game save with 25+ regulars can prestige without a completed goals array), but the teaser line on goal 14 points at this system:
 
@@ -48,12 +48,12 @@ This is deliberately identical to Owner's List goal 14 (`name` — "A name in th
 
 **UI affordance:**
 
-- When `g.regulars >= 25`, a header control **"Franchise offer"** appears (same header strip as shift / version badge family — not buried in Settings).
+- When the active club's `regulars >= 25` (reads through `club(g)` since SAVE_VER 9), a header control **"Franchise offer"** appears (same header strip as shift / version badge family — not buried in Settings).
 - Below gate, the control is absent (not disabled gray). No prestige teaser chrome before the gate.
 - Clicking opens the **confirmation modal** with the reset report **preview** (Legacy gain, what resets, what persists). Confirm commits; cancel closes with no state change.
 - **Stale tab (`tabStale`):** after another tab writes the save, this tab stays interactive but `save('auto')` no-ops. Prestige must not award Legacy only in memory. **Locked rule:** while `tabStale` is true, either (a) disable **Sign the deal** with copy that the player must reload the fresh save first, **or** (b) on confirm use the same **explicit/manual save path** that bypasses the stale auto-save guard (the path Settings → Save now already uses). Prefer (a) if simpler — no silent prestige that vanishes on reload banner accept. Cancel still closes with no state change.
 
-**Gate is evaluated live** from current `g.regulars` (fractional sim is fine; use `>= 25` the same way goal 14 does). Offline catch-up that crosses 25 does not auto-open the modal; it only makes the button appear on the next render.
+**Gate is evaluated live** from the active club's current `regulars` (fractional sim is fine; use `>= 25` the same way goal 14 does). Offline catch-up that crosses 25 does not auto-open the modal; it only makes the button appear on the next render.
 
 ---
 
@@ -63,16 +63,19 @@ On confirm of Franchise offer:
 
 ### Reset (wipe to fresh-run defaults)
 
+**SAVE_VER 9 multi-club rule:** reset applies **per club** — the `clubs` map keeps every key, each club's run fields below reset to fresh defaults, and `activeClub` stays on its club. Prestige resets run state; it does not delete rooms or move the player.
+
 | Field / group | After prestige |
 |---------------|----------------|
-| `cash` | starting cash (`props.startingCash`, default 20), then apply start perks (see §5) |
-| `hype`, `buzz`, `patrons`, `regulars`, `clout` | 0 |
-| `b` (buildings) | all 0, then apply start perks (e.g. free Flyer Crew) |
-| `u` (upgrades) | all false |
-| `r` (research) | all false |
-| `crew` | 0, then apply start perks (e.g. start with 1 crew) |
+| `cash` | starting cash (`props.startingCash`, default 20), then apply start perks (see §5) — **per club** |
+| `hype`, `buzz`, `patrons`, `regulars`, `clout` | 0 — **per club** for the club fields (`clout` is account-level) |
+| `b` (buildings) | all 0, then apply start perks (e.g. free Flyer Crew) — **per club** |
+| `u` (upgrades) | all false — **per club** |
+| `r` (research) | all false (account-level) |
+| `crew` | 0, then apply start perks (e.g. start with 1 crew) (account-level) |
 | `jobs` | all 0; if start-with-crew perk, assign that crew to `stage` |
-| `shiftIdx`, `shiftT`, `night`, `elapsed` | 0 / 0 / 1 / 0 (same as `fresh()` night baseline) |
+| `shiftIdx`, `shiftT`, `night`, `elapsed` | 0 / 0 / 1 / 0 (same as `fresh()` night baseline) — **per club** |
+| `clubs` map, `activeClub` | **preserved** — every club key survives; `activeClub` unchanged (still names an own club) |
 | `goals` | `[]` — Owner's List **resets** and replays |
 | `clicks`, `rounds` | 0 |
 | `log` | cleared, then one franchise line (see §9) |
@@ -90,11 +93,11 @@ On confirm of Franchise offer:
 
 **Order of operations (locked):** same safety pattern as import (`importSaveFromText`: log → persist → replace). Construct the post-prestige **candidate** fully, require `localStorage.setItem` success, **then** replace live state. Never replace first and leave the critical write to the next autosave — a storage failure or a reload before the next scheduled autosave would restore the pre-prestige run and discard the reset + awarded Legacy.
 
-1. Compute `gain = legacyGain(g)` from **pre-reset** `regulars` and `night` (§4).  
+1. Compute `gain = legacyGain(g)` from the **active club's** pre-reset `regulars` and `night` (§4).  
 2. Snapshot `perks`, `legacy`, `legacyTotal`, `prestiges`.  
-3. Build a **candidate** `g` (not yet live): `fresh()`-equivalent run fields.  
+3. Build a **candidate** `g` (not yet live): `fresh()`-equivalent run fields, **per club** — every existing club key is carried over with its run fields reset, the `clubs` map and `activeClub` preserved (SAVE_VER 9).  
 4. Restore meta on the candidate: `legacy = snapshot.legacy + gain`, `legacyTotal = snapshot.legacyTotal + gain`, `perks = snapshot.perks`, `prestiges = snapshot.prestiges + 1`.  
-5. Apply start-of-run perk effects (crew, buildings) on the candidate.  
+5. Apply start-of-run perk effects (crew, buildings) on the candidate — buildings seed the **active club** only.  
 6. Push the franchise log line onto the candidate so disk and memory share the same entry.  
 7. `localStorage.setItem` with the candidate payload — **must succeed** (use the explicit/manual save path when `tabStale` so the write is not a no-op auto-save; see §2 stale-tab rule).  
 8. Only then: replace `state.g` with the candidate and refresh UI.  
@@ -112,10 +115,10 @@ If `setItem` throws (or is blocked by `tabStale` without a manual path): leave t
 **Formula (locked):**
 
 ```text
-legacyGain(g) = floor( sqrt(regulars) + night / 7 )
+legacyGain(g) = floor( sqrt(activeClub.regulars) + activeClub.night / 7 )
 ```
 
-- `regulars` and `night` are pre-reset values.  
+- `regulars` and `night` are pre-reset values of the **active club** (since SAVE_VER 9 they live in `g.clubs[g.activeClub]`; `legacyGain` reads them through the `club(g)` accessor — see SECOND_LOCATION.md §5).  
 - `sqrt` is math square root (not integer sqrt).  
 - Primary reward is the gate resource (regulars); long runs add via nights.  
 - Minimum at the gate: `regulars === 25`, `night === 0` → `floor(5 + 0) = 5`.  
@@ -125,8 +128,9 @@ legacyGain(g) = floor( sqrt(regulars) + night / 7 )
 
 ```js
 legacyGain(g) {
-  const reg = Math.max(0, g.regulars || 0);
-  const nights = Math.max(0, g.night || 0);
+  const c = club(g);              // active club (g.clubs[g.activeClub])
+  const reg = Math.max(0, c.regulars || 0);
+  const nights = Math.max(0, c.night || 0);
   return Math.floor(Math.sqrt(reg) + nights / 7);
 }
 ```

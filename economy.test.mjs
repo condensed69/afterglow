@@ -168,6 +168,13 @@ function newGame(startingCash) {
   const game = new Game(root);
   // Suppress render() during tests (actions call forceUpdate → render).
   game.forceUpdate = () => {};
+  // SAVE_VER 9: state.g is the clubs-map shape. game.js's own wrapState (club
+  // proxy) handles flat-g reads against the ACTIVE club and survives every
+  // state.g replacement (prestige/reset/import) — no override needed here.
+  // fresh() is wrapped so direct candidate mutations (g.cash = 777) land in the
+  // active club like live code, and JSON payloads built from it serialize as v9.
+  const rawFresh = game.fresh.bind(game);
+  game.fresh = () => game.wrapState(rawFresh());
   if (startingCash !== undefined) game.props.startingCash = startingCash;
   game.state.g = game.fresh();
   return game;
@@ -250,13 +257,17 @@ console.log('1. Fresh state');
 test('fresh() produces expected resource keys', () => {
   const game = newGame();
   const g = game.state.g;
-  for (const k of resourceNames()) ok(k in g, `missing key: ${k}`);
+  const c = g.clubs.main;
+  // Resources are split: cash..regulars are per-club, clout is account-level.
+  for (const k of resourceNames()) ok(k in c || k in g, `missing key: ${k}`);
   ok('jobs' in g, 'missing jobs');
-  ok('b' in g, 'missing buildings map');
-  ok('u' in g, 'missing upgrades map');
+  ok('clubs' in g, 'missing clubs map');
+  ok('activeClub' in g, 'missing activeClub');
+  ok('b' in c, 'missing buildings map');
+  ok('u' in c, 'missing upgrades map');
   ok('r' in g, 'missing research map');
-  ok('elapsed' in g, 'missing elapsed');
-  ok('night' in g, 'missing night');
+  ok('elapsed' in c, 'missing elapsed');
+  ok('night' in c, 'missing night');
 });
 
 test('fresh() starts with 0 crew and 0 job assignments', () => {
@@ -2019,7 +2030,7 @@ test('valid import replaces state and persists', () => {
   // Persisted under KEY with SAVE_VER envelope.
   const stored = JSON.parse(localStorage.getItem(game.KEY));
   strictEqual(stored.saveVer, game.SAVE_VER);
-  strictEqual(stored.g.cash, 777);
+  strictEqual(stored.g.clubs.main.cash, 777);
 });
 
 test('import runs jobs sum correction (sanitizeG)', () => {
@@ -2123,14 +2134,187 @@ test('non-numeric saveVer fails closed', () => {
 
 console.log('\nSave migration map (PLAN §2.2)');
 
-test('SAVE_VER is 8', () => {
+test('SAVE_VER is 9', () => {
   const game = newGame();
-  strictEqual(game.SAVE_VER, 8);
+  strictEqual(game.SAVE_VER, 9);
   ok(typeof game.MIGRATIONS[3] === 'function', 'MIGRATIONS[3] must exist');
   ok(typeof game.MIGRATIONS[4] === 'function', 'MIGRATIONS[4] must exist (Owner\'s List)');
   ok(typeof game.MIGRATIONS[5] === 'function', 'MIGRATIONS[5] must exist (prestige)');
   ok(typeof game.MIGRATIONS[6] === 'function', 'MIGRATIONS[6] must exist (achievements)');
   ok(typeof game.MIGRATIONS[7] === 'function', 'MIGRATIONS[7] must exist (managers)');
+});
+
+test('v8 save migrates to v9: club fields land in clubs.main, account fields stay', () => {
+  const game = newGame(20);
+  const v8 = {
+    cash: 555, hype: 12, buzz: 4, patrons: 3, regulars: 1.5, clout: 2, crew: 1,
+    jobs: { stage: 1, vipjob: 0, floor: 0, off: 0 },
+    b: { rail: 2, flyers: 1 }, u: { led: true }, r: { loop: true },
+    elapsed: 300, night: 3, shiftIdx: 2, shiftT: 9, log: [], ts: Date.now(),
+    goals: [], clicks: 5, rounds: 1, achievements: ['first_rail']
+  };
+  const okImport = game.importSaveFromText(JSON.stringify({ saveVer: 8, ver: '0.10.21', build: 212, g: v8 }));
+  strictEqual(okImport, true);
+  const g = game.state.g;
+  // v9 shape: club fields nested, account fields top-level.
+  strictEqual(g.clubs.main.cash, 555);
+  strictEqual(g.clubs.main.hype, 12);
+  strictEqual(g.clubs.main.b.rail, 2);
+  strictEqual(g.clubs.main.u.led, true);
+  strictEqual(g.clubs.main.shiftIdx, 2);
+  strictEqual(g.clubs.main.night, 3);
+  strictEqual(g.activeClub, 'main');
+  // Flat reads still work through the compat layer.
+  strictEqual(g.cash, 555);
+  strictEqual(g.b.rail, 2);
+  // Account fields stayed put.
+  strictEqual(g.clout, 2);
+  strictEqual(g.crew, 1);
+  strictEqual(g.r.loop, true);
+  // Persisted save is stamped v9 and carries the clubs shape, no flat leftovers.
+  const stored = JSON.parse(localStorage.getItem(game.KEY));
+  strictEqual(stored.saveVer, 9);
+  strictEqual(stored.g.clubs.main.cash, 555);
+  ok(!('cash' in stored.g), 'no flat cash in persisted v9');
+  ok(!('b' in stored.g), 'no flat b in persisted v9');
+});
+
+test('club(g) resolves active club with main fallback; flat reads follow activeClub', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  strictEqual(game.club(g), g.clubs.main, 'default id = active club');
+  strictEqual(game.club(g, 'annex'), g.clubs.main, 'unknown id falls back to main');
+  g.clubs.annex = { ...g.clubs.main, cash: 42 };
+  strictEqual(game.club(g, 'annex').cash, 42, 'explicit valid id resolves');
+  // Pre-v9 shape (no clubs map) falls back to g itself.
+  const flat = { cash: 1, b: {} };
+  strictEqual(game.club(flat), flat, 'no clubs → g itself');
+  strictEqual(game.club(flat, 'main'), flat);
+  // Switching activeClub re-routes flat reads and the accessor together.
+  g.activeClub = 'annex';
+  strictEqual(game.club(g).cash, 42);
+  strictEqual(g.cash, 42, 'flat read follows activeClub through the compat layer');
+  // Inherited Object.prototype keys ('constructor', ...) must never resolve to a
+  // club entry — fail closed to main, not to a function.
+  g.activeClub = 'constructor';
+  strictEqual(game.club(g), g.clubs.main, "inherited key can't hijack activeClub");
+  strictEqual(g.cash, 20, 'flat reads land on main for an inherited activeClub');
+  strictEqual(game.club(g, 'toString'), g.clubs.main, 'toString falls back to main');
+  g.activeClub = 'main';
+});
+
+test('v9 import rejects an EMPTY clubs map (no usable club)', () => {
+  const game = newGame(20);
+  const payload = JSON.stringify({
+    saveVer: 9,
+    g: {
+      clubs: {},
+      activeClub: 'main',
+      clout: 0, crew: 0,
+      jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      goals: [], clicks: 0, rounds: 0
+    }
+  });
+  strictEqual(game.importSaveFromText(payload), false, 'empty clubs map is malformed, not a fresh start');
+  strictEqual(game.state.g.clubs.main.cash, 20, 'live club untouched by rejected import');
+});
+
+test('prestige resets run state but preserves every club and activeClub', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  const f = game.fresh().clubs.main;
+  g.clubs.annex = { ...f, b: { ...f.b }, u: { ...f.u }, cash: 500 };
+  g.activeClub = 'annex';
+  g.clubs.annex.b.rail = 3;
+  g.clubs.annex.regulars = 40;
+  g.clubs.main.regulars = 10;
+  game.confirmPrestige();
+  const a = game.state.g;
+  ok(a.clubs.annex, 'annex survives prestige');
+  ok(a.clubs.main, 'main survives prestige');
+  strictEqual(a.activeClub, 'annex', 'activeClub preserved');
+  strictEqual(a.clubs.annex.b.rail, 0, 'annex run buildings reset');
+  strictEqual(a.clubs.annex.regulars, 0, 'annex run regulars reset');
+  strictEqual(a.clubs.main.regulars, 0, 'main run regulars reset');
+  strictEqual(a.clubs.annex.cash, 20, 'annex cash back to startingCash');
+  strictEqual(a.prestiges, 1, 'prestige counted');
+});
+
+test('v9 import resolves activeClub to an existing own club when main is absent', () => {
+  const game = newGame(20);
+  const f = game.fresh().clubs.main;
+  const payload = JSON.stringify({
+    saveVer: 9,
+    g: {
+      clubs: { annex: { ...f, cash: 88 } },
+      clout: 0, crew: 0,
+      jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      goals: [], clicks: 0, rounds: 0
+    }
+  });
+  strictEqual(game.importSaveFromText(payload), true, 'annex-only map imports');
+  strictEqual(game.state.g.activeClub, 'annex', 'activeClub resolved to the existing club, not a phantom main');
+  strictEqual(game.state.g.cash, 88, 'flat reads hit the resolved club');
+
+  // Unknown activeClub id behaves the same.
+  const game2 = newGame(20);
+  const payload2 = JSON.stringify({
+    saveVer: 9,
+    g: {
+      clubs: { annex: { ...f, cash: 88 } },
+      activeClub: 'nowhere',
+      clout: 0, crew: 0,
+      jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      goals: [], clicks: 0, rounds: 0
+    }
+  });
+  strictEqual(game2.importSaveFromText(payload2), true, 'unknown activeClub id imports');
+  strictEqual(game2.state.g.activeClub, 'annex', 'unknown id falls back to an existing club');
+});
+
+test('v9 import rejects reserved club IDs like __proto__ (no prototype pollution)', () => {
+  const game = newGame(20);
+  // JSON.parse creates an own '__proto__' DATA property (object literals would
+  // invoke the setter instead) — this is exactly the hostile payload shape.
+  const evil = JSON.parse('{"saveVer":9,"g":{"clubs":{' +
+    '"__proto__":{"cash":50,"hype":0,"buzz":0,"patrons":0,"regulars":0,"elapsed":0,"night":1,"shiftIdx":0,"shiftT":0},' +
+    '"main":{"cash":20,"hype":0,"buzz":0,"patrons":0,"regulars":0,"elapsed":0,"night":1,"shiftIdx":0,"shiftT":0}},' +
+    '"activeClub":"__proto__","clout":0,"crew":0,"jobs":{"stage":0,"vipjob":0,"floor":0,"off":0},' +
+    '"goals":[],"clicks":0,"rounds":0}}');
+  strictEqual(game.importSaveFromText(JSON.stringify(evil)), false, 'reserved club id rejected fail-closed');
+  strictEqual(game.state.g.activeClub, 'main', 'live club untouched');
+  strictEqual(Object.prototype.hasOwnProperty.call(game.state.g.clubs, '__proto__'), false, 'no own __proto__ entry created');
+});
+
+test('v9 import sanitizes inherited-key activeClub to main (own-property check)', () => {
+  const game = newGame(20);
+  const payload = JSON.stringify({
+    saveVer: 9,
+    g: {
+      clubs: { main: { ...game.fresh().clubs.main, cash: 66 } },
+      activeClub: 'constructor',
+      clout: 0, crew: 0,
+      jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      goals: [], clicks: 0, rounds: 0
+    }
+  });
+  strictEqual(game.importSaveFromText(payload), true);
+  strictEqual(game.state.g.activeClub, 'main', 'inherited key sanitized to main');
+  strictEqual(game.state.g.cash, 66, 'main club intact');
+});
+
+test('fresh() v9: clubs.main carries the full club field set, account level is clean', () => {
+  const game = newGame(20);
+  const g = game.fresh();
+  const main = g.clubs.main;
+  for (const k of ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'b', 'u',
+    'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown']) {
+    ok(k in main, `club field ${k} in clubs.main`);
+  }
+  ok(!('cash' in g), 'no flat cash on account level');
+  ok(!('b' in g), 'no flat b on account level');
+  strictEqual(g.activeClub, 'main');
+  ok(!('clubs' in main), 'clubs map is not nested inside a club');
 });
 
 test('migrateFrom(3) applies jobs/crew fixups and preserves club', () => {
@@ -2242,7 +2426,7 @@ test('import of saveVer 3 migrates then stamps SAVE_VER', () => {
   strictEqual(jobSum(game.state.g), 2);
   const stored = JSON.parse(localStorage.getItem(game.KEY));
   strictEqual(stored.saveVer, game.SAVE_VER);
-  strictEqual(stored.g.cash, 42);
+  strictEqual(stored.g.clubs.main.cash, 42);
 });
 
 // ── Multi-tab storage guard (PLAN §2.3) ───────────────────────────────────────
@@ -2313,7 +2497,7 @@ test('export payload round-trips through importSaveFromText into identical g', (
   };
   const exported = JSON.stringify(payload);
   // Wipe live club so import must replace.
-  game.state.g = game.fresh();
+  game.state.g = game.wrapState(game.fresh());
   game.state.g.cash = 1;
   const okImport = game.importSaveFromText(exported);
   strictEqual(okImport, true);
@@ -2353,7 +2537,7 @@ test('v4 file payload imports like clipboard (shared importSaveFromText path)', 
   strictEqual(game.state.g.b.rail, 1);
   const stored = JSON.parse(localStorage.getItem(game.KEY));
   strictEqual(stored.saveVer, game.SAVE_VER);
-  strictEqual(stored.g.cash, 88);
+  strictEqual(stored.g.clubs.main.cash, 88);
 });
 
 test('garbage file content fails closed with import failed', () => {
@@ -2388,7 +2572,7 @@ test('importSaveFile routes FileReader text into importSaveFromText', () => {
     build: game.VERSION.build,
     g: JSON.parse(JSON.stringify(g))
   });
-  game.state.g = game.fresh();
+  game.state.g = game.wrapState(game.fresh());
   game.state.g.cash = 2;
 
   // Capture the file input created by importSaveFile and drive onchange with a stub file.
@@ -2562,7 +2746,7 @@ test('migration 4→5→6→7: v4 save with rail+flyers pre-completes those goal
   // Achievements legitimately reward clout for already-earned state.
   strictEqual(loaded.clout, 1, 'first_rail achievement clout credited on migrate');
   const stored = JSON.parse(localStorage.getItem(game.KEY));
-  strictEqual(stored.saveVer, 8);
+  strictEqual(stored.saveVer, 9);
 });
 
 test('migration 4→5→6→7 mid-game: credits non-sequential goals without reward cascade', () => {
@@ -2842,7 +3026,7 @@ test('init post-catchUp setItem throw still claimed ts (reload cannot re-apply g
   strictEqual(disk.saveVer, game1.SAVE_VER, 'claim write left SAVE_VER 5 on disk');
   ok(disk.g.ts > hourAgo + 3_000_000, 'claimed ts on disk even if progress write failed');
   // Disk may lack full catch-up cash (second write failed) — that is one-time loss, not double-count.
-  const cashOnDisk = disk.g.cash;
+  const cashOnDisk = disk.g.clubs.main.cash;
   const game2 = new Game(root);
   game2.forceUpdate = () => {};
   game2.init();
@@ -3063,7 +3247,7 @@ test('successful import clears tabStale and restarts autosave', () => {
   game.save('auto');
   const raw = localStorage.getItem(game.KEY);
   ok(raw, 'autosave wrote after import ownership');
-  strictEqual(JSON.parse(raw).g.cash, 99);
+  strictEqual(JSON.parse(raw).g.clubs.main.cash, 99);
   if (game.saver) {
     clearInterval(game.saver);
     game.saver = null;
@@ -3182,7 +3366,7 @@ test('short multi-tab open does not setItem or start autosave', () => {
   strictEqual(game.state.tabStale, true, 'non-owner paused');
   const disk = JSON.parse(localStorage.getItem(game.KEY));
   strictEqual(disk.g.ts, diskTs, 'disk ts unchanged (live sibling keeps ownership)');
-  strictEqual(disk.g.cash, 111, 'disk cash unchanged');
+  strictEqual(disk.g.clubs.main.cash, 111, 'disk cash unchanged');
 });
 
 test('same-tab RELOAD_KEY claims and starts autosave', () => {
@@ -3255,7 +3439,7 @@ test('owner save(manual) writes while not tabStale', () => {
   game.save('manual');
   const raw = localStorage.getItem(game.KEY);
   ok(raw, 'owner manual save writes');
-  strictEqual(JSON.parse(raw).g.cash, 321);
+  strictEqual(JSON.parse(raw).g.clubs.main.cash, 321);
 });
 
 test('save round-trip: auto-save sets lastAutoSave; manual-save preserves it; init() rehydrates it', () => {
@@ -3471,7 +3655,7 @@ test('non-owner hardReset does not removeItem disk save', () => {
   strictEqual(game.isTabOwner(), false);
   strictEqual(game.state.tabStale, true);
   const diskBefore = localStorage.getItem(game.KEY);
-  const cashBefore = JSON.parse(diskBefore).g.cash;
+  const cashBefore = JSON.parse(diskBefore).g.clubs.main.cash;
   // Double-confirm wipe (arm + confirm) — both must no-op for non-owner.
   const hr = game.renderVals().hardReset;
   hr();
@@ -3479,7 +3663,7 @@ test('non-owner hardReset does not removeItem disk save', () => {
   const diskAfter = localStorage.getItem(game.KEY);
   ok(diskAfter, 'disk KEY still present after non-owner wipe attempts');
   strictEqual(diskAfter, diskBefore, 'disk blob unchanged');
-  strictEqual(JSON.parse(diskAfter).g.cash, 7777, 'live sibling cash preserved');
+  strictEqual(JSON.parse(diskAfter).g.clubs.main.cash, 7777, 'live sibling cash preserved');
   strictEqual(cashBefore, 7777);
   strictEqual(game.isTabOwner(), false, 'still not owner after wipe attempts');
   strictEqual(game.state.tabStale, true, 'still paused after wipe attempts');
@@ -4130,6 +4314,7 @@ const ACCOUNT_FIELDS = [
   'whalesCount', 'specialsCount', 'golden',
   'ts', 'log',
   'crew', 'jobs',
+  'clubs', 'activeClub',
 ];
 
 test('SECOND_LOCATION field lists partition fresh() with nothing unassigned', () => {

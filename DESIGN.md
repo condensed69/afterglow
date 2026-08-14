@@ -1,7 +1,7 @@
 # DESIGN.md — Afterglow Club Idle
 
 **Game:** Afterglow Club Idle (repo: stripper-dance)  
-**Spec target:** post-workstreams A–D and post-0.9.x systems — file save, Owner's List, balance + `pacing.mjs`, prestige, achievements, managers, special shifts, whales, multi-tab ownership (`game.js` v0.9.5, SAVE_VER 8)  
+**Spec target:** post-workstreams A–D and post-0.9.x systems — file save, Owner's List, balance + `pacing.mjs`, prestige, achievements, managers, special shifts, whales, multi-tab ownership, second-location save shape (`game.js` v0.11.0, SAVE_VER 9)  
 **Source of truth for numbers:** `game.js` (`caps()`, `rates()`, constant tables) — re-diff this file when those change  
 **Related:** `PRESTIGE.md` (prestige deep design, shipped 0.8.0), `PLAN.md` (logic-fix predecessor, shipped), `AGENTS.md` (repo gates). Workstream sequencing lived in a local orchestrator plan (not published in the repo tree).  
 **Ancestry:** this branch stacks A (file save) → B (Owner's List) → C (`pacing.mjs` + balance) → D (`PRESTIGE.md`) → 0.7.x stage work → 0.8.x prestige/achievements/whale → 0.9.x managers/special shifts/perk tree → 0.9.5 legacyTotal fix, so every claim below is present in-tree.
@@ -350,9 +350,9 @@ Best used before Peak to stack mult.
 
 Full locked design lives in **`PRESTIGE.md`** (fantasy, gate, formula, reset rules, save sketch, pacing hooks, non-goals, UI). This section is the as-shipped summary.
 
-- **Gate:** `g.regulars >= 25` (goal 14). The **Franchise offer** button appears in the header once met; modal confirms.
-- **Gain:** `legacyGain(g) = floor(sqrt(regulars) + night / 7)`.
-- **Reset:** the next run is a `fresh()` club — cash/hype/buzz/patrons/regulars/clout/crew/buildings/research reset, and Owner's List state restarts (`clicks: 0`, `rounds: 0`, `goals: []`, same goal arc) — while **perks, managers, managerPaused, achievements, legacy, legacyTotal, prestiges** persist.
+- **Gate:** active club's `regulars >= 25` (goal 14) — reads through `club(g)` (SAVE_VER 9). The **Franchise offer** button appears in the header once met; modal confirms.
+- **Gain:** `legacyGain(g) = floor(sqrt(activeClub.regulars) + activeClub.night / 7)`.
+- **Reset:** each club's run state resets to `fresh()` defaults **per club** — the `clubs` map keeps every key and `activeClub` stays on its club (SAVE_VER 9); cash/hype/buzz/patrons/regulars/buildings/research reset, and Owner's List state restarts (`clicks: 0`, `rounds: 0`, `goals: []`, same goal arc) — while **perks, managers, managerPaused, achievements, legacy, legacyTotal, prestiges** persist. Start perks seed the active club only.
 - **Persist-before-replace:** `confirmPrestige()` builds the post-prestige candidate, `localStorage.setItem` **first**; on failure → `saveState: 'prestige failed'` and the live club is untouched (same rule as import, §13.3).
 - **Fields:** `g.legacy` (spendable), `g.legacyTotal` (lifetime earned — achievements credit this too, see §12), `g.prestiges` (count), `g.perks` (id → rank map).
 
@@ -508,18 +508,26 @@ Achievements live in the Settings modal. Backfill on load credits already-earned
 | Field | Value |
 |-------|--------|
 | localStorage key | `afterglow.save` |
-| SAVE_VER | **8** |
+| SAVE_VER | **9** |
 | Envelope | `{ saveVer, ver, build, g }` |
 | Autosave | every 10 s (`save('auto')`) |
 | Manual | Settings → Save now |
 
-### 13.1 `g` shape (v8)
+### 13.1 `g` shape (v9)
 
 ```
-cash, hype, buzz, patrons, regulars, clout,
-crew, jobs: { stage, vipjob, floor, off },
-b: { …building counts }, u: { …upgrade bools }, r: { …research bools },
-elapsed, night, shiftIdx, shiftT, log[], ts,
+clubs: {
+  main: {
+    cash, hype, buzz, patrons, regulars,
+    b: { …building counts }, u: { …upgrade bools },
+    elapsed, night, shiftIdx, shiftT,
+    _specialShift, _whaleCooldown
+  },
+  // future rooms: <id>: { same run-state shape } (SECOND_LOCATION.md §4)
+},
+activeClub,                       // id of the club being played ('main' today)
+clout, crew, jobs: { stage, vipjob, floor, off },
+r: { …research bools }, log[], ts,
 goals[], clicks, rounds,
 legacy, legacyTotal, perks: { id: rank }, prestiges,
 achievements[],
@@ -527,6 +535,8 @@ whalesCount, specialsCount,  // 0.10.1 burst-event counters (additive)
 golden,                      // 0.10.2 golden-ticket offer (additive UI state: { at } | null)
 managers: { id: bool }, managerPaused: { id: bool }
 ```
+
+Club-level run fields live under `g.clubs[<id>]`; account/shared fields stay top-level. `club(g)` reads/writes the active club (SECOND_LOCATION.md §5), so club fields must never be treated as top-level. Flat `g.cash`-style access exists only through the `wrapState` compat proxy (same shape on disk: `JSON.stringify` emits the real v9 layout).
 
 Additive fields (`managerPaused`, the 0.10.1 counters `whalesCount` / `specialsCount`, and the 0.10.2 `golden` offer) default to 0/false/null when absent — not required by `isValidSavePayload`, so they never force a SAVE_VER bump on their own.
 
@@ -546,7 +556,7 @@ Files and clipboard are interchangeable by design.
 Safety-critical order is **log → persist → replace** (not replace-first). A quota/storage failure must not leave the player on an imported club that never hit disk.
 
 1. `JSON.parse`  
-2. `isValidSavePayload` (saveVer finite; cash/hype/buzz/patrons/regulars/clout/crew numbers; jobs object)  
+2. `isValidSavePayload` (saveVer finite; club resources cash/hype/buzz/patrons/regulars numeric — read from the active club (own-property lookup; fallback main → any own club → top-level) for v9 payloads, top-level for pre-v9; clout/crew numbers; jobs object)  
 3. If `saveVer !== SAVE_VER`: `migrateFrom` chain; missing step → fail  
 4. `completeImportedG` (fill defaults, reject unsafe values)  
 5. Stamp `ts = now` on the **candidate** `g` (not yet live)  
@@ -565,6 +575,7 @@ If `setItem` throws (or any earlier step fails) → `saveState: 'import failed'`
 | 5 → 6 | Prestige meta: legacy/legacyTotal/perks/prestiges; array perks replaced with map, ranks clamped to max |
 | 6 → 7 | Achievements: `achievements[]`, backfill already-earned via `checkAchievements` |
 | 7 → 8 | Managers: `managers` map, default all false |
+| 8 → 9 | Club fields into `g.clubs.main` (run state under the clubs map; `activeClub` added; `MIGRATIONS[8]` never clobbers a map sanitizeG already built on older chains) |
 
 Future saveVer or missing step → wipe on load (localStorage path) or import failed (clipboard/file).
 

@@ -10,9 +10,34 @@ function css(o) {
     .join(';');
 }
 
+// SAVE_VER 9 compat layer (SECOND_LOCATION.md §5): account fields (clout, crew,
+// jobs, r, perks, legacy, ...) live on g; club fields (cash, hype, buzz, patrons,
+// regulars, b, u, elapsed, night, shift*, _special*) live in g.clubs[active].
+// This proxy forwards flat reads/writes to the ACTIVE club so legacy flat-g code
+// and test assertions keep working. Transparent to serialization: ownKeys and
+// getOwnPropertyDescriptor forward to the target, so JSON.stringify emits the
+// real v9 shape.
+function clubProxy(g) {
+  const active = () => (g && g.clubs && Object.prototype.hasOwnProperty.call(g.clubs, g.activeClub)) ? g.activeClub : 'main';
+  return new Proxy(g, {
+    get(t, k) {
+      if (k in t) return t[k];
+      const c = g && g.clubs && g.clubs[active()];
+      return c && k in c ? c[k] : undefined;
+    },
+    set(t, k, v) {
+      if (k in t) { t[k] = v; return true; }
+      const c = g && g.clubs && g.clubs[active()];
+      if (c && k in c) { c[k] = v; return true; }
+      t[k] = v;
+      return true;
+    }
+  });
+}
+
 class Game {
-  VERSION = { num: '0.10.21', build: 212, channel: 'alpha', date: '2026-08-13', codename: 'Neon Zero' };
-  SAVE_VER = 8;
+  VERSION = { num: '0.11.0', build: 213, channel: 'alpha', date: '2026-08-13', codename: 'Neon Zero' };
+  SAVE_VER = 9;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
   // A plain boolean is copied when the browser duplicates a tab, so a duplicate would
@@ -56,6 +81,26 @@ class Game {
   // Save-format steps: MIGRATIONS[v] upgrades g from saveVer v → v+1 (PLAN §2.2).
   // On load, apply the chain saveVer → … → SAVE_VER; wipe only when a step is missing.
   MIGRATIONS = {
+    // v8 → v9: move club-level run fields into g.clubs.main (SECOND_LOCATION.md §4).
+    8(g) {
+      if (!g || typeof g !== 'object') return g;
+      // sanitizeG (also run inside MIGRATIONS[3] for very old saves) may have
+      // already built the clubs map from top-level fields — never clobber it.
+      if (g.clubs && typeof g.clubs === 'object' && g.clubs.main) {
+        g.activeClub = (typeof g.activeClub === 'string' && Object.prototype.hasOwnProperty.call(g.clubs, g.activeClub)) ? g.activeClub : 'main';
+        return g;
+      }
+      const clubFields = ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'b', 'u',
+        'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown'];
+      const main = {};
+      for (const k of clubFields) {
+        main[k] = g[k];
+        delete g[k];
+      }
+      g.clubs = { main };
+      g.activeClub = 'main';
+      return g;
+    },
     // v3 → v4: jobs/crew assignment honesty (was an informal init() fixup).
     3(g) {
       this.sanitizeG(g);
@@ -64,18 +109,23 @@ class Game {
     // Credit every satisfied check (no sequential break) so mid-game saves don't get
     // live reward cascades for already-earned state. Holes are fine — activeGoal
     // still returns the first missing id for live play.
+    // v4 → v5: goal backfill. sanitizeG (inside [3]) has already moved club
+    // fields into clubs.main, so read them through this.club(g) and check goals
+    // against the merged view, exactly like live play.
     4(g) {
       g.goals = [];
       g.clicks = 0;
       g.rounds = 0;
-      const b = g.b || {};
+      const c = this.club(g);
+      const b = c.b || {};
       // v4 never tracked clicks; clubs past the opener clearly finished the click tutorial.
-      if (g.crew > 0 || g.patrons > 0 || g.regulars > 0 ||
+      if (g.crew > 0 || c.patrons > 0 || c.regulars > 0 ||
           Object.values(b).some(n => n > 0)) {
         g.clicks = 5;
       }
+      const view = { ...g, ...c, b: c.b, u: c.u };
       for (const goal of this.GOALS) {
-        if (goal.check(g)) g.goals.push(goal.id);
+        if (goal.check(view)) g.goals.push(goal.id);
       }
     },
     // v5 → v6: prestige meta fields.
@@ -108,6 +158,9 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.11.0', date: '2026-08-13', codename: 'Neon Zero', notes: [
+      'SAVE FORMAT v9 (second-location groundwork): run state (cash, hype, buzz, patrons, regulars, buildings, upgrades, elapsed, night, shift, special shift, whale cooldown) now lives in g.clubs.main instead of on g directly, with g.activeClub pointing at the club being played. Saves from v8 migrate automatically on load — nothing is lost, and gameplay is unchanged. A compatibility layer keeps every read working through the new shape. This is the foundation for a second room/club; nothing player-visible changed yet.'
+    ] },
     { v: '0.10.21', date: '2026-08-13', codename: 'Neon Zero', notes: [
       'UX: removed the duplicate help icons (?) from building, upgrade, research, perk, manager, and job cards — each card already displays its description text under the name, so the icon repeated it verbatim. The icons stay on the Ledger resources and stats, where the tooltip adds a plain-English definition the label does not show. (Also fixed the building-card owned marker, which was double-escaped and rendered as a literal "\\u00d7" instead of ×.)'
     ] },
@@ -517,10 +570,12 @@ class Game {
     return (this.BUILDINGS.find(b => b.id === 'door').max || 6) + this.perk(g, 'doorPlus');
   }
 
-  // Legacy earned on prestige: floor(sqrt(regulars) + night / 7).
+  // Legacy earned on prestige: floor(sqrt(regulars) + night / 7). Regulars and
+  // night are per-club — the active club's progress gates the franchise.
   legacyGain(g) {
-    const reg = Math.max(0, g.regulars || 0);
-    const nights = Math.max(0, g.night || 0);
+    const c = this.club(g);
+    const reg = Math.max(0, c.regulars || 0);
+    const nights = Math.max(0, c.night || 0);
     return Math.floor(Math.sqrt(reg) + nights / 7);
   }
 
@@ -667,9 +722,39 @@ class Game {
     g: null
   };
 
+  // Active club accessor (SECOND_LOCATION.md §5). Returns the club object for
+  // the given id (default: the active club), falling back to 'main', then to g
+  // itself for pre-v9 shapes that sanitizeG has not yet normalized. Every
+  // function reading club-level state goes through this — no scattered
+  // g.clubs[g.activeClub].
+  club(g, id = g && g.activeClub) {
+    // Own-property lookup only — inherited Object.prototype keys ('constructor',
+    // 'toString', ...) must never resolve to a club entry (fail closed to main).
+    const c = g && g.clubs && Object.prototype.hasOwnProperty.call(g.clubs, id) ? g.clubs[id] : undefined;
+    return c || (g && g.clubs && g.clubs.main) || g;
+  }
+
+  // Merged flat view of account + active club for GOALS/ACHIEVEMENTS checks, whose
+  // lambdas read the old flat-g shape (g.patrons, g.b.rail, g.night...). Spread
+  // order: club fields win over account fields; b/u point at the club's maps.
+  clubView(g) {
+    const c = this.club(g);
+    return { ...g, ...c, b: c.b, u: c.u };
+  }
+
+  // Harness/compat hook: wraps state.g in a club proxy so flat-g reads
+  // (g.cash, g.b, g.hype...) fall through to the ACTIVE club. Production uses
+  // the same proxy — it is transparent (JSON.stringify / Object.keys forward to
+  // the target, so saves serialize as native v9) and lets any code path that
+  // still reads flat fields keep working. All state.g replacements route
+  // through it so the wrap survives prestige/reset/import.
+  wrapState(g) {
+    return clubProxy(g);
+  }
+
   constructor(root) {
     this.root = root;
-    this.state.g = this.fresh();
+    this.state.g = this.wrapState(this.fresh());
     this.handlers = [];
     // Unique per page context — not copied across tab duplicates the way a
     // sessionStorage boolean is. Paired with OWNER_KEY / RELOAD_KEY for claim.
@@ -746,10 +831,23 @@ class Game {
     this.RESEARCH.forEach(x => r[x.id] = false);
     this.PRESTIGE_PERKS.forEach(x => perks[x.id] = 0);
     this.MANAGERS.forEach(x => { managers[x.id] = false; managerPaused[x.id] = false; });
+    // Club-level state (per club, resets on prestige): cash/hype/buzz/patrons/
+    // regulars, buildings, upgrades, and the shift clock. The clubs map is
+    // keyed by plain id ('main', future 'annex'...) so new rooms never need a
+    // SAVE_VER bump (SECOND_LOCATION.md §4).
+    const clubState = {
+      cash: (this.props && this.props.startingCash) ?? 20, hype: 0, buzz: 0, patrons: 0, regulars: 0,
+      b, u, elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0,
+      _specialShift: null, _whaleCooldown: 0
+    };
     const g = {
-      cash: (this.props && this.props.startingCash) ?? 20, hype: 0, buzz: 0, patrons: 0, regulars: 0, clout: 0,
+      clubs: { main: clubState },
+      activeClub: 'main',
+      // Account-level (shared across clubs, persists through prestige):
+      clout: 0,
+      // Shared roster (top-level, resets on prestige like today).
       crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
-      b, u, r, elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, log: [], ts: Date.now(),
+      r, log: [], ts: Date.now(),
       // Owner's List (SAVE_VER 5) — not required by isValidSavePayload (v4 imports lack them).
       goals: [], clicks: 0, rounds: 0,
       // Burst-event counters (0.10.1, additive) — whalesCount/specialsCount drive
@@ -772,8 +870,10 @@ class Game {
   }
 
   // Apply start-of-run perks (seed crew / flyers) after a fresh candidate is built.
+  // Flyers build into the ACTIVE club's buildings; crew/jobs are account-level.
   applyStartPerks(g) {
-    if (this.perk(g, 'startFlyers')) g.b.flyers = 1;
+    const c = this.club(g);
+    if (this.perk(g, 'startFlyers')) c.b.flyers = 1;
     if (this.perk(g, 'startCrew')) {
       g.crew = 1;
       g.jobs.stage = 1;
@@ -831,6 +931,40 @@ class Game {
         if (!over) break;
       }
     }
+    // Clubs map (SAVE_VER 9): fail-closed. If missing/malformed, rebuild the
+    // main club from leftover top-level fields (pre-v9 saves that skipped the
+    // migration, or hand-edited payloads) before normalizing per-club fields.
+    if (!g.clubs || typeof g.clubs !== 'object' || Array.isArray(g.clubs)) {
+      const main = {};
+      const clubFields = ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'b', 'u',
+        'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown'];
+      for (const k of clubFields) {
+        main[k] = g[k];
+        delete g[k];
+      }
+      g.clubs = { main };
+    }
+    g.activeClub = (typeof g.activeClub === 'string' && Object.prototype.hasOwnProperty.call(g.clubs, g.activeClub)) ? g.activeClub : 'main';
+    // Normalize every club's run fields (numbers, maps, fail-closed specials).
+    for (const clubId of Object.keys(g.clubs)) {
+      const c = g.clubs[clubId];
+      if (!c || typeof c !== 'object') { g.clubs[clubId] = this.club(this.fresh()); continue; }
+      for (const k of ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'elapsed', 'night', 'shiftT']) {
+        if (typeof c[k] !== 'number' || !Number.isFinite(c[k])) c[k] = 0;
+        if (k === 'cash' || k === 'hype' || k === 'buzz' || k === 'patrons' || k === 'regulars') c[k] = Math.max(0, c[k]);
+      }
+      if (c.night < 1) c.night = 1;
+      if (!c.b || typeof c.b !== 'object' || Array.isArray(c.b)) c.b = {};
+      for (const def of this.BUILDINGS) {
+        let n = c.b[def.id];
+        if (typeof n !== 'number' || !Number.isFinite(n)) n = 0;
+        c.b[def.id] = Math.max(0, Math.floor(n));
+      }
+      if (!c.u || typeof c.u !== 'object' || Array.isArray(c.u)) c.u = {};
+      for (const def of this.UPGRADES) c.u[def.id] = c.u[def.id] === true;
+      if (c._specialShift != null && (!Number.isInteger(c._specialShift) || !this.SPECIAL_SHIFTS[c._specialShift])) c._specialShift = null;
+      if (typeof c._whaleCooldown !== 'number' || !Number.isFinite(c._whaleCooldown)) c._whaleCooldown = 0;
+    }
     // Defense: arrays as perks collapse on JSON round-trip.
     if (!g.perks || typeof g.perks !== 'object' || Array.isArray(g.perks)) g.perks = {};
     for (const def of this.PRESTIGE_PERKS) {
@@ -876,7 +1010,26 @@ class Game {
     if (typeof p.saveVer !== 'number' || !Number.isFinite(p.saveVer)) return false;
     const g = p.g;
     if (!g || typeof g !== 'object') return false;
-    for (const k of ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'clout', 'crew']) {
+    // SAVE_VER 9: club-level fields live under g.clubs.<id>; pre-v9 exports carry
+    // them at top level. Accept either — migration/sanitize normalize the rest.
+    // For v9, read club resources from the ACTIVE club (own-property lookup, so
+    // inherited keys can't pass), falling back to main, then any own club —
+    // completeImportedG resolves activeClub to an existing entry afterwards.
+    // (v8 flat payloads have no clubs map: fall back to top-level g[k].)
+    let club = null;
+    if (g.clubs && typeof g.clubs === 'object' && !Array.isArray(g.clubs)) {
+      if (typeof g.activeClub === 'string' && Object.prototype.hasOwnProperty.call(g.clubs, g.activeClub)) club = g.clubs[g.activeClub];
+      else if (Object.prototype.hasOwnProperty.call(g.clubs, 'main')) club = g.clubs.main;
+      else {
+        const first = Object.keys(g.clubs)[0];
+        if (first !== undefined) club = g.clubs[first];
+      }
+    }
+    for (const k of ['cash', 'hype', 'buzz', 'patrons', 'regulars']) {
+      const v = (club && club[k]) ?? g[k];
+      if (typeof v !== 'number' || !Number.isFinite(v)) return false;
+    }
+    for (const k of ['clout', 'crew']) {
       if (typeof g[k] !== 'number' || !Number.isFinite(g[k])) return false;
     }
     if (!g.jobs || typeof g.jobs !== 'object') return false;
@@ -892,40 +1045,109 @@ class Game {
   completeImportedG(g, opts = {}) {
     const requireGoals = !!opts.requireGoals;
     const defaults = this.fresh();
-    const numeric = ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'clout', 'crew',
-      'elapsed', 'night', 'shiftIdx', 'shiftT', 'ts', 'legacy', 'legacyTotal', 'prestiges'];
+    // Account-level numerics. Club-level run fields (cash/hype/buzz/patrons/
+    // regulars/elapsed/night/shiftIdx/shiftT) validate per club below.
+    const numeric = ['clout', 'crew', 'ts', 'legacy', 'legacyTotal', 'prestiges'];
     for (const k of numeric) {
       if (g[k] === undefined) g[k] = defaults[k];
       if (typeof g[k] !== 'number' || !Number.isFinite(g[k])) return false;
     }
-    if (!Number.isInteger(g.shiftIdx) || !this.SHIFTS[g.shiftIdx]) return false;
-    // A special shift may be longer than the base shift it overrides (e.g. Slow
-    // Tuesday len 40 over Last Call len 35). Validate shiftT against the ACTIVE
-    // shift's length (the special if one is set, else the base), so a legitimate
-    // in-progress special past the base length isn't rejected and wiped. Also drop
-    // any _specialShift that isn't a valid SPECIAL_SHIFTS index (fail-closed).
-    if (Number.isInteger(g._specialShift) && this.SPECIAL_SHIFTS[g._specialShift]) {
-      if (g.shiftT < 0 || g.shiftT >= this.SPECIAL_SHIFTS[g._specialShift].len) return false;
+    // Clubs map (SAVE_VER 9): require a plain object with at least one club.
+    // Normalize every club's run fields so a hand-edited club can't break the sim.
+    // Lenient-shape repair: a saveVer-9 envelope carrying a pre-v9 FLAT body (no
+    // clubs map) is rebuilt into clubs.main from the top-level club fields before
+    // validation — same recovery sanitizeG performs, so v8-style payloads keep
+    // importing regardless of envelope version.
+    if (!g.clubs || typeof g.clubs !== 'object' || Array.isArray(g.clubs)) {
+      if (typeof g.cash !== 'number') return false;
+      const main = {};
+      for (const k of ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown']) {
+        if (g[k] !== undefined) main[k] = g[k];
+        delete g[k];
+      }
+      main.b = g.b; delete g.b;
+      main.u = g.u; delete g.u;
+      // Backfill fields the flat body omitted (shiftIdx/shiftT/night/b/u...) from
+      // fresh defaults so a minimal payload still simulates safely.
+      for (const k of Object.keys(defaults.clubs.main)) {
+        if (main[k] === undefined) main[k] = defaults.clubs.main[k];
+      }
+      g.clubs = { main };
     } else {
-      g._specialShift = null;
-      if (g.shiftT < 0 || g.shiftT >= this.SHIFTS[g.shiftIdx].len) return false;
+      // A v9 body must not ALSO carry flat leftovers — hybrid shapes are malformed
+      // (fail closed) rather than silently preferring one level.
+      const stray = ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'b', 'u',
+        'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown']
+        .filter(k => g[k] !== undefined);
+      if (stray.length) return false;
+      // A v9 body with an EMPTY clubs map performs zero validations and then
+      // makes club(g) fall back to the account object (missing c.b) — abort
+      // startup instead of crashing in the first caps()/render.
+      if (!Object.keys(g.clubs).length) return false;
     }
-    if (g.elapsed < 0 || g.night < 1) return false;
+    // Resolve activeClub to an EXISTING own club entry. Normalizing a map that
+    // lacks 'main' (e.g. clubs: { annex: {...} }) to 'main' would pass validation
+    // and then make club(g) fall back to the account object (missing c.b) — pick
+    // the first own club instead; the map is guaranteed nonempty here.
+    g.activeClub = (typeof g.activeClub === 'string' && Object.prototype.hasOwnProperty.call(g.clubs, g.activeClub))
+      ? g.activeClub
+      : Object.keys(g.clubs)[0];
+    for (const clubId of Object.keys(g.clubs)) {
+      // Reject club IDs that collide with Object.prototype members ('__proto__',
+      // 'constructor', 'toString', ...) — writing such a key on a plain-object
+      // map invokes inherited setters or poisons lookups instead of creating an
+      // own entry, silently dropping the club on prestige. Fail closed.
+      if (Object.prototype.hasOwnProperty.call(Object.prototype, clubId)) return false;
+      const c = g.clubs[clubId];
+      if (!c || typeof c !== 'object' || Array.isArray(c)) return false;
+      for (const k of ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'elapsed', 'night', 'shiftT']) {
+        if (c[k] === undefined) c[k] = defaults.clubs.main[k];
+        if (typeof c[k] !== 'number' || !Number.isFinite(c[k])) return false;
+      }
+      if (c.cash < 0 || c.hype < 0 || c.buzz < 0 || c.patrons < 0 || c.regulars < 0) return false;
+      if (!Number.isInteger(c.shiftIdx) || !this.SHIFTS[c.shiftIdx]) return false;
+      // A special shift may be longer than the base shift it overrides (e.g. Slow
+      // Tuesday len 40 over Last Call len 35). Validate shiftT against the ACTIVE
+      // shift's length (the special if one is set, else the base), so a legitimate
+      // in-progress special past the base length isn't rejected and wiped. Also drop
+      // any _specialShift that isn't a valid SPECIAL_SHIFTS index (fail-closed).
+      if (Number.isInteger(c._specialShift) && this.SPECIAL_SHIFTS[c._specialShift]) {
+        if (c.shiftT < 0 || c.shiftT >= this.SPECIAL_SHIFTS[c._specialShift].len) return false;
+      } else {
+        c._specialShift = null;
+        if (c.shiftT < 0 || c.shiftT >= this.SHIFTS[c.shiftIdx].len) return false;
+      }
+      if (c.elapsed < 0 || c.night < 1) return false;
 
-    // Rebuild from known IDs only — unknown keys (e.g. string-valued XSS bait under
-    // g.b) must not survive into Object.values(g.b) / Structures or other paths.
-    for (const [key, defs, fallback] of [
-      ['b', this.BUILDINGS, 0], ['u', this.UPGRADES, false], ['r', this.RESEARCH, false]
-    ]) {
+      // Rebuild from known IDs only — unknown keys (e.g. string-valued XSS bait under
+      // c.b) must not survive into Object.values(c.b) / Structures or other paths.
+      for (const [key, defs, fallback] of [['b', this.BUILDINGS, 0], ['u', this.UPGRADES, false]]) {
+        if (c[key] === undefined) c[key] = {};
+        if (!c[key] || typeof c[key] !== 'object' || Array.isArray(c[key])) return false;
+        const next = Object.create(null);
+        for (const def of defs) {
+          let value = c[key][def.id];
+          if (value === undefined) value = fallback;
+          if (key === 'b') {
+            if (!Number.isInteger(value) || value < 0) return false;
+          } else if (typeof value !== 'boolean') return false;
+          next[def.id] = value;
+        }
+        c[key] = next;
+      }
+      if (typeof c._whaleCooldown !== 'number' || !Number.isFinite(c._whaleCooldown)) c._whaleCooldown = 0;
+    }
+
+    // Research stays account-level (shared tree across clubs).
+    {
+      const key = 'r', defs = this.RESEARCH, fallback = false;
       if (g[key] === undefined) g[key] = {};
       if (!g[key] || typeof g[key] !== 'object' || Array.isArray(g[key])) return false;
       const next = Object.create(null);
       for (const def of defs) {
         let value = g[key][def.id];
         if (value === undefined) value = fallback;
-        if (key === 'b') {
-          if (!Number.isInteger(value) || value < 0) return false;
-        } else if (typeof value !== 'boolean') return false;
+        if (typeof value !== 'boolean') return false;
         next[def.id] = value;
       }
       g[key] = next;
@@ -1063,7 +1285,7 @@ class Game {
         this._probeTimer = null;
       }
       this._onStrike = false;
-      this.state.g = g;
+      this.state.g = this.wrapState(g);
       // Successful persist is an explicit ownership take (import path):
       // a non-claiming second tab must start autosave and mark owner so later
       // progress is not lost after pausing siblings via the storage event.
@@ -1126,7 +1348,7 @@ class Game {
     const offline = (resumeExisting && g.ts && !futureTs)
       ? Math.min(Math.max(0, (nowMs - g.ts) / 1000), 28800)
       : 0;
-    this.state.g = g;
+    this.state.g = this.wrapState(g);
     this.state.lastAutoSave = wiped ? undefined : (lastAutoSave ?? undefined);
     this.push(g, 'Doors open. ' + this.VERSION.codename + ' build ' + this.VERSION.build + '.', '#22d3ee');
     if (wiped) this.push(g, 'Save format changed — previous save reset.', '#ff2d78');
@@ -1464,11 +1686,12 @@ class Game {
 
   // --- economy (caps, rates) ---
   caps(g) {
+    const c = this.club(g);
     return {
-      patrons: 10 + g.b.bar * 5 + (g.u.coat ? 20 : 0) + g.b.vip * 4,
-      buzz: 50 + g.b.marquee * 35,
-      hype: 100 + g.b.dj * 25,
-      crew: 2 + g.b.dress * 2
+      patrons: 10 + c.b.bar * 5 + (c.u.coat ? 20 : 0) + c.b.vip * 4,
+      buzz: 50 + c.b.marquee * 35,
+      hype: 100 + c.b.dj * 25,
+      crew: 2 + c.b.dress * 2
     };
   }
 
@@ -1481,10 +1704,11 @@ class Game {
   // 4-shift rotation regardless, so a special never corrupts it. Bad/foreign values
   // fall through to the base shift (fail-closed).
   effectiveShift(g) {
-    if (g._specialShift != null && Number.isInteger(g._specialShift) && this.SPECIAL_SHIFTS[g._specialShift]) {
-      return this.SPECIAL_SHIFTS[g._specialShift];
+    const c = this.club(g);
+    if (c._specialShift != null && Number.isInteger(c._specialShift) && this.SPECIAL_SHIFTS[c._specialShift]) {
+      return this.SPECIAL_SHIFTS[c._specialShift];
     }
-    return this.SHIFTS[g.shiftIdx];
+    return this.SHIFTS[c.shiftIdx];
   }
 
   // Weighted pick from SPECIAL_SHIFTS using each entry's `weight` (default 1).
@@ -1510,17 +1734,18 @@ class Game {
   //   next instance. g.shiftIdx advances (mod 4) in both cases, so the base 4-shift
   //   rotation resumes exactly where it would have been without the special.
   advanceShift(g) {
-    const specialJustEnded = g._specialShift != null;
-    g.shiftT = 0;
-    g.shiftIdx = (g.shiftIdx + 1) % 4;
-    if (g.shiftIdx === 0) g.night++;
-    g._specialShift = null;
+    const c = this.club(g);
+    const specialJustEnded = c._specialShift != null;
+    c.shiftT = 0;
+    c.shiftIdx = (c.shiftIdx + 1) % 4;
+    if (c.shiftIdx === 0) c.night++;
+    c._specialShift = null;
     // 0.10.19: the special roll is live-only like the critic/golden/whale rolls —
     // without this, the pacing bot and offline catchUp (which drive step() with
     // _live = false) rolled special shifts and made pacing.mjs seed-dependent.
     // Gating here keeps offline away-time on the base 4-shift rotation.
     if (!specialJustEnded && this._live && Math.random() < this.SPECIAL_CHANCE) {
-      g._specialShift = this.pickSpecialShift(g);
+      c._specialShift = this.pickSpecialShift(g);
       // 0.10.1: lifetime special-shift counter (drives special_1/special_5).
       g.specialsCount = (g.specialsCount || 0) + 1;
     }
@@ -1528,16 +1753,17 @@ class Game {
   }
 
   rates(g) {
+    const c = this.club(g);
     const cap = this.caps(g);
     const shift = this.effectiveShift(g);
     let sm = shift.mult;
-    if (g._specialShift == null && g.shiftIdx === 3 && g.r.latemenu) sm = 0.95;
-    const hypeMult = 1 + g.hype / 140;
-    const crewMult = g.u.residency ? 1.4 : 1;
-    const cashMult = (g.u.twodrink ? 1.35 : 1) * hypeMult * sm;
-    const bottle = g.u.bottle ? 2.2 : 1;
+    if (c._specialShift == null && c.shiftIdx === 3 && g.r.latemenu) sm = 0.95;
+    const hypeMult = 1 + c.hype / 140;
+    const crewMult = c.u.residency ? 1.4 : 1;
+    const cashMult = (c.u.twodrink ? 1.35 : 1) * hypeMult * sm;
+    const bottle = c.u.bottle ? 2.2 : 1;
 
-    const railCap = g.b.rail * 6;
+    const railCap = c.b.rail * 6;
     // Non-crew cash: door cover + tip rail + bar + VIP rooms + regulars loop.
     // 0.10.19: the door take scales with the crowd (cover = patrons × 0.02) instead
     // of the old flat 0.08 — a packed floor pays more, an empty room ~nothing, and
@@ -1547,9 +1773,9 @@ class Game {
     // more, and the patron cap bounds the early game). Patron tips still only via
     // rail (PLAN §1.6). House cut prestige perk multiplies all cash income.
     const houseCut = this.cashIncomeMult(g);
-    let nonCrewCash = (g.patrons * 0.02 + Math.min(g.patrons, railCap) * 0.06 + g.b.bar * 0.45) * cashMult * houseCut;
-    nonCrewCash += g.b.vip * 1.25 * bottle * cashMult * houseCut;
-    if (g.r.loop) nonCrewCash += g.regulars * 0.04 * cashMult * houseCut;
+    let nonCrewCash = (c.patrons * 0.02 + Math.min(c.patrons, railCap) * 0.06 + c.b.bar * 0.45) * cashMult * houseCut;
+    nonCrewCash += c.b.vip * 1.25 * bottle * cashMult * houseCut;
+    if (g.r.loop) nonCrewCash += c.regulars * 0.04 * cashMult * houseCut;
 
     let wage = (g.crew - g.jobs.off) * 0.20 * (g.r.payroll ? 0.6 : 1);
     let vipCrewCash = g.jobs.vipjob * 1.35 * crewMult * bottle * cashMult * houseCut;
@@ -1570,26 +1796,26 @@ class Game {
 
     const cash = nonCrewCash + vipCrewCash - wage;
 
-    const hypeGain = (g.b.dj * 0.10 + stageHype) * (g.u.led ? 1.3 : 1);
-    const decay = g.hype * 0.014 * Math.max(0.25, 1 - g.b.door * 0.12);
+    const hypeGain = (c.b.dj * 0.10 + stageHype) * (c.u.led ? 1.3 : 1);
+    const decay = c.hype * 0.014 * Math.max(0.25, 1 - c.b.door * 0.12);
     const hype = hypeGain - decay;
 
-    const buzz = (g.b.marquee * 0.07 + g.b.flyers * 0.025 + floorBuzz) * (g.u.photog ? 1.5 : 1);
+    const buzz = (c.b.marquee * 0.07 + c.b.flyers * 0.025 + floorBuzz) * (c.u.photog ? 1.5 : 1);
     const promoMult = g.r.promo ? 1.6 : 1;
     // Buzz→patron conversion paced for §C (numbers only; walk-in 0.02 stays fixed).
     // Cap scales with cap.buzz (which grows with Marquee Sign), so buying Buzz-cap
     // upgrades legitimately raises the pull ceiling instead of being permanently
     // clamped at the launch-day floor (issue #29).
-    const basis = (g.buzz > 0 ? Math.min(g.buzz, cap.buzz * 0.0013) : 0) * promoMult;
+    const basis = (c.buzz > 0 ? Math.min(c.buzz, cap.buzz * 0.0013) : 0) * promoMult;
     // Walk-in trickle: flat +0.02 patrons/s, unscaled by Hype (PLAN §1.4).
-    const pull = basis * (1 + g.hype / 200) + 0.02;
-    const space = Math.max(0, cap.patrons - g.patrons);
+    const pull = basis * (1 + c.hype / 200) + 0.02;
+    const space = Math.max(0, cap.patrons - c.patrons);
     const admitted = Math.min(pull, space);
     const buzzSpent = basis > 0 && pull > 0 ? basis * (admitted / pull) : 0;
-    const patrons = admitted - g.patrons * 0.008;
+    const patrons = admitted - c.patrons * 0.008;
     // Regulars / Clout paced for first-research ~25 min under the §C reference bot.
-    const regulars = g.patrons * 0.00045 * (1 + g.b.vip * 0.18) * sm;
-    const clout = g.regulars * 0.0011 * (1 + 0.25 * this.perk(g, 'clout25'));
+    const regulars = c.patrons * 0.00045 * (1 + c.b.vip * 0.18) * sm;
+    const clout = c.regulars * 0.0011 * (1 + 0.25 * this.perk(g, 'clout25'));
     return { cash, hype, buzz, patrons, regulars, clout, wage, cap, shift, sm, pull, buzzSpent, strike };
   }
 
@@ -1616,6 +1842,7 @@ class Game {
   // Returns gross cash earned, wages paid, and whether a strike occurred (1.10).
   catchUp(g, seconds) {
     if (!g || !(seconds > 0)) return { earned: 0, wagesPaid: 0, struck: false, managerBought: 0 };
+    const c = this.club(g);
     seconds = Math.min(seconds, 28800);
     // 0.10.2: a golden offer that lapsed while away must not render on return.
     this.expireGolden(g);
@@ -1629,22 +1856,22 @@ class Game {
       if (rates.strike) struck = true;
       this.noteStrike(g, rates.strike);
       const cap = rates.cap;
-      const left = rates.shift.len - g.shiftT;
+      const left = rates.shift.len - c.shiftT;
       const wall = Math.min(remaining, left, this.OFFLINE_STEP);
       const dt = wall * (this.perk(g, 'offline65') ? 0.65 : 0.5);
       // rates.cash is net of wage; reconstruct gross for reporting.
       earned += (rates.cash + rates.wage) * dt;
       wagesPaid += rates.wage * dt;
-      g.cash = Math.max(0, g.cash + rates.cash * dt);
-      g.hype = Math.max(0, Math.min(cap.hype, g.hype + rates.hype * dt));
-      g.buzz = Math.max(0, Math.min(cap.buzz, g.buzz + rates.buzz * dt - rates.buzzSpent * dt));
-      g.patrons = Math.max(0, Math.min(cap.patrons, g.patrons + rates.patrons * dt));
-      g.regulars = Math.max(0, g.regulars + rates.regulars * dt);
+      c.cash = Math.max(0, c.cash + rates.cash * dt);
+      c.hype = Math.max(0, Math.min(cap.hype, c.hype + rates.hype * dt));
+      c.buzz = Math.max(0, Math.min(cap.buzz, c.buzz + rates.buzz * dt - rates.buzzSpent * dt));
+      c.patrons = Math.max(0, Math.min(cap.patrons, c.patrons + rates.patrons * dt));
+      c.regulars = Math.max(0, c.regulars + rates.regulars * dt);
       g.clout = Math.max(0, g.clout + rates.clout * dt);
-      g.shiftT += wall;
-      g.elapsed += wall;
+      c.shiftT += wall;
+      c.elapsed += wall;
       remaining -= wall;
-      if (g.shiftT >= rates.shift.len) {
+      if (c.shiftT >= rates.shift.len) {
         // Silent rollover (special-shift trigger uses the same path as live step()).
         this.advanceShift(g);
       }
@@ -1675,6 +1902,7 @@ class Game {
   step(dt) {
     const g = this.state.g;
     if (!g) return;
+    const c = this.club(g);
     dt *= (this.props.simSpeed ?? 1);
     dt = Math.min(dt, 28800);
     let remaining = dt;
@@ -1682,17 +1910,17 @@ class Game {
       const r = this.rates(g);
       this.noteStrike(g, r.strike);
       const cap = r.cap;
-      const left = r.shift.len - g.shiftT;
+      const left = r.shift.len - c.shiftT;
       const chunk = Math.min(remaining, left, this.SIM);
       const chatty = remaining <= 0.5;
-      g.cash = Math.max(0, g.cash + r.cash * chunk);
-      g.hype = Math.max(0, Math.min(cap.hype, g.hype + r.hype * chunk));
-      g.buzz = Math.max(0, Math.min(cap.buzz, g.buzz + r.buzz * chunk - r.buzzSpent * chunk));
-      g.patrons = Math.max(0, Math.min(cap.patrons, g.patrons + r.patrons * chunk));
-      g.regulars += r.regulars * chunk;
+      c.cash = Math.max(0, c.cash + r.cash * chunk);
+      c.hype = Math.max(0, Math.min(cap.hype, c.hype + r.hype * chunk));
+      c.buzz = Math.max(0, Math.min(cap.buzz, c.buzz + r.buzz * chunk - r.buzzSpent * chunk));
+      c.patrons = Math.max(0, Math.min(cap.patrons, c.patrons + r.patrons * chunk));
+      c.regulars += r.regulars * chunk;
       g.clout += r.clout * chunk;
-      g.elapsed += chunk;
-      g.shiftT += chunk;
+      c.elapsed += chunk;
+      c.shiftT += chunk;
       remaining -= chunk;
       // Managers auto-buy buildings (PLAN.md §4.1) — after cash accrues for this slice,
       // respects strike rule (no auto-buy at cash=0 or on strike).
@@ -1710,11 +1938,11 @@ class Game {
       // but the guard was missing) — without it the pacing bot rolled whales and
       // cash bonuses made pacing.mjs seed-dependent. The cooldown decrement stays
       // ungated (deterministic), so a return to live resumes the window correctly.
-      if (!g._whaleCooldown) g._whaleCooldown = 0;
-      g._whaleCooldown -= chunk;
-      if (this._live && g.hype > 0 && g._whaleCooldown <= 0 && Math.random() < 0.0008 * chunk * (1 + g.hype / 200)) {
+      if (!c._whaleCooldown) c._whaleCooldown = 0;
+      c._whaleCooldown -= chunk;
+      if (this._live && c.hype > 0 && c._whaleCooldown <= 0 && Math.random() < 0.0008 * chunk * (1 + c.hype / 200)) {
         this.spawnWhale(g);
-        g._whaleCooldown = 120 + Math.random() * 180; // 2-5 min
+        c._whaleCooldown = 120 + Math.random() * 180; // 2-5 min
       }
       // 0.10.2 burst events — live only (see CRITIC_CHANCE note). Offline catchUp
       // and the pacing bot drive step() with _live = false and stay deterministic.
@@ -1722,21 +1950,21 @@ class Game {
         this.expireGolden(g);
         this.maybeGolden(g, chunk);
       }
-      if (g.shiftT >= r.shift.len) {
+      if (c.shiftT >= r.shift.len) {
         this.advanceShift(g);
         // 0.10.2: a critic may review each new night (live only).
-        if (this._live && g.shiftIdx === 0) this.maybeCritic(g);
+        if (this._live && c.shiftIdx === 0) this.maybeCritic(g);
         if (chatty) {
           const eff = this.effectiveShift(g);
-          const isSpecial = g._specialShift != null;
+          const isSpecial = c._specialShift != null;
           // Always announce a special even on a night-wrap rollover; otherwise the
           // special would be silently swallowed by the "Night N begins." line.
           if (isSpecial) {
             this.push(g, eff.name + ' — x' + eff.mult.toFixed(2) + ' take.', eff.tint);
           }
-          if (g.shiftIdx === 0) this.push(g, 'Night ' + g.night + ' begins.', '#a855f7');
+          if (c.shiftIdx === 0) this.push(g, 'Night ' + c.night + ' begins.', '#a855f7');
           else if (!isSpecial) {
-            const logMult = (g.shiftIdx === 3 && g.r.latemenu) ? 0.95 : eff.mult;
+            const logMult = (c.shiftIdx === 3 && g.r.latemenu) ? 0.95 : eff.mult;
             this.push(g, eff.name + ' — x' + logMult.toFixed(2) + ' take.', eff.tint);
           }
         }
@@ -1764,18 +1992,23 @@ class Game {
 
   // Evaluate the single active goal. opts.live (default true): peak-hour hero only
   // completes when live is true — offline catchUp / load must pass { live: false }.
+  // Club-level fields (patrons/hype/regulars/b/shiftIdx) are evaluated through a
+  // merged view so goal checks keep their flat-g shape (SECOND_LOCATION.md §6);
+  // cash rewards credit the ACTIVE club, clout rewards the account.
   noteGoals(g, opts = {}) {
     if (!g) return;
     const live = opts.live !== false;
     if (!Array.isArray(g.goals)) g.goals = [];
     if (typeof g.clicks !== 'number' || !Number.isFinite(g.clicks)) g.clicks = 0;
     if (typeof g.rounds !== 'number' || !Number.isFinite(g.rounds)) g.rounds = 0;
+    const c = this.club(g);
+    const view = { ...g, ...c, b: c.b, u: c.u };
     const goal = this.activeGoal(g);
-    if (!goal || typeof goal.check !== 'function' || !goal.check(g)) return;
+    if (!goal || typeof goal.check !== 'function' || !goal.check(view)) return;
     // Goal 12 (peak): live play only — not offline catch-up or load-time evaluation.
     if (goal.id === 'peak' && !live) return;
     const rew = goal.reward || {};
-    if (rew.cash) g.cash = (g.cash || 0) + rew.cash;
+    if (rew.cash) c.cash = (c.cash || 0) + rew.cash;
     if (rew.clout) g.clout = (g.clout || 0) + rew.clout;
     g.goals.push(goal.id);
     const parts = [];
@@ -1784,13 +2017,19 @@ class Game {
     this.push(g, "Owner's list: " + goal.title + ' — ' + (parts.join(', ') || 'done') + '.', '#4ade80');
   }
 
-  // Check achievements after any goal evaluation
+  // Check achievements after any goal evaluation. Club-level fields are read
+  // through the same merged view as noteGoals; rewards split club cash / account
+  // clout+legacy the same way.
   checkAchievements(g) {
     if (!Array.isArray(g.achievements)) return;
+    const c = this.club(g);
     for (const ach of this.ACHIEVEMENTS) {
-      if (!g.achievements.includes(ach.id) && ach.check(g)) {
+      // Fresh merged view per check: achievement rewards (Legacy → legacyTotal)
+      // credit DURING the pass, and later checks must see the updated values.
+      if (!g.achievements.includes(ach.id) && ach.check(this.clubView(g))) {
         g.achievements.push(ach.id);
         if (ach.reward) {
+          if (ach.reward.cash) c.cash = (c.cash || 0) + ach.reward.cash;
           if (ach.reward.clout) g.clout = (g.clout || 0) + ach.reward.clout;
           if (ach.reward.legacy) {
             g.legacy = (g.legacy || 0) + ach.reward.legacy;
@@ -1833,22 +2072,23 @@ class Game {
   buyBuilding(def, count = 1) {
     if (this.state.tabStale) return;
     const g = this.state.g;
+    const c = this.club(g);
     if (!count || count < 1) count = 1;
     let bought = 0;
     let lastPrice = 0;
     for (let i = 0; i < count; i++) {
-      const n = g.b[def.id];
+      const n = c.b[def.id];
       const max = def.id === 'door' ? this.doorMax(g) : def.max;
       if (max != null && n >= max) break;
       const price = Math.floor(def.cost * Math.pow(def.growth, n));
-      if (g.cash < price) break;
-      g.cash -= price;
-      g.b[def.id] = n + 1;
+      if (c.cash < price) break;
+      c.cash -= price;
+      c.b[def.id] = n + 1;
       bought++;
       lastPrice = price;
     }
     if (bought > 0) {
-      this.push(g, 'Built ' + def.name + (bought === 1 ? ' #' + g.b[def.id] + ' for $' + this.fmt(lastPrice) : ' \u00d7' + bought) + '.', '#22d3ee');
+      this.push(g, 'Built ' + def.name + (bought === 1 ? ' #' + c.b[def.id] + ' for $' + this.fmt(lastPrice) : ' \u00d7' + bought) + '.', '#22d3ee');
       this.noteGoals(g);
       this.checkAchievements(g);
       this.forceUpdate();
@@ -1856,9 +2096,10 @@ class Game {
   }
   // Maximum affordable count for a building, capped by building max.
   // Extracted so the UI and the buy button can agree on the number.
-  buildingMaxAffordable(def, cash = this.state.g.cash) {
+  buildingMaxAffordable(def, cash = this.club(this.state.g).cash) {
     const g = this.state.g;
-    let n = g.b[def.id];
+    const c = this.club(g);
+    let n = c.b[def.id];
     const cap = def.id === 'door' ? this.doorMax(g) : def.max;
     let count = 0;
     while (true) {
@@ -1878,12 +2119,13 @@ class Game {
   buyUpgrade(def) {
     if (this.state.tabStale) return;
     const g = this.state.g;
-    if (g.u[def.id] || g.cash < def.cost) return;
+    const c = this.club(g);
+    if (c.u[def.id] || c.cash < def.cost) return;
     // Enforce building req in the action (UI already gates; do not trust UI alone).
     const reqId = Object.keys(def.req)[0];
-    if (g.b[reqId] < def.req[reqId]) return;
-    g.cash -= def.cost;
-    g.u[def.id] = true;
+    if (c.b[reqId] < def.req[reqId]) return;
+    c.cash -= def.cost;
+    c.u[def.id] = true;
     this.push(g, 'Installed ' + def.name + '.', '#ffc94a');
     this.noteGoals(g);
     this.checkAchievements(g);
@@ -1947,22 +2189,23 @@ class Game {
   // Returns the count of buildings bought on this call.
   autoBuyManagers(g, opts = {}) {
     if (!g.managers) return 0;
+    const c = this.club(g);
     // Strike gate: don't auto-buy while cash is depleted and crew is on strike.
     const strike = opts.strike != null ? opts.strike : this.rates(g).strike;
-    if (g.cash <= 0 && strike) return 0;
+    if (c.cash <= 0 && strike) return 0;
     let bought = 0;
     for (const def of this.MANAGERS) {
       if (!g.managers[def.id]) continue;
       if (g.managerPaused && g.managerPaused[def.id]) continue;
       const bdef = this.BUILDINGS.find(b => b.id === def.id);
       if (!bdef) continue;
-      const n = g.b[def.id];
+      const n = c.b[def.id];
       const max = def.id === 'door' ? this.doorMax(g) : bdef.max;
       if (max != null && n >= max) continue;
       const price = Math.floor(bdef.cost * Math.pow(bdef.growth, n));
-      if (g.cash < price) continue;
-      g.cash -= price;
-      g.b[def.id] = n + 1;
+      if (c.cash < price) continue;
+      c.cash -= price;
+      c.b[def.id] = n + 1;
       bought++;
       if (opts.log) {
         this.push(g, 'Manager built ' + bdef.name + ' #' + (n + 1) + ' for $' + this.fmt(price) + '.', '#a855f7');
@@ -1974,7 +2217,8 @@ class Game {
   confirmPrestige() {
     if (this.state.tabStale) return;
     const g = this.state.g;
-    if ((g.regulars || 0) < 25) return;
+    const c = this.club(g);
+    if ((c.regulars || 0) < 25) return;
     const gain = this.legacyGain(g);
 
     // Snapshot meta that persists.
@@ -1992,6 +2236,23 @@ class Game {
 
     // Build post-prestige candidate from fresh() defaults.
     const next = this.fresh();
+    // Preserve every club (v9 multi-club saves): reset each non-main club's run
+    // fields exactly like fresh() does for main, and keep activeClub pointing at
+    // its club — prestige resets run state, it does not delete rooms.
+    for (const id of Object.keys(g.clubs)) {
+      if (id === 'main') continue;
+      const b2 = {}, u2 = {};
+      this.BUILDINGS.forEach(x => b2[x.id] = 0);
+      this.UPGRADES.forEach(x => u2[x.id] = false);
+      next.clubs[id] = {
+        cash: (this.props && this.props.startingCash) ?? 20, hype: 0, buzz: 0, patrons: 0, regulars: 0,
+        b: b2, u: u2, elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0,
+        _specialShift: null, _whaleCooldown: 0
+      };
+    }
+    if (typeof g.activeClub === 'string' && Object.prototype.hasOwnProperty.call(next.clubs, g.activeClub)) {
+      next.activeClub = g.activeClub;
+    }
     next.legacy = snapshot.legacy + gain;
     next.legacyTotal = snapshot.legacyTotal + gain;
     next.perks = snapshot.perks;
@@ -2017,7 +2278,7 @@ class Game {
     }
 
     this._onStrike = false;
-    this.state.g = next;
+    this.state.g = this.wrapState(next);
     this.markTabOwner();
     this.startAutosave();
     this.setState({ tab: 'club', saveState: 'prestige saved' });
@@ -2025,11 +2286,12 @@ class Game {
   hireCrew() {
     if (this.state.tabStale) return;
     const g = this.state.g;
+    const c = this.club(g);
     const cap = this.caps(g).crew;
     if (g.crew >= cap) return;
     const price = Math.floor(280 * Math.pow(1.38, g.crew));
-    if (g.cash < price) return;
-    g.cash -= price;
+    if (c.cash < price) return;
+    c.cash -= price;
     g.crew++;
     // New hires open on Main Stage so the room doesn't stay empty after a hire.
     g.jobs.stage++;
@@ -2059,7 +2321,8 @@ class Game {
 
   // Round price — single source for UI and pacing.mjs reference bot (PLAN-NEXT §C).
   roundPrice(g) {
-    return Math.floor(50 + (g.patrons || 0) * 7);
+    const c = this.club(g);
+    return Math.floor(50 + (c.patrons || 0) * 7);
   }
 
   // --- render values ---
@@ -2160,7 +2423,7 @@ class Game {
         if (this.state.tabStale || !this.isTabOwner()) return;
         if (!this.state.resetArmed) { this.setState({ resetArmed: true }); return; }
         localStorage.removeItem(this.KEY);
-        this.state.g = this.fresh();
+        this.state.g = this.wrapState(this.fresh());
         this.state.lastAutoSave = undefined;
         this.push(this.state.g, 'Save wiped. Fresh club.', '#ff2d78');
         // Fresh g may not have the current tab's unlock (Upgrades/Research/Perks
@@ -2174,16 +2437,17 @@ class Game {
     };
     if (!g) return base;
 
+    const c = this.club(g);
     const r = this.rates(g), cap = r.cap;
     const sign = v => (v >= 0 ? '+' : '') + this.fmt(v) + '/s';
 
     const resources = [
-      { name: 'Cash' + this.helpIcon('Cash', 'Money in the till. Used to hire crew, buy structures, upgrades, and rounds.'), val: '$' + this.fmt(g.cash), rate: sign(r.cash), pct: 100, color: '#ffc94a', note: r.strike ? 'crew unpaid — on strike' : (r.wage > 0 ? 'wages −$' + this.fmt(r.wage) + '/s' : 'no payroll yet') },
-      { name: 'Hype' + this.helpIcon('Hype', 'Room energy. Multiplies all cash income and click value. Decays over time — feed it with DJ Booths and the stage crew.'), val: this.fmt(g.hype), rate: sign(r.hype), pct: g.hype / cap.hype * 100, color: '#ff2d78', note: 'cap ' + cap.hype + ' · x' + (1 + g.hype / 140).toFixed(2) + ' income' },
-      { name: 'Buzz' + this.helpIcon('Buzz', 'Street awareness. Converts into patrons entering the club. Marquee Signs and Flyer Crews generate it.'), val: this.fmt(g.buzz), rate: sign(r.buzz - r.buzzSpent), pct: g.buzz / cap.buzz * 100, color: '#22d3ee', note: 'cap ' + cap.buzz + ' · pulls patrons in' },
-      // Display whole people; sim keeps fractional g.patrons (PLAN §2.4).
-      { name: 'Patrons' + this.helpIcon('Patrons', 'Bodies on the floor. They pay cover at the door ($0.02/head), tip at Tip Rails, and slowly become Regulars. Cap grows with structures.'), val: this.fmt(Math.floor(g.patrons)), rate: sign(r.patrons), pct: g.patrons / cap.patrons * 100, color: '#a855f7', note: 'floor cap ' + cap.patrons },
-      { name: 'Regulars' + this.helpIcon('Regulars', 'Loyal patrons who never leave. Each one generates Clout over time. With Reputation Loop, they also pay $0.04/s cash.'), val: this.fmt(g.regulars), rate: sign(r.regulars), pct: Math.min(100, g.regulars), color: '#4ade80', note: g.r.loop ? '$0.04/s each' : 'unlock Reputation Loop' },
+      { name: 'Cash' + this.helpIcon('Cash', 'Money in the till. Used to hire crew, buy structures, upgrades, and rounds.'), val: '$' + this.fmt(c.cash), rate: sign(r.cash), pct: 100, color: '#ffc94a', note: r.strike ? 'crew unpaid — on strike' : (r.wage > 0 ? 'wages −$' + this.fmt(r.wage) + '/s' : 'no payroll yet') },
+      { name: 'Hype' + this.helpIcon('Hype', 'Room energy. Multiplies all cash income and click value. Decays over time — feed it with DJ Booths and the stage crew.'), val: this.fmt(c.hype), rate: sign(r.hype), pct: c.hype / cap.hype * 100, color: '#ff2d78', note: 'cap ' + cap.hype + ' · x' + (1 + c.hype / 140).toFixed(2) + ' income' },
+      { name: 'Buzz' + this.helpIcon('Buzz', 'Street awareness. Converts into patrons entering the club. Marquee Signs and Flyer Crews generate it.'), val: this.fmt(c.buzz), rate: sign(r.buzz - r.buzzSpent), pct: c.buzz / cap.buzz * 100, color: '#22d3ee', note: 'cap ' + cap.buzz + ' · pulls patrons in' },
+      // Display whole people; sim keeps fractional c.patrons (PLAN §2.4).
+      { name: 'Patrons' + this.helpIcon('Patrons', 'Bodies on the floor. They pay cover at the door ($0.02/head), tip at Tip Rails, and slowly become Regulars. Cap grows with structures.'), val: this.fmt(Math.floor(c.patrons)), rate: sign(r.patrons), pct: c.patrons / cap.patrons * 100, color: '#a855f7', note: 'floor cap ' + cap.patrons },
+      { name: 'Regulars' + this.helpIcon('Regulars', 'Loyal patrons who never leave. Each one generates Clout over time. With Reputation Loop, they also pay $0.04/s cash.'), val: this.fmt(c.regulars), rate: sign(r.regulars), pct: Math.min(100, c.regulars), color: '#4ade80', note: g.r.loop ? '$0.04/s each' : 'unlock Reputation Loop' },
       { name: 'Clout' + this.helpIcon('Clout', 'Research currency. Earned from Regulars. Spent permanently on the Research tab for global upgrades.'), val: this.fmt(g.clout), rate: sign(r.clout), pct: Math.min(100, g.clout * 2), color: '#e879f9', note: 'spent on research' }
     ];
     // Legacy appears in the ledger only once meta is unlocked (first prestige or any lifetime Legacy).
@@ -2201,8 +2465,8 @@ class Game {
       { k: 'Crew' + this.helpIcon('Crew', 'Hired dancers, bartenders, and hosts. Assign them to Main Stage (Hype), VIP (cash), or Floor (buzz + regulars). Wages tick every second.'), v: g.crew + ' / ' + cap.crew },
       { k: 'On stage' + this.helpIcon('On stage', 'Crew assigned to Main Stage. Each one generates Hype. More Hype = higher income multiplier.'), v: String(g.jobs.stage) },
       // Sum only known building IDs (defense in depth vs unknown keys).
-      { k: 'Structures' + this.helpIcon('Structures', 'Total buildings owned. Tip Rails, Back Bars, DJ Booths, Marquee Signs, Flyer Crews, VIP Booths, Door Staff, Dressing Rooms.'), v: String(this.BUILDINGS.reduce((a, d) => a + (g.b[d.id] || 0), 0)) },
-      { k: 'Night time' + this.helpIcon('Night time', 'Total time played this run. Shifts cycle: Early Doors → Peak Hours → Last Call → After Hours. After Hours is weak unless you research Late Kitchen.'), v: Math.floor(g.elapsed / 60) + 'm ' + Math.floor(g.elapsed % 60) + 's' }
+      { k: 'Structures' + this.helpIcon('Structures', 'Total buildings owned. Tip Rails, Back Bars, DJ Booths, Marquee Signs, Flyer Crews, VIP Booths, Door Staff, Dressing Rooms.'), v: String(this.BUILDINGS.reduce((a, d) => a + (c.b[d.id] || 0), 0)) },
+      { k: 'Night time' + this.helpIcon('Night time', 'Total time played this run. Shifts cycle: Early Doors → Peak Hours → Last Call → After Hours. After Hours is weak unless you research Late Kitchen.'), v: Math.floor(c.elapsed / 60) + 'm ' + Math.floor(c.elapsed % 60) + 's' }
     ];
 
     const tabDefs = [
@@ -2212,7 +2476,7 @@ class Game {
       // gating it on g.crew > 0 would strand a new player on a hidden tab.
       { id: 'crew', label: 'Crew' }
     ];
-    if (Object.values(g.b || {}).some(n => n > 0)) tabDefs.push({ id: 'up', label: 'Upgrades' });
+    if (Object.values(c.b || {}).some(n => n > 0)) tabDefs.push({ id: 'up', label: 'Upgrades' });
     if ((g.clout || 0) > 0) tabDefs.push({ id: 'res', label: 'Research' });
     if (metaUnlocked) tabDefs.push({ id: 'perks', label: 'Perks' });
     const tabs = tabDefs.map(t => ({
@@ -2236,10 +2500,10 @@ class Game {
     if (this.state.tab === 'club') {
       tabHint = 'Structures are permanent and scale in price. Everything on this tab is bought with cash. A few regulars wander in on their own; Buzz fills the floor faster. Use the ×1 / ×5 / ×10 / ×Max buttons (or Shift-click a Build button on desktop) to buy multiple at once.';
       cards = this.BUILDINGS.map(d => {
-        const n = g.b[d.id], price = Math.floor(d.cost * Math.pow(d.growth, n));
+        const n = c.b[d.id], price = Math.floor(d.cost * Math.pow(d.growth, n));
         const max = d.id === 'door' ? this.doorMax(g) : d.max;
         const maxed = max != null && n >= max;
-        const ok = !maxed && g.cash >= price;
+        const ok = !maxed && c.cash >= price;
         const affordable = maxed ? 0 : this.buildingMaxAffordable(d);
         const can5 = !maxed && affordable >= 5;
         const can10 = !maxed && affordable >= 10;
@@ -2249,7 +2513,7 @@ class Game {
         return {
           name: d.name, desc: desc, owned: n > 0 ? '×' + n : '—',
           btn: maxed ? 'Maxed' : 'Build $' + this.fmt(price),
-          meta: maxed ? 'maxed' : (ok ? 'affordable' : 'need $' + this.fmt(price - g.cash)),
+          meta: maxed ? 'maxed' : (ok ? 'affordable' : 'need $' + this.fmt(price - c.cash)),
           locked: !ok, wrapStyle: cardWrap(!maxed), btnStyle: btn(ok),
           act: () => this.buyBuilding(d, 1),
           buildingId: d.id,
@@ -2265,21 +2529,21 @@ class Game {
     } else if (this.state.tab === 'crew') {
       tabHint = 'Hire dancers, then assign them to Main Stage (Hype), VIP, or Floor. Wages tick every second — park extras Off Shift when the room is dead.';
       const price = Math.floor(280 * Math.pow(1.38, g.crew));
-      const room = g.crew < cap.crew, ok = room && g.cash >= price;
+      const room = g.crew < cap.crew, ok = room && c.cash >= price;
       cards = [{ name: 'Hire Crew', desc: 'Dancers, bartenders, hosts. New hires start on Main Stage — reassign below. Capacity comes from Dressing Rooms.',
         owned: g.crew + ' / ' + cap.crew, btn: room ? 'Hire $' + this.fmt(price) : 'At capacity',
-        meta: room ? (ok ? 'affordable' : 'need $' + this.fmt(price - g.cash)) : 'build a Dressing Room',
+        meta: room ? (ok ? 'affordable' : 'need $' + this.fmt(price - c.cash)) : 'build a Dressing Room',
         locked: !ok, wrapStyle: cardWrap(true), btnStyle: btn(ok), act: () => this.hireCrew(),
-        btnTooltip: !ok && room ? 'Need $' + this.fmt(price - g.cash) + ' cash to hire' : '' }];
+        btnTooltip: !ok && room ? 'Need $' + this.fmt(price - c.cash) + ' cash to hire' : '' }];
     } else if (this.state.tab === 'up') {
       tabHint = 'One-time purchases. Each unlocks once you own enough of the required structure.';
       cards = this.UPGRADES.map(d => {
         const reqId = Object.keys(d.req)[0], need = d.req[reqId];
-        const have = g.b[reqId] >= need, bought = g.u[d.id], ok = !bought && have && g.cash >= d.cost;
+        const have = c.b[reqId] >= need, bought = c.u[d.id], ok = !bought && have && c.cash >= d.cost;
         const rn = this.BUILDINGS.find(b => b.id === reqId).name;
         return { name: d.name, desc: d.desc, owned: bought ? 'owned' : '',
           btn: bought ? 'Installed' : 'Buy $' + this.fmt(d.cost),
-          meta: bought ? '' : (have ? (ok ? 'affordable' : 'need $' + this.fmt(d.cost - g.cash)) : 'requires ' + rn + ' ×' + need),
+          meta: bought ? '' : (have ? (ok ? 'affordable' : 'need $' + this.fmt(d.cost - c.cash)) : 'requires ' + rn + ' ×' + need),
           locked: !ok, wrapStyle: cardWrap(have && !bought), btnStyle: btn(ok, '#ffc94a'), act: () => this.buyUpgrade(d) };
       });
     } else if (this.state.tab === 'perks') {
@@ -2302,7 +2566,7 @@ class Game {
         const hired = g.managers && g.managers[d.id];
         const paused = hired && g.managerPaused && g.managerPaused[d.id];
         const bdef = this.BUILDINGS.find(b => b.id === d.id);
-        const n = g.b[d.id];
+        const n = c.b[d.id];
         const price = bdef ? Math.floor(bdef.cost * Math.pow(bdef.growth, n)) : 0;
         const max = bdef && bdef.id === 'door' ? this.doorMax(g) : bdef ? bdef.max : null;
         const atCap = max != null && n >= max;
@@ -2343,17 +2607,17 @@ class Game {
     });
 
     // Click / round numbers retuned for PLAN-NEXT §C pacing (active-play early curve).
-    const clickVal = 1.15 + g.b.rail * 0.65 + g.hype * 0.07;
+    const clickVal = 1.15 + c.b.rail * 0.65 + c.hype * 0.07;
     const roundPrice = this.roundPrice(g);
-    const hypeRoom = Math.max(0, cap.hype - g.hype);
+    const hypeRoom = Math.max(0, cap.hype - c.hype);
     const roundGain = Math.min(14, hypeRoom);
-    const roundOk = g.cash >= roundPrice && roundGain > 0;
+    const roundOk = c.cash >= roundPrice && roundGain > 0;
 
     // Prestige gate and preview data.
-    const prestigeGate = (g.regulars || 0) >= 25;
+    const prestigeGate = (c.regulars || 0) >= 25;
     const prestigeGain = prestigeGate ? this.legacyGain(g) : 0;
-    const prestigeRegulars = this.fmt(g.regulars);
-    const prestigeNight = g.night;
+    const prestigeRegulars = this.fmt(c.regulars);
+    const prestigeNight = c.night;
 
     return {
       ...base,
@@ -2370,32 +2634,32 @@ class Game {
         msg: this.escapeHtml(l.msg),
         style: { color: this.safeLogColor(l.color) }
       })),
-      shiftName: r.shift.name, nightNo: g.night, shiftMultLabel: 'x' + r.sm.toFixed(2),
-      shiftBar: this.bar(g.shiftT / r.shift.len * 100, r.shift.tint),
+      shiftName: r.shift.name, nightNo: c.night, shiftMultLabel: 'x' + r.sm.toFixed(2),
+      shiftBar: this.bar(c.shiftT / r.shift.len * 100, r.shift.tint),
       stageLine: g.jobs.stage > 0
         ? g.jobs.stage + ' on rotation'
         : (g.crew === 0
           ? 'hire crew to open the stage'
           : (g.jobs.off > 0 ? 'assign crew · Crew tab' : 'nobody on stage')),
       // Tooltip for the empty-stage caption when unaffordable
-      stageLineTooltip: g.jobs.stage === 0 && g.crew === 0 && g.cash < 280
-        ? 'Need $' + this.fmt(280 - g.cash) + ' cash to hire first crew'
+      stageLineTooltip: g.jobs.stage === 0 && g.crew === 0 && c.cash < 280
+        ? 'Need $' + this.fmt(280 - c.cash) + ' cash to hire first crew'
         : '',
       // Empty-stage badge jumps to Crew so the next action is one click away.
       stageLineAct: g.jobs.stage > 0 ? null : () => this.setState({ tab: 'crew' }),
-      energyPct: Math.round(g.hype / cap.hype * 100) + '%',
+      energyPct: Math.round(c.hype / cap.hype * 100) + '%',
       // Stage visuals derived from live state (Task 2).
-      crowdN: Math.min(14, 2 + Math.floor(g.patrons / 2)),
-      crowdBobDur: (2.4 + 1.2 * (1 - Math.min(1, g.hype / cap.hype))).toFixed(2) + 's',
-      beamOpacity: (0.25 + 0.55 * Math.min(1, g.hype / cap.hype)).toFixed(2),
-      spotOpacity: (0.14 + 0.46 * Math.min(1, g.hype / cap.hype)).toFixed(2),
+      crowdN: Math.min(14, 2 + Math.floor(c.patrons / 2)),
+      crowdBobDur: (2.4 + 1.2 * (1 - Math.min(1, c.hype / cap.hype))).toFixed(2) + 's',
+      beamOpacity: (0.25 + 0.55 * Math.min(1, c.hype / cap.hype)).toFixed(2),
+      spotOpacity: (0.14 + 0.46 * Math.min(1, c.hype / cap.hype)).toFixed(2),
       signLit: g.jobs.stage > 0,
       clickValue: '$' + this.fmt(clickVal),
       workCrowd: (e) => {
         if (this.state.tabStale) return;
         const val = clickVal * this.cashIncomeMult(g);
-        g.cash += val;
-        g.buzz = Math.min(cap.buzz, g.buzz + 0.12);
+        c.cash += val;
+        c.buzz = Math.min(cap.buzz, c.buzz + 0.12);
         g.clicks = (g.clicks || 0) + 1;
         this.noteGoals(g);
         this.checkAchievements(g);
@@ -2411,8 +2675,8 @@ class Game {
       },
       buyRound: () => {
         if (this.state.tabStale || !roundOk) return;
-        g.cash -= roundPrice;
-        g.hype = Math.max(0, Math.min(cap.hype, g.hype + 14));
+        c.cash -= roundPrice;
+        c.hype = Math.max(0, Math.min(cap.hype, c.hype + 14));
         g.rounds = (g.rounds || 0) + 1;
         this.push(g, 'Bought the room a round. +' + this.fmt(roundGain) + ' Hype.', '#ffc94a');
         this.noteGoals(g);
@@ -2425,7 +2689,7 @@ class Game {
       // ticking underneath. Buttons grey out on a stale tab.
       golden: g.golden ? {
         cashAmount: Math.floor(25 * this.cashIncomeMult(g)),
-        crowdAmount: Math.round(Math.min(10, this.caps(g).patrons - g.patrons)),
+        crowdAmount: Math.round(Math.min(10, this.caps(g).patrons - c.patrons)),
         locked: this.state.tabStale
       } : null,
       goldenOpen: this.state.goldenOpen,
@@ -2649,9 +2913,10 @@ class Game {
   }
 
   spawnWhale(g) {
-    const mult = 1 + g.hype / 100;
+    const c = this.club(g);
+    const mult = 1 + c.hype / 100;
     const bonus = Math.floor(50 * mult * this.cashIncomeMult(g));
-    g.cash += bonus;
+    c.cash += bonus;
     // 0.10.1: lifetime whale counter (drives whale_1/whale_10).
     g.whalesCount = (g.whalesCount || 0) + 1;
     this.push(g, '\uD83D\uDC0B Whale spotted! +$' + this.fmt(bonus), '#ffd700');
@@ -2675,16 +2940,17 @@ class Game {
   // Strong room (patrons >= 20) → rave: +Hype bonus, +2 Clout. Weak room → pan:
   // −Hype. Live-only — the pacing bot and offline catchUp never call it.
   maybeCritic(g) {
-    if (!g || g.hype < 30) return;
+    const c = this.club(g);
+    if (!g || c.hype < 30) return;
     if (Math.random() >= this.CRITIC_CHANCE) return;
-    if (g.patrons >= 20) {
-      const bonus = Math.floor(8 + g.hype * 0.08);
-      g.hype = Math.min(this.caps(g).hype, g.hype + bonus);
+    if (c.patrons >= 20) {
+      const bonus = Math.floor(8 + c.hype * 0.08);
+      c.hype = Math.min(this.caps(g).hype, c.hype + bonus);
       g.clout = (g.clout || 0) + 2;
       this.push(g, 'A critic raves — +' + bonus + ' Hype, +2 Clout.', '#4ade80');
     } else {
-      const penalty = Math.floor(12 + g.hype * 0.06);
-      g.hype = Math.max(0, g.hype - penalty);
+      const penalty = Math.floor(12 + c.hype * 0.06);
+      c.hype = Math.max(0, c.hype - penalty);
       this.push(g, 'A critic pans the room — ' + penalty + ' Hype.', '#ff2d78');
     }
     // Match the spawnWhale/takeGolden handler pattern: a rave's +Hype/+Clout can
@@ -2700,7 +2966,8 @@ class Game {
   // packs several chunks into one step() call must not inflate the spawn rate,
   // and a trailing partial chunk (dt not a multiple of SIM) rolls proportionally.
   maybeGolden(g, chunk = this.SIM) {
-    if (!g || g.hype <= 0 || g.golden) return;
+    const cl = this.club(g);
+    if (!g || cl.hype <= 0 || g.golden) return;
     const c = typeof chunk === 'number' && chunk > 0 ? chunk : this.SIM;
     if (Math.random() >= this.GOLDEN_CHANCE * (c / this.SIM)) return;
     g.golden = { at: Date.now() };
@@ -2724,14 +2991,15 @@ class Game {
   takeGolden(g, choice) {
     if (!g || !g.golden) return false;
     if (this.state.tabStale) return false;
+    const c = this.club(g);
     if (choice === 'crowd') {
-      const before = g.patrons;
-      g.patrons = Math.min(this.caps(g).patrons, g.patrons + 10);
-      const added = Math.round(g.patrons - before);
+      const before = c.patrons;
+      c.patrons = Math.min(this.caps(g).patrons, c.patrons + 10);
+      const added = Math.round(c.patrons - before);
       this.push(g, 'Golden ticket: VIP brought friends. +' + added + ' patrons.', '#ffc94a');
     } else {
       const amount = Math.floor(25 * this.cashIncomeMult(g));
-      g.cash += amount;
+      c.cash += amount;
       this.push(g, 'Golden ticket: VIP tipped $' + this.fmt(amount) + '.', '#ffc94a');
     }
     g.golden = null;

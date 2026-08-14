@@ -290,7 +290,9 @@ function botSecond(game) {
 function newGame() {
   const game = new Game(root);
   game.forceUpdate = () => {};
-  game.state.g = game.fresh();
+  // SAVE_VER 9: game.js's own wrapState (club proxy) handles flat-g reads against
+  // the ACTIVE club and survives prestige/reset inside the bot run.
+  game.state.g = game.wrapState(game.fresh());
   return game;
 }
 
