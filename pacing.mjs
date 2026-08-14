@@ -525,11 +525,38 @@ function secondRoomRun() {
     console.log(`FAIL: setActiveClub('annex') did not switch (activeClub=${game.state.g.activeClub}).`);
     process.exit(1);
   }
+  // Verify the annex starts truly fresh — if confirmOpenRoom ever creates it
+  // with the LED upgrade already owned, the milestone predicate fires on tick 1
+  // and the scenario passes trivially without measuring anything.
+  const annexClub = game.club(game.state.g);
+  if (annexClub.u.led) {
+    console.log('FAIL: annex created with LED upgrade already owned — not a fresh room.');
+    process.exit(1);
+  }
+  // Verify the hired manager survives the room switch.
+  if (!game.state.g.managers.rail) {
+    console.log('FAIL: manager lost after setActiveClub(\'annex\') — carry-over broken.');
+    process.exit(1);
+  }
   // Verify seeded research survived the switch (confirmPrestige resets g.r;
   // we re-seeded above — the annex must see it).
   const annexResearch = Object.keys(game.state.g.r).filter((k) => game.state.g.r[k]);
   if (annexResearch.length < 2) {
     console.log(`FAIL: research not preserved after annex switch (expected ≥2, got ${annexResearch.length}).`);
+    process.exit(1);
+  }
+  // Verify research actually affects annex rates — not just flag persistence.
+  // Temporarily set regulars=1 so the loop research has a measurable effect,
+  // then compare rates with loop on vs off.
+  const savedRegulars = annexClub.regulars;
+  annexClub.regulars = 1;
+  const rWithLoop = game.rates(game.state.g);
+  game.state.g.r.loop = false;
+  const rWithoutLoop = game.rates(game.state.g);
+  game.state.g.r.loop = true;
+  annexClub.regulars = savedRegulars;
+  if (rWithLoop.cash <= rWithoutLoop.cash) {
+    console.log('FAIL: loop research has no effect on annex cash rate — research is cosmetic.');
     process.exit(1);
   }
 
