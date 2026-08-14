@@ -749,6 +749,7 @@ The full design lives in **`SECOND_LOCATION.md`** (fantasy, gate, club shape, si
 - **Simulation:** `rates/caps/step/catchUp`, managers' auto-buy, and whale/critic/golden events all run through `club(g)` — active club only. A pending golden offer is **bound to its source club** (`g.golden.club`) and resolves there even after a switch — no cross-club transfer.
 - **Club IDs:** validated on import to a safe identifier shape (`/^[A-Za-z][A-Za-z0-9_-]{0,24}$/`, and never an `Object.prototype` member) — crafted IDs cannot smuggle markup into the header buttons (labels are also HTML-escaped).
 - **Non-goals (v1):** no travel map, no cash transfers, no inactive-club offline earnings, no per-club crew/research, max 2 clubs, no location-specific buildings.
+- **Pacing guard (0.11.2):** `pacing.mjs` `secondRoomRun` — the bot prestiges twice (cash10 ×2 + one manager), unlocks the annex, and asserts the annex's first LED with account progress lands before a no-perk fresh run's first LED (measured −2.85m). The rail manager is paused for the measurement so its unbounded auto-buy does not redirect the till.
 
 ---
 

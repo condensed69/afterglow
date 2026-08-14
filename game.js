@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.1', build: 214, channel: 'alpha', date: '2026-08-14', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.2', build: 215, channel: 'alpha', date: '2026-08-14', codename: 'Neon Zero' };
   SAVE_VER = 9;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -158,6 +158,9 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.11.2', date: '2026-08-14', codename: 'Neon Zero', notes: [
+      'Second-room pacing scenario added to the reference bot (pacing.mjs): the bot prestiges twice (cash10 ×2 + one manager), unlocks the annex, and proves account progress carries into the fresh room — annex first LED is faster than a no-perk fresh run. No gameplay change.'
+    ] },
     { v: '0.11.1', date: '2026-08-14', codename: 'Neon Zero', notes: [
       'SECOND ROOM (Slice B): after your first franchise deal and at least one manager, the header gains "Open second room" — a confirmation modal previews the unlock (fresh till/crowd/build; Clout/Legacy/research/crew/managers stay shared; the first club is untouched). Confirm opens the annex: a second club with its own cash, crowd, buildings, and shift clock. A compact [ Main ] [ Annex ] switcher appears in the header; switching is instant and the inactive club pauses. Crew is shared — switching to a room whose Dressing Room cap is smaller evicts excess working crew to off (floor → stage → VIP), and crew assignment enforces the same cap, so evicted crew can\'t be reassigned straight back. A pending golden-ticket offer stays bound to the room it spawned in, even if you switch before it expires. The Ledger labels the active room (Main Room / Annex). Imported save club IDs are validated to a safe identifier shape.',
       'Mobile: the header wraps to multiple rows on narrow screens (v0.11.1) so the new switcher never pushes the shift block or settings offscreen.'

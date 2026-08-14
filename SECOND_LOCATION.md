@@ -1,7 +1,7 @@
 # SECOND_LOCATION.md — Second Club Design
 
-**Status:** design lock for first implementation; save-shape groundwork shipped (SAVE_VER 9, 0.11.0); second-room gameplay shipped (Slice B, 0.11.1); second-room pacing scenario pending (Slice C)  
-**Scope:** this doc + the save-shape slice (0.11.0) + the second-room gameplay slice (0.11.1); `pacing2.mjs` scenario pending  
+**Status:** design lock for first implementation; save-shape groundwork shipped (SAVE_VER 9, 0.11.0); second-room gameplay shipped (Slice B, 0.11.1); second-room pacing scenario shipped (Slice C, 0.11.2)  
+**Scope:** this doc + the save-shape slice (0.11.0) + the second-room gameplay slice (0.11.1) + the pacing scenario (0.11.2)  
 **Depends on:** prestige/shift/achievement systems shipped through v0.10.4 (SAVE_VER 8)
 **Save format:** SAVE_VER 8 → **9** (shipped in 0.11.0)
 
@@ -373,7 +373,7 @@ This design **explicitly supersedes** both for a future implementation PR. The o
 
 ## 13. Implementation checklist
 
-Slice A (save-shape groundwork, 0.11.0) and Slice B (second-room gameplay, 0.11.1) items are marked done; unchecked items are the remaining second-room pacing scenario (Slice C):
+Slice A (save-shape groundwork, 0.11.0), Slice B (second-room gameplay, 0.11.1), and Slice C (pacing scenario, 0.11.2) items are marked done; the two remaining items are v1 non-goals (constraints), not work:
 
 - [x] `club(g, id)` helper; replace direct top-level cash/hype/etc. reads in `rates`/`caps`/`step`/`catchUp`.
 - [x] `activeClub` + `setActiveClub` action; header switcher.
@@ -389,7 +389,7 @@ Slice A (save-shape groundwork, 0.11.0) and Slice B (second-room gameplay, 0.11.
 - [x] `ACHIEVEMENTS` checks that read `g.b.*` / `g.u.*` are routed through `club(g)` (or `check` receives the active club) so building/upgrade achievements don't throw once `b`/`u` move off `g`.
 - [x] Owner's List goal checks that read `g.b.*` / `g.hype` / `g.patrons` / etc. are routed through `club(g)` (same fix shape as achievements) — **except** `backstage` and `roster`, whose predicates read both a club field (`b`) and a shared-roster field (`jobs` / `crew`); see the §6 table.
 - [x] Ledger shows active-club label; Clout/Legacy remain account-level.
-- [ ] `pacing2.mjs` second-room scenario green.
+- [x] Second-room pacing scenario green (`pacing.mjs` secondRoomRun: two prestiges → cash10 ×2 + manager → unlock annex → annex first LED faster than a no-perk fresh run; the rail manager is paused for the measurement so its unbounded auto-buy does not redirect the till).
 - [x] VERSION + build + CHANGELOG together; SAVE_VER 9 (0.11.0).
 - [ ] No travel map, no cash transfers, no inactive earnings, no per-club crew, no location-specific buildings in v1.
 
