@@ -244,7 +244,7 @@ Franchise Binder research was removed in 0.5.0 pending prestige design; orphan `
 price = floor(280 × 1.38^crew)
 ```
 
-- Blocked at `crew >= caps().crew`.  
+- Blocked at **working** crew `>= caps().crew` (i.e. `crew − off`); parked Off-Shift crew do not block a hire.  
 - New hire: `crew++`, **`jobs.stage++`** (always opens on Main Stage).
 - **Seed roster** perk (`startCrew`): a prestige run starts with 1 crew on Main Stage.
 
