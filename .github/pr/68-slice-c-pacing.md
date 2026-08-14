@@ -14,7 +14,7 @@ The final slice of the Second Location plan: a reference-bot proof that **accoun
 - **Measurement note (documented in the scenario, SECOND_LOCATION.md, DESIGN.md):** the rail manager is **paused** for run 3. Managers auto-buy unbounded on their building (rail has no `max`), so an active manager redirects the shared till and the run would measure the manager's spend pattern (rail 8 by first LED), not whether account progress makes the fresh room faster. Probe: unpaused manager → delta **+0.25m**; paused → **−3.45m**. Delegation is exercised in live play; the scenario isolates the carry-over.
 - Docs: SECOND_LOCATION.md (status → shipped, §13 checklist [x]), DESIGN.md §17 pacing-guard bullet, PLAN.md Deferred → shipped. VERSION 0.11.2 / build 215 + CHANGELOG (no gameplay change).
 
-## Gates (run on `db2a27e`)
+## Gates (run on `2467cf7`)
 
 - `node --check game.js` — pass
 - `node economy.test.mjs` — **228 passed, 0 failed** (unchanged — no game.js behavior change beyond version)
