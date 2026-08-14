@@ -2240,6 +2240,38 @@ test('prestige resets run state but preserves every club and activeClub', () => 
   strictEqual(a.prestiges, 1, 'prestige counted');
 });
 
+test('v9 import resolves activeClub to an existing own club when main is absent', () => {
+  const game = newGame(20);
+  const f = game.fresh().clubs.main;
+  const payload = JSON.stringify({
+    saveVer: 9,
+    g: {
+      clubs: { annex: { ...f, cash: 88 } },
+      clout: 0, crew: 0,
+      jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      goals: [], clicks: 0, rounds: 0
+    }
+  });
+  strictEqual(game.importSaveFromText(payload), true, 'annex-only map imports');
+  strictEqual(game.state.g.activeClub, 'annex', 'activeClub resolved to the existing club, not a phantom main');
+  strictEqual(game.state.g.cash, 88, 'flat reads hit the resolved club');
+
+  // Unknown activeClub id behaves the same.
+  const game2 = newGame(20);
+  const payload2 = JSON.stringify({
+    saveVer: 9,
+    g: {
+      clubs: { annex: { ...f, cash: 88 } },
+      activeClub: 'nowhere',
+      clout: 0, crew: 0,
+      jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      goals: [], clicks: 0, rounds: 0
+    }
+  });
+  strictEqual(game2.importSaveFromText(payload2), true, 'unknown activeClub id imports');
+  strictEqual(game2.state.g.activeClub, 'annex', 'unknown id falls back to an existing club');
+});
+
 test('v9 import sanitizes inherited-key activeClub to main (own-property check)', () => {
   const game = newGame(20);
   const payload = JSON.stringify({

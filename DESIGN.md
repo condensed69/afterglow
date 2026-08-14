@@ -556,7 +556,7 @@ Files and clipboard are interchangeable by design.
 Safety-critical order is **log → persist → replace** (not replace-first). A quota/storage failure must not leave the player on an imported club that never hit disk.
 
 1. `JSON.parse`  
-2. `isValidSavePayload` (saveVer finite; club resources cash/hype/buzz/patrons/regulars numeric — read from `g.clubs.main` for v9 payloads, top-level for pre-v9; clout/crew numbers; jobs object)  
+2. `isValidSavePayload` (saveVer finite; club resources cash/hype/buzz/patrons/regulars numeric — read from the active club (own-property lookup; fallback main → any own club → top-level) for v9 payloads, top-level for pre-v9; clout/crew numbers; jobs object)  
 3. If `saveVer !== SAVE_VER`: `migrateFrom` chain; missing step → fail  
 4. `completeImportedG` (fill defaults, reject unsafe values)  
 5. Stamp `ts = now` on the **candidate** `g` (not yet live)  

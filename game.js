@@ -1012,10 +1012,21 @@ class Game {
     if (!g || typeof g !== 'object') return false;
     // SAVE_VER 9: club-level fields live under g.clubs.<id>; pre-v9 exports carry
     // them at top level. Accept either — migration/sanitize normalize the rest.
-    // (g.clubs?.main?.cash ?? g.cash) reads the club value for v9 payloads and
-    // the top-level value for older ones.
+    // For v9, read club resources from the ACTIVE club (own-property lookup, so
+    // inherited keys can't pass), falling back to main, then any own club —
+    // completeImportedG resolves activeClub to an existing entry afterwards.
+    // (v8 flat payloads have no clubs map: fall back to top-level g[k].)
+    let club = null;
+    if (g.clubs && typeof g.clubs === 'object' && !Array.isArray(g.clubs)) {
+      if (typeof g.activeClub === 'string' && Object.prototype.hasOwnProperty.call(g.clubs, g.activeClub)) club = g.clubs[g.activeClub];
+      else if (Object.prototype.hasOwnProperty.call(g.clubs, 'main')) club = g.clubs.main;
+      else {
+        const first = Object.keys(g.clubs)[0];
+        if (first !== undefined) club = g.clubs[first];
+      }
+    }
     for (const k of ['cash', 'hype', 'buzz', 'patrons', 'regulars']) {
-      const v = (g.clubs && g.clubs.main && g.clubs.main[k]) ?? g[k];
+      const v = (club && club[k]) ?? g[k];
       if (typeof v !== 'number' || !Number.isFinite(v)) return false;
     }
     for (const k of ['clout', 'crew']) {
@@ -1074,7 +1085,13 @@ class Game {
       // startup instead of crashing in the first caps()/render.
       if (!Object.keys(g.clubs).length) return false;
     }
-    g.activeClub = (typeof g.activeClub === 'string' && Object.prototype.hasOwnProperty.call(g.clubs, g.activeClub)) ? g.activeClub : 'main';
+    // Resolve activeClub to an EXISTING own club entry. Normalizing a map that
+    // lacks 'main' (e.g. clubs: { annex: {...} }) to 'main' would pass validation
+    // and then make club(g) fall back to the account object (missing c.b) — pick
+    // the first own club instead; the map is guaranteed nonempty here.
+    g.activeClub = (typeof g.activeClub === 'string' && Object.prototype.hasOwnProperty.call(g.clubs, g.activeClub))
+      ? g.activeClub
+      : Object.keys(g.clubs)[0];
     for (const clubId of Object.keys(g.clubs)) {
       const c = g.clubs[clubId];
       if (!c || typeof c !== 'object' || Array.isArray(c)) return false;

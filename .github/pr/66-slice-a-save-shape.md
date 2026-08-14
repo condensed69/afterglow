@@ -14,7 +14,7 @@ Slice A of the Second Location plan (PLAN.md Deferred; design in `SECOND_LOCATIO
 ## Gates
 
 - `node --check game.js` — pass
-- `node economy.test.mjs` — **216 passed, 0 failed** (was 209; +7: v8→v9 migration shape, `club()` resolution/fallback/activeClub routing incl. inherited-key rejection, fresh() v9 partition, empty-clubs-map rejection, prestige club preservation, plus the armed `SPLIT_TEST`)
+- `node economy.test.mjs` — **217 passed, 0 failed** (was 209; +8: v8→v9 migration shape, `club()` resolution/fallback/activeClub routing incl. inherited-key rejection, fresh() v9 partition, empty-clubs-map rejection, prestige club preservation, activeClub resolves to an existing club when `main` is absent, plus the armed `SPLIT_TEST`)
 - `node pacing.mjs` — all milestones within band; prestige delta **−1.87m** — bit-identical to pre-refactor (same 39.97m all-upgrades, 14.67m first LED), confirming zero pacing change
 
 ## Docs
