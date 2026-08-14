@@ -159,7 +159,8 @@ class Game {
 
   CHANGELOG = [
     { v: '0.11.1', date: '2026-08-14', codename: 'Neon Zero', notes: [
-      'SECOND ROOM (Slice B): after your first franchise deal and at least one manager, the header gains "Open second room" — a confirmation modal previews the unlock (fresh till/crowd/build; Clout/Legacy/research/crew/managers stay shared; the first club is untouched). Confirm opens the annex: a second club with its own cash, crowd, buildings, and shift clock. A compact [ Main ] [ Annex ] switcher appears in the header; switching is instant and the inactive club pauses. Crew is shared — switching to a room whose Dressing Room cap is smaller evicts excess crew to off (floor → stage → VIP), no auto-restore. The Ledger labels the active room (Main Room / Annex).'
+      'SECOND ROOM (Slice B): after your first franchise deal and at least one manager, the header gains "Open second room" — a confirmation modal previews the unlock (fresh till/crowd/build; Clout/Legacy/research/crew/managers stay shared; the first club is untouched). Confirm opens the annex: a second club with its own cash, crowd, buildings, and shift clock. A compact [ Main ] [ Annex ] switcher appears in the header; switching is instant and the inactive club pauses. Crew is shared — switching to a room whose Dressing Room cap is smaller evicts excess working crew to off (floor → stage → VIP), and crew assignment enforces the same cap, so evicted crew can\'t be reassigned straight back. A pending golden-ticket offer stays bound to the room it spawned in, even if you switch before it expires. The Ledger labels the active room (Main Room / Annex). Imported save club IDs are validated to a safe identifier shape.',
+      'Mobile: the header wraps to multiple rows on narrow screens (v0.11.1) so the new switcher never pushes the shift block or settings offscreen.'
     ] },
     { v: '0.11.0', date: '2026-08-13', codename: 'Neon Zero', notes: [
       'SAVE FORMAT v9 (second-location groundwork): run state (cash, hype, buzz, patrons, regulars, buildings, upgrades, elapsed, night, shift, special shift, whale cooldown) now lives in g.clubs.main instead of on g directly, with g.activeClub pointing at the club being played. Saves from v8 migrate automatically on load — nothing is lost, and gameplay is unchanged. A compatibility layer keeps every read working through the new shape. This is the foundation for a second room/club; nothing player-visible changed yet.'
@@ -1106,6 +1107,10 @@ class Game {
       // map invokes inherited setters or poisons lookups instead of creating an
       // own entry, silently dropping the club on prestige. Fail closed.
       if (Object.prototype.hasOwnProperty.call(Object.prototype, clubId)) return false;
+      // Club IDs render into header buttons (label + title) — restrict to a
+      // safe identifier shape so imported saves cannot smuggle markup through
+      // innerHTML (XSS via a crafted id like '<img onerror=...>').
+      if (!/^[A-Za-z][A-Za-z0-9_-]{0,24}$/.test(clubId)) return false;
       const c = g.clubs[clubId];
       if (!c || typeof c !== 'object' || Array.isArray(c)) return false;
       for (const k of ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'elapsed', 'night', 'shiftT']) {
@@ -1693,8 +1698,8 @@ class Game {
   }
 
   // --- economy (caps, rates) ---
-  caps(g) {
-    const c = this.club(g);
+  caps(g, cl) {
+    const c = cl || this.club(g);
     return {
       patrons: 10 + c.b.bar * 5 + (c.u.coat ? 20 : 0) + c.b.vip * 4,
       buzz: 50 + c.b.marquee * 35,
@@ -2257,9 +2262,15 @@ class Game {
     const g = this.state.g;
     if (!Object.prototype.hasOwnProperty.call(g.clubs, id) || g.activeClub === id) return;
     g.activeClub = id;
+    // Cap-aware crew rebalance (SECOND_LOCATION.md §5): crew is shared; the new
+    // active club's Dressing Rooms cap WORKING crew (stage + VIP + floor — off
+    // shift is not working). Evict excess working crew to off, floor → stage →
+    // VIP (least-valuable roles first). Evicted crew stay in off until manually
+    // reassigned (non-goal: no auto-restore).
     const cap = this.caps(g).crew;
-    if (g.crew > cap) {
-      let excess = g.crew - cap;
+    const working = g.crew - (g.jobs.off || 0);
+    if (working > cap) {
+      let excess = working - cap;
       for (const k of ['floor', 'stage', 'vipjob']) {
         const drop = Math.min(g.jobs[k] || 0, excess);
         g.jobs[k] -= drop;
@@ -2267,6 +2278,14 @@ class Game {
         excess -= drop;
         if (excess <= 0) break;
       }
+    }
+    // A fresh room may not unlock the current tab (Upgrades gates on buildings,
+    // club-level) — mirror the hardReset/prestige fallback so the bar never
+    // renders content with no selected tab.
+    const c = this.club(g);
+    if (this.state.tab === 'up' && !Object.values(c.b || {}).some(n => n > 0)) {
+      this.setState({ tab: 'club' });
+      return;
     }
     this.forceUpdate();
   }
@@ -2365,6 +2384,12 @@ class Game {
     if (id === 'off') return;
     if (d > 0) {
       if (g.jobs.off < 1) return;
+      // Crew capacity (SECOND_LOCATION.md §5): the active room's Dressing Rooms
+      // cap WORKING crew (crew − off). Without this check, crew evicted by a
+      // club switch could be reassigned right back, bypassing the new room's
+      // smaller cap and flattening its progression.
+      const cap = this.caps(g).crew;
+      if (g.crew - g.jobs.off >= cap) return;
       g.jobs.off--;
       g.jobs[id]++;
     } else {
@@ -2658,7 +2683,7 @@ class Game {
       return {
         name: j.name, rawName: j.name, desc: j.desc, n: g.jobs[j.id], passive: false,
         inc: () => this.moveJob(j.id, 1), dec: () => this.moveJob(j.id, -1),
-        incLocked: g.jobs.off < 1,
+        incLocked: g.jobs.off < 1 || (g.crew - g.jobs.off) >= cap.crew,
         decLocked: g.jobs[j.id] < 1,
         stepStyle: (locked) => ({ width: '26px', height: '26px', border: '1px solid ' + (locked ? '#1f1430' : '#3a2350'), borderRadius: '5px', background: locked ? '#120c1c' : '#170e22', color: locked ? '#4a3860' : '#e7d8f2', cursor: locked ? 'not-allowed' : 'pointer', fontSize: '14px', lineHeight: 1 })
       };
@@ -2686,11 +2711,11 @@ class Game {
       canOpenRoom: this.canOpenRoom(),
       clubSwitcher: Object.keys(g.clubs || {}).map(id => ({
         id,
-        label: id === 'main' ? 'Main' : id[0].toUpperCase() + id.slice(1),
+        label: this.escapeHtml(id === 'main' ? 'Main' : id[0].toUpperCase() + id.slice(1)),
         active: id === g.activeClub,
         go: () => this.setActiveClub(id)
       })),
-      activeClubLabel: g.activeClub === 'main' ? 'Main Room' : g.activeClub[0].toUpperCase() + g.activeClub.slice(1),
+      activeClubLabel: this.escapeHtml(g.activeClub === 'main' ? 'Main Room' : g.activeClub[0].toUpperCase() + g.activeClub.slice(1)),
       openRoom: () => this.openRoom(),
       confirmOpenRoom: () => this.confirmOpenRoom(),
       closeOpenRoom: () => this.setState({ showOpenRoom: false }),
@@ -2758,11 +2783,16 @@ class Game {
       // small, stays to the side, and lets the player open it when they want.
       // It no longer blocks the stage with a large modal; the idle sim keeps
       // ticking underneath. Buttons grey out on a stale tab.
-      golden: g.golden ? {
-        cashAmount: Math.floor(25 * this.cashIncomeMult(g)),
-        crowdAmount: Math.round(Math.min(10, this.caps(g).patrons - c.patrons)),
-        locked: this.state.tabStale
-      } : null,
+      golden: g.golden ? (() => {
+        // Preview resolves against the offer's SOURCE club so switching rooms
+        // mid-TTL shows the real gain (and cap) where the ticket will land.
+        const gc = this.club(g, g.golden.club);
+        return {
+          cashAmount: Math.floor(25 * this.cashIncomeMult(g)),
+          crowdAmount: Math.round(Math.min(10, this.caps(g, gc).patrons - gc.patrons)),
+          locked: this.state.tabStale
+        };
+      })() : null,
       goldenOpen: this.state.goldenOpen,
       openGolden: () => this.setState(s => ({ goldenOpen: true })),
       closeGolden: () => this.setState(s => ({ goldenOpen: false })),
@@ -3041,7 +3071,10 @@ class Game {
     if (!g || cl.hype <= 0 || g.golden) return;
     const c = typeof chunk === 'number' && chunk > 0 ? chunk : this.SIM;
     if (Math.random() >= this.GOLDEN_CHANCE * (c / this.SIM)) return;
-    g.golden = { at: Date.now() };
+    // Bind the pending offer to the club it spawned in (SECOND_LOCATION.md §5):
+    // switching rooms before the 30s TTL must not let the ticket's cash/patrons
+    // cross the no-transfer boundary into another club.
+    g.golden = { at: Date.now(), club: g.activeClub };
     this.push(g, 'VIP booked the booth — golden ticket!', '#ffc94a');
   }
 
@@ -3062,10 +3095,12 @@ class Game {
   takeGolden(g, choice) {
     if (!g || !g.golden) return false;
     if (this.state.tabStale) return false;
-    const c = this.club(g);
+    // Resolve against the club the offer spawned in (own-property fallback in
+    // club() keeps a crafted/old {at}-only golden on a real club).
+    const c = this.club(g, g.golden.club);
     if (choice === 'crowd') {
       const before = c.patrons;
-      c.patrons = Math.min(this.caps(g).patrons, c.patrons + 10);
+      c.patrons = Math.min(this.caps(g, c).patrons, c.patrons + 10);
       const added = Math.round(c.patrons - before);
       this.push(g, 'Golden ticket: VIP brought friends. +' + added + ' patrons.', '#ffc94a');
     } else {

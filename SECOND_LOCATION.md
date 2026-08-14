@@ -194,7 +194,7 @@ Single helper used everywhere a club-specific value is read. No scattered `g.clu
 - `setActiveClub` switches `g.activeClub` and immediately re-renders.
 - The previously active club pauses earning; the new active club resumes. There is **no cross-club offline earning** while a club is inactive — its `ts` is not advanced, and `catchUp` runs only for the active club on load. This avoids double-counting and keeps v1 simple.
 - Managers auto-buy only for the **active club**.
-- Whale / critic / golden events run only on the **active club**.
+- Whale / critic / golden events run only on the **active club**. A pending **golden offer is bound to its source club** (`g.golden.club`): if the player switches rooms before the 30s TTL, `takeGolden` (and the badge's preview/cap) resolve against the club where the offer spawned — no cross-club cash/patrons transfer.
 
 ### `rates(g)`, `caps(g)`, `step(g, dt)`, `catchUp(g, seconds)`
 
@@ -205,7 +205,7 @@ const c = this.club(g);
 const cap = this.caps(g, c);   // crew is shared; cap derived from active club's Dressing Rooms
 ```
 
-Crew capacity (`caps().crew`) is derived from the **active club's** Dressing Rooms, because crew is physically assigned to the active room. If the player switches clubs, the crew cap may shrink; excess crew are pushed to `off`. **Shipped (0.11.1):** `setActiveClub` runs the cap-aware rebalance — evicts excess crew to `off` in order **floor → stage → VIP** (least-valuable roles first; deterministic). The existing jobs/crew rebalance pass in `sanitizeG` only rebalances `g.jobs` against `g.crew` count — it has no notion of `caps(g).crew` or evicting crew when a cap shrinks.
+Crew capacity (`caps().crew`) is derived from the **active club's** Dressing Rooms, because crew is physically assigned to the active room. The cap applies to **working crew** (`g.crew − g.jobs.off`); off-shift crew are not counted. **Shipped (0.11.1):** `setActiveClub` runs the cap-aware rebalance — evicts excess working crew to `off` in order **floor → stage → VIP** (least-valuable roles first; deterministic), and `moveJob`'s assign path (and the rendered assign-button lock state) enforces the same `working < caps(g).crew` rule so evicted crew cannot be reassigned straight back. The existing jobs/crew rebalance pass in `sanitizeG` only rebalances `g.jobs` against `g.crew` count — it has no notion of `caps(g).crew` or evicting crew when a cap shrinks.
 
 Clout is earned into the shared `g.clout` from the active club's Regulars only. Inactive clubs do not generate Clout. This is v1's simplicity tradeoff; future designs may accrue Clout across all clubs at a reduced rate.
 

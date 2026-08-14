@@ -244,6 +244,20 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
     min-height: 44px !important;
   }
 
+  /* Second-room header (v0.11.1): the club switcher adds up to two more buttons
+     to a single-row header that never wraps, and the app root clips overflow —
+     on narrow screens the shift block and ☰ were pushed offscreen. Let the
+     header wrap to as many rows as it needs: the app grid's auto header row
+     grows and the shell keeps scrolling. Inline styles win on specificity,
+     hence !important on the dimensions. */
+  header {
+    flex-wrap: wrap !important;
+    height: auto !important;
+    min-height: 52px;
+    gap: 8px 10px !important;
+    padding: 8px 12px !important;
+  }
+
   /* Both interior grids distribute a height they no longer have once the shell
      is the scroller: with no free space, the stage's minmax(190px,1fr) collapses
      to its 190px floor and the Systems body's minmax(0,1fr) resolves to zero and
