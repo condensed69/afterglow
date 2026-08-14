@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.0', build: 213, channel: 'alpha', date: '2026-08-13', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.1', build: 214, channel: 'alpha', date: '2026-08-14', codename: 'Neon Zero' };
   SAVE_VER = 9;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -158,6 +158,10 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.11.1', date: '2026-08-14', codename: 'Neon Zero', notes: [
+      'SECOND ROOM (Slice B): after your first franchise deal and at least one manager, the header gains "Open second room" — a confirmation modal previews the unlock (fresh till/crowd/build; Clout/Legacy/research/crew/managers stay shared; the first club is untouched). Confirm opens the annex: a second club with its own cash, crowd, buildings, and shift clock. A compact [ Main ] [ Annex ] switcher appears in the header; switching is instant and the inactive club pauses. Crew is shared — switching to a room whose Dressing Room cap is smaller evicts excess working crew to off (floor → stage → VIP), and crew assignment enforces the same cap, so evicted crew can\'t be reassigned straight back. A pending golden-ticket offer stays bound to the room it spawned in, even if you switch before it expires. The Ledger labels the active room (Main Room / Annex). Imported save club IDs are validated to a safe identifier shape.',
+      'Mobile: the header wraps to multiple rows on narrow screens (v0.11.1) so the new switcher never pushes the shift block or settings offscreen.'
+    ] },
     { v: '0.11.0', date: '2026-08-13', codename: 'Neon Zero', notes: [
       'SAVE FORMAT v9 (second-location groundwork): run state (cash, hype, buzz, patrons, regulars, buildings, upgrades, elapsed, night, shift, special shift, whale cooldown) now lives in g.clubs.main instead of on g directly, with g.activeClub pointing at the club being played. Saves from v8 migrate automatically on load — nothing is lost, and gameplay is unchanged. A compatibility layer keeps every read working through the new shape. This is the foundation for a second room/club; nothing player-visible changed yet.'
     ] },
@@ -710,7 +714,7 @@ class Game {
   ];
 
   state = {
-    tab: 'club', showChangelog: false, showSettings: false, showPrestige: false, showAchievements: false, tick: 0, saveState: 'idle', resetArmed: false,
+    tab: 'club', showChangelog: false, showSettings: false, showPrestige: false, showOpenRoom: false, showAchievements: false, tick: 0, saveState: 'idle', resetArmed: false,
     // Golden-ticket expanded state: badge is small by default; player taps to expand.
     goldenOpen: false,
     // Ledger collapse on narrow screens: mobile players get the CASH row only and
@@ -825,23 +829,14 @@ class Game {
   }
 
   fresh() {
-    const b = {}, u = {}, r = {}, perks = {}, managers = {}, managerPaused = {};
-    this.BUILDINGS.forEach(x => b[x.id] = 0);
-    this.UPGRADES.forEach(x => u[x.id] = false);
+    const r = {}, perks = {}, managers = {}, managerPaused = {};
     this.RESEARCH.forEach(x => r[x.id] = false);
     this.PRESTIGE_PERKS.forEach(x => perks[x.id] = 0);
     this.MANAGERS.forEach(x => { managers[x.id] = false; managerPaused[x.id] = false; });
-    // Club-level state (per club, resets on prestige): cash/hype/buzz/patrons/
-    // regulars, buildings, upgrades, and the shift clock. The clubs map is
-    // keyed by plain id ('main', future 'annex'...) so new rooms never need a
-    // SAVE_VER bump (SECOND_LOCATION.md §4).
-    const clubState = {
-      cash: (this.props && this.props.startingCash) ?? 20, hype: 0, buzz: 0, patrons: 0, regulars: 0,
-      b, u, elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0,
-      _specialShift: null, _whaleCooldown: 0
-    };
+    // The clubs map is keyed by plain id ('main', future 'annex'...) so new
+    // rooms never need a SAVE_VER bump (SECOND_LOCATION.md §4).
     const g = {
-      clubs: { main: clubState },
+      clubs: { main: this.freshClubState() },
       activeClub: 'main',
       // Account-level (shared across clubs, persists through prestige):
       clout: 0,
@@ -867,6 +862,20 @@ class Game {
     };
     this.applyStartPerks(g);
     return g;
+  }
+
+  // Fresh per-club run state (SECOND_LOCATION.md §4): local till, local crowd,
+  // local build stack, local shift clock. fresh() uses it for 'main';
+  // confirmOpenRoom() uses it for the 'annex' unlock.
+  freshClubState() {
+    const b = {}, u = {};
+    this.BUILDINGS.forEach(x => b[x.id] = 0);
+    this.UPGRADES.forEach(x => u[x.id] = false);
+    return {
+      cash: (this.props && this.props.startingCash) ?? 20, hype: 0, buzz: 0, patrons: 0, regulars: 0,
+      b, u, elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0,
+      _specialShift: null, _whaleCooldown: 0
+    };
   }
 
   // Apply start-of-run perks (seed crew / flyers) after a fresh candidate is built.
@@ -1098,6 +1107,10 @@ class Game {
       // map invokes inherited setters or poisons lookups instead of creating an
       // own entry, silently dropping the club on prestige. Fail closed.
       if (Object.prototype.hasOwnProperty.call(Object.prototype, clubId)) return false;
+      // Club IDs render into header buttons (label + title) — restrict to a
+      // safe identifier shape so imported saves cannot smuggle markup through
+      // innerHTML (XSS via a crafted id like '<img onerror=...>').
+      if (!/^[A-Za-z][A-Za-z0-9_-]{0,24}$/.test(clubId)) return false;
       const c = g.clubs[clubId];
       if (!c || typeof c !== 'object' || Array.isArray(c)) return false;
       for (const k of ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'elapsed', 'night', 'shiftT']) {
@@ -1685,8 +1698,8 @@ class Game {
   }
 
   // --- economy (caps, rates) ---
-  caps(g) {
-    const c = this.club(g);
+  caps(g, cl) {
+    const c = cl || this.club(g);
     return {
       patrons: 10 + c.b.bar * 5 + (c.u.coat ? 20 : 0) + c.b.vip * 4,
       buzz: 50 + c.b.marquee * 35,
@@ -2213,8 +2226,72 @@ class Game {
     }
     return bought;
   }
-  // Confirm prestige: candidate → setItem must succeed → live replace (fail-closed).
+  // Second room (SECOND_LOCATION.md §2): the backer offers a second lease once
+  // the account has franchised once AND delegated at least one building.
+  // Evaluated on the ACCOUNT (prestiges, managers) — not the active club.
+  canOpenRoom() {
+    const g = this.state.g;
+    return !g.clubs.annex && (g.prestiges || 0) >= 1 && Object.values(g.managers || {}).some(Boolean);
+  }
+
+  openRoom() {
+    // Same multi-tab rule as prestige: never unlock account progress in memory
+    // on a paused tab — the write would evaporate on reload.
+    if (this.state.tabStale) return;
+    if (!this.canOpenRoom()) return;
+    this.setState({ showOpenRoom: true });
+  }
+
+  confirmOpenRoom() {
+    if (this.state.tabStale) return;
+    if (!this.canOpenRoom()) return;
+    const g = this.state.g;
+    // One-time account unlock: NOT a prestige — the first club is untouched.
+    g.clubs.annex = this.freshClubState();
+    this.push(g, 'Opened the annex — second location unlocked.', '#22d3ee');
+    this.setState({ showOpenRoom: false });
+  }
+
+  // Instant active-club switch (SECOND_LOCATION.md §5): the previously active
+  // club pauses; the new one resumes. Crew is SHARED, so if the new club's
+  // Dressing Rooms cap the working roster below current crew, evict the excess
+  // to off (floor → stage → vipjob: least-valuable roles first). The evicted
+  // crew stay in off until manually reassigned (non-goal: no auto-restore).
+  setActiveClub(id) {
+    if (this.state.tabStale) return;
+    const g = this.state.g;
+    if (!Object.prototype.hasOwnProperty.call(g.clubs, id) || g.activeClub === id) return;
+    g.activeClub = id;
+    // Cap-aware crew rebalance (SECOND_LOCATION.md §5): crew is shared; the new
+    // active club's Dressing Rooms cap WORKING crew (stage + VIP + floor — off
+    // shift is not working). Evict excess working crew to off, floor → stage →
+    // VIP (least-valuable roles first). Evicted crew stay in off until manually
+    // reassigned (non-goal: no auto-restore).
+    const cap = this.caps(g).crew;
+    const working = g.crew - (g.jobs.off || 0);
+    if (working > cap) {
+      let excess = working - cap;
+      for (const k of ['floor', 'stage', 'vipjob']) {
+        const drop = Math.min(g.jobs[k] || 0, excess);
+        g.jobs[k] -= drop;
+        g.jobs.off = (g.jobs.off || 0) + drop;
+        excess -= drop;
+        if (excess <= 0) break;
+      }
+    }
+    // A fresh room may not unlock the current tab (Upgrades gates on buildings,
+    // club-level) — mirror the hardReset/prestige fallback so the bar never
+    // renders content with no selected tab.
+    const c = this.club(g);
+    if (this.state.tab === 'up' && !Object.values(c.b || {}).some(n => n > 0)) {
+      this.setState({ tab: 'club' });
+      return;
+    }
+    this.forceUpdate();
+  }
+
   confirmPrestige() {
+    // Candidate → setItem must succeed → live replace (fail-closed).
     if (this.state.tabStale) return;
     const g = this.state.g;
     const c = this.club(g);
@@ -2307,6 +2384,12 @@ class Game {
     if (id === 'off') return;
     if (d > 0) {
       if (g.jobs.off < 1) return;
+      // Crew capacity (SECOND_LOCATION.md §5): the active room's Dressing Rooms
+      // cap WORKING crew (crew − off). Without this check, crew evicted by a
+      // club switch could be reassigned right back, bypassing the new room's
+      // smaller cap and flattening its progression.
+      const cap = this.caps(g).crew;
+      if (g.crew - g.jobs.off >= cap) return;
       g.jobs.off--;
       g.jobs[id]++;
     } else {
@@ -2346,7 +2429,7 @@ class Game {
       verLabel: 'v' + V.num, verBuild: V.build, verChannel: V.channel,
       verFull: 'v' + V.num + ' · build ' + V.build + ' · ' + V.channel + ' · ' + V.codename + ' · ' + V.date,
       saveVer: this.SAVE_VER, changelog: this.CHANGELOG.map(c => ({ ...c })),
-      showChangelog: this.state.showChangelog, showSettings: this.state.showSettings, showPrestige: this.state.showPrestige,
+      showChangelog: this.state.showChangelog, showSettings: this.state.showSettings, showPrestige: this.state.showPrestige, showOpenRoom: this.state.showOpenRoom,
       resetHint: this.state.resetArmed ? '⚠ Click "Wipe save and restart" again to confirm — this is permanent.' : '',
       resetLabel: this.state.resetArmed ? '⚠ Confirm — click again to wipe' : 'Wipe save and restart',
       saveState: this.state.saveState,
@@ -2600,7 +2683,7 @@ class Game {
       return {
         name: j.name, rawName: j.name, desc: j.desc, n: g.jobs[j.id], passive: false,
         inc: () => this.moveJob(j.id, 1), dec: () => this.moveJob(j.id, -1),
-        incLocked: g.jobs.off < 1,
+        incLocked: g.jobs.off < 1 || (g.crew - g.jobs.off) >= cap.crew,
         decLocked: g.jobs[j.id] < 1,
         stepStyle: (locked) => ({ width: '26px', height: '26px', border: '1px solid ' + (locked ? '#1f1430' : '#3a2350'), borderRadius: '5px', background: locked ? '#120c1c' : '#170e22', color: locked ? '#4a3860' : '#e7d8f2', cursor: locked ? 'not-allowed' : 'pointer', fontSize: '14px', lineHeight: 1 })
       };
@@ -2623,6 +2706,19 @@ class Game {
       ...base,
       resources: resourcesOut, stats, tabs, cards, tabHint, jobs, crewOpen: this.state.tab === 'crew' && g.crew > 0,
       metaUnlocked,
+      // Second room (SECOND_LOCATION.md §8): unlock control before annex exists,
+      // compact switcher after. activeClubLabel names the room in the ledger.
+      canOpenRoom: this.canOpenRoom(),
+      clubSwitcher: Object.keys(g.clubs || {}).map(id => ({
+        id,
+        label: this.escapeHtml(id === 'main' ? 'Main' : id[0].toUpperCase() + id.slice(1)),
+        active: id === g.activeClub,
+        go: () => this.setActiveClub(id)
+      })),
+      activeClubLabel: this.escapeHtml(g.activeClub === 'main' ? 'Main Room' : g.activeClub[0].toUpperCase() + g.activeClub.slice(1)),
+      openRoom: () => this.openRoom(),
+      confirmOpenRoom: () => this.confirmOpenRoom(),
+      closeOpenRoom: () => this.setState({ showOpenRoom: false }),
       prestigeGate,
       prestigeGain,
       prestigeRegulars,
@@ -2687,11 +2783,16 @@ class Game {
       // small, stays to the side, and lets the player open it when they want.
       // It no longer blocks the stage with a large modal; the idle sim keeps
       // ticking underneath. Buttons grey out on a stale tab.
-      golden: g.golden ? {
-        cashAmount: Math.floor(25 * this.cashIncomeMult(g)),
-        crowdAmount: Math.round(Math.min(10, this.caps(g).patrons - c.patrons)),
-        locked: this.state.tabStale
-      } : null,
+      golden: g.golden ? (() => {
+        // Preview resolves against the offer's SOURCE club so switching rooms
+        // mid-TTL shows the real gain (and cap) where the ticket will land.
+        const gc = this.club(g, g.golden.club);
+        return {
+          cashAmount: Math.floor(25 * this.cashIncomeMult(g)),
+          crowdAmount: Math.round(Math.min(10, this.caps(g, gc).patrons - gc.patrons)),
+          locked: this.state.tabStale
+        };
+      })() : null,
       goldenOpen: this.state.goldenOpen,
       openGolden: () => this.setState(s => ({ goldenOpen: true })),
       closeGolden: () => this.setState(s => ({ goldenOpen: false })),
@@ -2970,7 +3071,10 @@ class Game {
     if (!g || cl.hype <= 0 || g.golden) return;
     const c = typeof chunk === 'number' && chunk > 0 ? chunk : this.SIM;
     if (Math.random() >= this.GOLDEN_CHANCE * (c / this.SIM)) return;
-    g.golden = { at: Date.now() };
+    // Bind the pending offer to the club it spawned in (SECOND_LOCATION.md §5):
+    // switching rooms before the 30s TTL must not let the ticket's cash/patrons
+    // cross the no-transfer boundary into another club.
+    g.golden = { at: Date.now(), club: g.activeClub };
     this.push(g, 'VIP booked the booth — golden ticket!', '#ffc94a');
   }
 
@@ -2991,10 +3095,12 @@ class Game {
   takeGolden(g, choice) {
     if (!g || !g.golden) return false;
     if (this.state.tabStale) return false;
-    const c = this.club(g);
+    // Resolve against the club the offer spawned in (own-property fallback in
+    // club() keeps a crafted/old {at}-only golden on a real club).
+    const c = this.club(g, g.golden.club);
     if (choice === 'crowd') {
       const before = c.patrons;
-      c.patrons = Math.min(this.caps(g).patrons, c.patrons + 10);
+      c.patrons = Math.min(this.caps(g, c).patrons, c.patrons + 10);
       const added = Math.round(c.patrons - before);
       this.push(g, 'Golden ticket: VIP brought friends. +' + added + ' patrons.', '#ffc94a');
     } else {
@@ -3165,6 +3271,35 @@ class Game {
         </div>
       </div>` : '';
 
+    const openRoomModal = v.showOpenRoom ? `
+      <div style="position:fixed;inset:0;background:rgba(5,3,9,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:32px">
+        <div style="width:480px;background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #241536">
+            <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700">Open second room</div>
+            <button data-h="${this.bind(v.closeOpenRoom)}" class="hv-pink" style="width:30px;height:30px;border:1px solid #3a2350;border-radius:6px;background:#160d22;color:#9c86ab;cursor:pointer;font-size:14px">✕</button>
+          </div>
+          <div style="padding:16px 18px;display:flex;flex-direction:column;gap:12px">
+            <div style="font-size:12px;color:#b9a5c9;line-height:1.5">The backer offers a lease on a second room. Same neon, different zip code. <strong style="color:#22d3ee">Cash is local; reputation is not.</strong></div>
+            <div style="border:1px solid #2f1c42;border-radius:8px;background:#100a1a;padding:12px;display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline">
+                <span style="font-size:11px;color:#9c86ab">New room</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#e7d8f2">fresh till, fresh crowd, fresh build</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline">
+                <span style="font-size:11px;color:#9c86ab">Stays shared</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#e7d8f2">Clout · Legacy · research · crew · managers</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline">
+                <span style="font-size:11px;color:#9c86ab">First club</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#e7d8f2">untouched — switch anytime</span>
+              </div>
+            </div>
+            <button data-h="${this.bind(v.confirmOpenRoom)}" ${v.tabStale ? 'disabled' : ''} style="background:${v.tabStale ? '#1a1226' : 'linear-gradient(180deg,#22d3ee,#0e7490)'};border:0;border-radius:8px;color:${v.tabStale ? '#9c86ab' : '#fff'};font-weight:700;font-size:13px;letter-spacing:1px;text-transform:uppercase;padding:13px 16px;cursor:${v.tabStale ? 'not-allowed' : 'pointer'}">${v.tabStale ? 'Reload to adopt fresh save first' : 'Open the annex'}</button>
+            <button data-h="${this.bind(v.closeOpenRoom)}" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700">Not now</button>
+          </div>
+        </div>
+      </div>` : '';
+
     const settingsModal = v.showSettings ? `
       <div style="position:fixed;inset:0;background:rgba(5,3,9,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:32px">
         <div style="width:420px;background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
@@ -3238,6 +3373,14 @@ class Game {
     ${v.prestigeGate ? `
     <button data-h="${this.bind(v.togglePrestige)}" class="cta" style="background:linear-gradient(180deg,#a855f7,#7c3aed);border:0;border-radius:8px;color:#fff;font-weight:700;font-size:12px;letter-spacing:1px;text-transform:uppercase;padding:8px 14px;cursor:pointer;box-shadow:0 0 18px rgba(168,85,247,.35)">Franchise offer</button>` : ''}
 
+    ${v.canOpenRoom ? `
+    <button data-h="${this.bind(v.openRoom)}" class="cta hv-cyan" style="background:linear-gradient(180deg,#22d3ee,#0e7490);border:0;border-radius:8px;color:#fff;font-weight:700;font-size:12px;letter-spacing:1px;text-transform:uppercase;padding:8px 14px;cursor:pointer;box-shadow:0 0 18px rgba(34,211,238,.3)">Open second room</button>` : ''}
+
+    ${v.clubSwitcher.length > 1 ? `
+    <div style="display:flex;gap:6px">
+      ${v.clubSwitcher.map(cl => `<button data-h="${this.bind(cl.go)}" title="${cl.label}" style="background:${cl.active ? '#170e22' : 'transparent'};border:1px solid ${cl.active ? '#ff2d78' : '#2f1c42'};border-radius:6px;padding:7px 12px;cursor:pointer;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:${cl.active ? '#fff' : '#7b5f90'}">${cl.label}</button>`).join('')}
+    </div>` : ''}
+
     <div style="display:flex;align-items:center;gap:14px">
       <div style="text-align:right;line-height:1.15">
         <div style="font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:#7b5f90;font-weight:700">Shift</div>
@@ -3261,7 +3404,10 @@ class Game {
     <aside data-scroll="ledger" class="${v.ledgerOpen ? '' : 'ledger-collapsed'}" style="border-right:1px solid #2a1738;background:#0a0611;overflow-y:auto;padding:14px 12px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700">Ledger</div>
-        <button data-h="${this.bind(v.toggleLedger)}" class="ledger-toggle hv-pink" title="${v.ledgerOpen ? 'Collapse ledger' : 'Expand ledger'}" style="width:44px;height:44px;border:1px solid #2f1c42;border-radius:8px;background:#100a19;color:#9c86ab;cursor:pointer;font-size:16px;line-height:1">${v.ledgerOpen ? '▾' : '▸'}</button>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#22d3ee;font-weight:700;letter-spacing:1px;text-transform:uppercase">${v.activeClubLabel}</span>
+          <button data-h="${this.bind(v.toggleLedger)}" class="ledger-toggle hv-pink" title="${v.ledgerOpen ? 'Collapse ledger' : 'Expand ledger'}" style="width:44px;height:44px;border:1px solid #2f1c42;border-radius:8px;background:#100a19;color:#9c86ab;cursor:pointer;font-size:16px;line-height:1">${v.ledgerOpen ? '▾' : '▸'}</button>
+        </div>
       </div>
       <div class="ledger-cash" style="display:flex;flex-direction:column;gap:9px">${cashRow}</div>
       <div class="ledger-detail">
@@ -3423,6 +3569,7 @@ class Game {
   ${changelogModal}
   ${settingsModal}
   ${prestigeModal}
+  ${openRoomModal}
   ${achievementsModal}
 </div>`;
 

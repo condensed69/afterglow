@@ -1,7 +1,7 @@
 # SECOND_LOCATION.md — Second Club Design
 
-**Status:** design lock for first implementation; save-shape groundwork shipped (SAVE_VER 9)  
-**Scope:** this doc + the save-shape slice of the implementation (Slice A shipped 0.11.0); second-room gameplay pending  
+**Status:** design lock for first implementation; save-shape groundwork shipped (SAVE_VER 9, 0.11.0); second-room gameplay shipped (Slice B, 0.11.1); second-room pacing scenario pending (Slice C)  
+**Scope:** this doc + the save-shape slice (0.11.0) + the second-room gameplay slice (0.11.1); `pacing2.mjs` scenario pending  
 **Depends on:** prestige/shift/achievement systems shipped through v0.10.4 (SAVE_VER 8)
 **Save format:** SAVE_VER 8 → **9** (shipped in 0.11.0)
 
@@ -194,7 +194,7 @@ Single helper used everywhere a club-specific value is read. No scattered `g.clu
 - `setActiveClub` switches `g.activeClub` and immediately re-renders.
 - The previously active club pauses earning; the new active club resumes. There is **no cross-club offline earning** while a club is inactive — its `ts` is not advanced, and `catchUp` runs only for the active club on load. This avoids double-counting and keeps v1 simple.
 - Managers auto-buy only for the **active club**.
-- Whale / critic / golden events run only on the **active club**.
+- Whale / critic / golden events run only on the **active club**. A pending **golden offer is bound to its source club** (`g.golden.club`): if the player switches rooms before the 30s TTL, `takeGolden` (and the badge's preview/cap) resolve against the club where the offer spawned — no cross-club cash/patrons transfer.
 
 ### `rates(g)`, `caps(g)`, `step(g, dt)`, `catchUp(g, seconds)`
 
@@ -205,7 +205,7 @@ const c = this.club(g);
 const cap = this.caps(g, c);   // crew is shared; cap derived from active club's Dressing Rooms
 ```
 
-Crew capacity (`caps().crew`) is derived from the **active club's** Dressing Rooms, because crew is physically assigned to the active room. If the player switches clubs, the crew cap may shrink; excess crew are pushed to `off`. The existing jobs/crew rebalance pass in `sanitizeG` only rebalances `g.jobs` against `g.crew` count — it has no notion of `caps(g).crew` or evicting crew when a cap shrinks. The implementation PR must add a new cap-aware rebalance step in `setActiveClub` (or extend `sanitizeG`) that compares `g.crew` against `caps(g).crew` for the newly active club and evicts excess crew to `off`.
+Crew capacity (`caps().crew`) is derived from the **active club's** Dressing Rooms, because crew is physically assigned to the active room. The cap applies to **working crew** (`g.crew − g.jobs.off`); off-shift crew are not counted. **Shipped (0.11.1):** `setActiveClub` runs the cap-aware rebalance — evicts excess working crew to `off` in order **floor → stage → VIP** (least-valuable roles first; deterministic), and `moveJob`'s assign path (and the rendered assign-button lock state) enforces the same `working < caps(g).crew` rule so evicted crew cannot be reassigned straight back. The existing jobs/crew rebalance pass in `sanitizeG` only rebalances `g.jobs` against `g.crew` count — it has no notion of `caps(g).crew` or evicting crew when a cap shrinks.
 
 Clout is earned into the shared `g.clout` from the active club's Regulars only. Inactive clubs do not generate Clout. This is v1's simplicity tradeoff; future designs may accrue Clout across all clubs at a reduced rate.
 
@@ -373,11 +373,11 @@ This design **explicitly supersedes** both for a future implementation PR. The o
 
 ## 13. Implementation checklist
 
-Slice A (save-shape groundwork, 0.11.0) items are marked done; unchecked items are the pending second-room gameplay (Slice B) and pacing scenario (Slice C):
+Slice A (save-shape groundwork, 0.11.0) and Slice B (second-room gameplay, 0.11.1) items are marked done; unchecked items are the remaining second-room pacing scenario (Slice C):
 
 - [x] `club(g, id)` helper; replace direct top-level cash/hype/etc. reads in `rates`/`caps`/`step`/`catchUp`.
-- [ ] `activeClub` + `setActiveClub` action; header switcher.
-- [ ] "Open second room" unlock button + modal; gate on `prestiges >= 1` and `>= 1` manager.
+- [x] `activeClub` + `setActiveClub` action; header switcher.
+- [x] "Open second room" unlock button + modal; gate on `prestiges >= 1` and `>= 1` manager.
 - [x] SAVE_VER 9 + `MIGRATIONS[8]` moving top-level fields into `g.clubs.main`.
 - [x] `isValidSavePayload` relaxed to accept v9 saves: reads club resources from the active club (own-property lookup; fallback `main` → any own club → top-level).
 - [x] `fresh()` initializes `g.clubs.main` + `g.activeClub`.
@@ -385,10 +385,10 @@ Slice A (save-shape groundwork, 0.11.0) items are marked done; unchecked items a
 - [x] Managers auto-buy only for active club; whale/critic/golden events only for active club (all routed through `club(g)`).
 - [x] Offline `catchUp` runs only for the active club; `g.ts` is shared, inactive club offline window not stored.
 - [x] `sanitizeG` reconstructs `g.clubs` fail-closed (incl. reserved club-ID rejection).
-- [ ] Cap-aware crew rebalance in `setActiveClub` (or extended `sanitizeG`): compare `g.crew` against `caps(g).crew` for the newly active club, push excess to `off`.
+- [x] Cap-aware crew rebalance in `setActiveClub`: compares `g.crew` against `caps(g).crew` for the newly active club and pushes excess to `off` (floor → stage → VIP).
 - [x] `ACHIEVEMENTS` checks that read `g.b.*` / `g.u.*` are routed through `club(g)` (or `check` receives the active club) so building/upgrade achievements don't throw once `b`/`u` move off `g`.
 - [x] Owner's List goal checks that read `g.b.*` / `g.hype` / `g.patrons` / etc. are routed through `club(g)` (same fix shape as achievements) — **except** `backstage` and `roster`, whose predicates read both a club field (`b`) and a shared-roster field (`jobs` / `crew`); see the §6 table.
-- [ ] Ledger shows active-club label; Clout/Legacy remain account-level.
+- [x] Ledger shows active-club label; Clout/Legacy remain account-level.
 - [ ] `pacing2.mjs` second-room scenario green.
 - [x] VERSION + build + CHANGELOG together; SAVE_VER 9 (0.11.0).
 - [ ] No travel map, no cash transfers, no inactive earnings, no per-club crew, no location-specific buildings in v1.
