@@ -559,6 +559,22 @@ function secondRoomRun() {
     console.log('FAIL: loop research has no effect on annex cash rate — research is cosmetic.');
     process.exit(1);
   }
+  // Verify cash10 perk affects annex rates — not just flag persistence.
+  // cashIncomeMult = 1 + 0.15 * rank; toggling rank 2 → 0 must lower the rate.
+  // Need a non-zero income source for the multiplier to scale — set patrons=1
+  // (door cover = 0.02/s) so the house cut has something to multiply.
+  const savedPatrons = annexClub.patrons;
+  annexClub.patrons = 1;
+  const savedPerks = game.state.g.perks.cash10;
+  game.state.g.perks.cash10 = 0;
+  const rNoPerk = game.rates(game.state.g);
+  game.state.g.perks.cash10 = savedPerks;
+  const rWithPerk = game.rates(game.state.g);
+  annexClub.patrons = savedPatrons;
+  if (rWithPerk.cash <= rNoPerk.cash) {
+    console.log('FAIL: cash10 perk has no effect on annex cash rate — perk is cosmetic.');
+    process.exit(1);
+  }
 
   // Run 3: the same bot plays the annex to its first LED.
   let t2 = null;
