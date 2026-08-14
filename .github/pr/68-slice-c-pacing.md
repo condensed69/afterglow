@@ -11,10 +11,10 @@ The final slice of the Second Location plan: a reference-bot proof that **accoun
   4. Gate check (`canOpenRoom()`), `confirmOpenRoom()`, `setActiveClub('annex')` — assert `activeClub === 'annex'` and ≥2 research items persist after the switch.
   5. Run 3: the same bot plays the annex → **t2 = first LED** (11.22m, **delta −3.45m**).
   6. **Assert t2 < t1**, fail loudly with a named cause if any step breaks (gate unreachable, manager unaffordable, annex not created, switch not verified, research not preserved, perk purchase not confirmed).
-- **Measurement note (documented in the scenario, SECOND_LOCATION.md, DESIGN.md):** the rail manager is **paused** for run 3. Managers auto-buy unbounded on their building (rail has no `max`), so an active manager redirects the shared till and the run would measure the manager's spend pattern (rail 8 by first LED), not whether account progress makes the fresh room faster. Probe: unpaused manager → delta **+0.25m**; paused → **−2.85m**. Delegation is exercised in live play; the scenario isolates the carry-over.
+- **Measurement note (documented in the scenario, SECOND_LOCATION.md, DESIGN.md):** the rail manager is **paused** for run 3. Managers auto-buy unbounded on their building (rail has no `max`), so an active manager redirects the shared till and the run would measure the manager's spend pattern (rail 8 by first LED), not whether account progress makes the fresh room faster. Probe: unpaused manager → delta **+0.25m**; paused → **−3.45m**. Delegation is exercised in live play; the scenario isolates the carry-over.
 - Docs: SECOND_LOCATION.md (status → shipped, §13 checklist [x]), DESIGN.md §17 pacing-guard bullet, PLAN.md Deferred → shipped. VERSION 0.11.2 / build 215 + CHANGELOG (no gameplay change).
 
-## Gates (run on `21e9994`)
+## Gates (run on `8bb676e`)
 
 - `node --check game.js` — pass
 - `node economy.test.mjs` — **228 passed, 0 failed** (unchanged — no game.js behavior change beyond version)

@@ -307,7 +307,7 @@ Add a second-room pacing scenario (new file `pacing2.mjs`, or an extension in `p
 2. **Prestige 1 → cash10 rank 1.** Run 2 in main (faster with the perk) → prestige 2 → **cash10 rank 2 + rail manager** (10 Legacy — the gate's manager requirement).
 3. **Seed research:** after the final prestige (which resets `g.r` via `fresh()`), buy the two cheapest research items and verify they persist after switching to the annex.
 4. **Gate check** (`canOpenRoom()`), `confirmOpenRoom()`, `setActiveClub('annex')` — assert the switch landed (`activeClub === 'annex'`).
-5. **Run 3:** the same bot plays the annex from fresh club state (cash = starting cash, no buildings) with the account's Legacy perks and research intact. The rail manager is **paused** for the measurement (managers auto-buy unbounded on their building; unpaused → delta +0.25m, paused → −2.85m).
+5. **Run 3:** the same bot plays the annex from fresh club state (cash = starting cash, no buildings) with the account's Legacy perks and research intact. The rail manager is **paused** for the measurement (managers auto-buy unbounded on their building; unpaused → delta +0.25m, paused → −3.45m).
 6. Record wall-time of first LED upgrade in the annex (`t2`).
 7. **Assert:** `t2 < t1` (account progress makes the second room faster).
 
