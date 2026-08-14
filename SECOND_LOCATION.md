@@ -371,26 +371,26 @@ This design **explicitly supersedes** both for a future implementation PR. The o
 
 ---
 
-## 13. Implementation checklist (future code PR)
+## 13. Implementation checklist
 
-Use this as the acceptance spine when coding the second room:
+Slice A (save-shape groundwork, 0.11.0) items are marked done; unchecked items are the pending second-room gameplay (Slice B) and pacing scenario (Slice C):
 
-- [ ] `club(g, id)` helper; replace direct top-level cash/hype/etc. reads in `rates`/`caps`/`step`/`catchUp`.
+- [x] `club(g, id)` helper; replace direct top-level cash/hype/etc. reads in `rates`/`caps`/`step`/`catchUp`.
 - [ ] `activeClub` + `setActiveClub` action; header switcher.
 - [ ] "Open second room" unlock button + modal; gate on `prestiges >= 1` and `>= 1` manager.
-- [ ] SAVE_VER 9 + `MIGRATIONS[8]` moving top-level fields into `g.clubs.main`.
-- [ ] `isValidSavePayload` relaxed to accept v9 saves: check `g.clubs?.main?.cash ?? g.cash` for each required field.
-- [ ] `fresh()` initializes `g.clubs.main` + `g.activeClub`.
-- [ ] Prestige reset preserves `g.clubs` keys but freshens every club's run state; applies starters to active club only.
-- [ ] Managers auto-buy only for active club; whale/critic/golden events only for active club.
-- [ ] Offline `catchUp` runs only for the active club; `g.ts` is shared, inactive club offline window not stored.
-- [ ] `sanitizeG` reconstructs `g.clubs` fail-closed.
+- [x] SAVE_VER 9 + `MIGRATIONS[8]` moving top-level fields into `g.clubs.main`.
+- [x] `isValidSavePayload` relaxed to accept v9 saves: reads club resources from the active club (own-property lookup; fallback `main` → any own club → top-level).
+- [x] `fresh()` initializes `g.clubs.main` + `g.activeClub`.
+- [x] Prestige reset preserves `g.clubs` keys but freshens every club's run state; applies starters to active club only.
+- [x] Managers auto-buy only for active club; whale/critic/golden events only for active club (all routed through `club(g)`).
+- [x] Offline `catchUp` runs only for the active club; `g.ts` is shared, inactive club offline window not stored.
+- [x] `sanitizeG` reconstructs `g.clubs` fail-closed (incl. reserved club-ID rejection).
 - [ ] Cap-aware crew rebalance in `setActiveClub` (or extended `sanitizeG`): compare `g.crew` against `caps(g).crew` for the newly active club, push excess to `off`.
-- [ ] `ACHIEVEMENTS` checks that read `g.b.*` / `g.u.*` are routed through `club(g)` (or `check` receives the active club) so building/upgrade achievements don't throw once `b`/`u` move off `g`.
-- [ ] Owner's List goal checks that read `g.b.*` / `g.hype` / `g.patrons` / etc. are routed through `club(g)` (same fix shape as achievements) — **except** `backstage` and `roster`, whose predicates read both a club field (`b`) and a shared-roster field (`jobs` / `crew`); see the §6 table.
+- [x] `ACHIEVEMENTS` checks that read `g.b.*` / `g.u.*` are routed through `club(g)` (or `check` receives the active club) so building/upgrade achievements don't throw once `b`/`u` move off `g`.
+- [x] Owner's List goal checks that read `g.b.*` / `g.hype` / `g.patrons` / etc. are routed through `club(g)` (same fix shape as achievements) — **except** `backstage` and `roster`, whose predicates read both a club field (`b`) and a shared-roster field (`jobs` / `crew`); see the §6 table.
 - [ ] Ledger shows active-club label; Clout/Legacy remain account-level.
 - [ ] `pacing2.mjs` second-room scenario green.
-- [ ] VERSION + build + CHANGELOG together; SAVE_VER 9.
+- [x] VERSION + build + CHANGELOG together; SAVE_VER 9 (0.11.0).
 - [ ] No travel map, no cash transfers, no inactive earnings, no per-club crew, no location-specific buildings in v1.
 
 ---

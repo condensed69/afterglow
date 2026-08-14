@@ -63,16 +63,19 @@ On confirm of Franchise offer:
 
 ### Reset (wipe to fresh-run defaults)
 
+**SAVE_VER 9 multi-club rule:** reset applies **per club** — the `clubs` map keeps every key, each club's run fields below reset to fresh defaults, and `activeClub` stays on its club. Prestige resets run state; it does not delete rooms or move the player.
+
 | Field / group | After prestige |
 |---------------|----------------|
-| `cash` | starting cash (`props.startingCash`, default 20), then apply start perks (see §5) |
-| `hype`, `buzz`, `patrons`, `regulars`, `clout` | 0 |
-| `b` (buildings) | all 0, then apply start perks (e.g. free Flyer Crew) |
-| `u` (upgrades) | all false |
-| `r` (research) | all false |
-| `crew` | 0, then apply start perks (e.g. start with 1 crew) |
+| `cash` | starting cash (`props.startingCash`, default 20), then apply start perks (see §5) — **per club** |
+| `hype`, `buzz`, `patrons`, `regulars`, `clout` | 0 — **per club** for the club fields (`clout` is account-level) |
+| `b` (buildings) | all 0, then apply start perks (e.g. free Flyer Crew) — **per club** |
+| `u` (upgrades) | all false — **per club** |
+| `r` (research) | all false (account-level) |
+| `crew` | 0, then apply start perks (e.g. start with 1 crew) (account-level) |
 | `jobs` | all 0; if start-with-crew perk, assign that crew to `stage` |
-| `shiftIdx`, `shiftT`, `night`, `elapsed` | 0 / 0 / 1 / 0 (same as `fresh()` night baseline) |
+| `shiftIdx`, `shiftT`, `night`, `elapsed` | 0 / 0 / 1 / 0 (same as `fresh()` night baseline) — **per club** |
+| `clubs` map, `activeClub` | **preserved** — every club key survives; `activeClub` unchanged (still names an own club) |
 | `goals` | `[]` — Owner's List **resets** and replays |
 | `clicks`, `rounds` | 0 |
 | `log` | cleared, then one franchise line (see §9) |
@@ -92,9 +95,9 @@ On confirm of Franchise offer:
 
 1. Compute `gain = legacyGain(g)` from the **active club's** pre-reset `regulars` and `night` (§4).  
 2. Snapshot `perks`, `legacy`, `legacyTotal`, `prestiges`.  
-3. Build a **candidate** `g` (not yet live): `fresh()`-equivalent run fields.  
+3. Build a **candidate** `g` (not yet live): `fresh()`-equivalent run fields, **per club** — every existing club key is carried over with its run fields reset, the `clubs` map and `activeClub` preserved (SAVE_VER 9).  
 4. Restore meta on the candidate: `legacy = snapshot.legacy + gain`, `legacyTotal = snapshot.legacyTotal + gain`, `perks = snapshot.perks`, `prestiges = snapshot.prestiges + 1`.  
-5. Apply start-of-run perk effects (crew, buildings) on the candidate.  
+5. Apply start-of-run perk effects (crew, buildings) on the candidate — buildings seed the **active club** only.  
 6. Push the franchise log line onto the candidate so disk and memory share the same entry.  
 7. `localStorage.setItem` with the candidate payload — **must succeed** (use the explicit/manual save path when `tabStale` so the write is not a no-op auto-save; see §2 stale-tab rule).  
 8. Only then: replace `state.g` with the candidate and refresh UI.  
