@@ -14,8 +14,18 @@ The player-visible half of the Second Location plan: after their **first franchi
 ## Gates (run on `a6bf197`)
 
 - `node --check game.js` — pass
-- `node economy.test.mjs` — **223 passed, 0 failed** (was 218; +5: gate matrix, openRoom→confirm flow + tabStale blocking, setActiveClub crew eviction matrix, v9 round-trip preserving the annex, wipe returns to main-only)
+- `node economy.test.mjs` — **228 passed, 0 failed** (was 218; +10: gate matrix, openRoom→confirm flow + tabStale blocking, setActiveClub working-crew eviction matrix, off-shift no-over-evict, moveJob cap enforcement, golden source-club resolution, tab fallback on switch, hostile club-ID rejection, v9 round-trip preserving the annex, wipe returns to main-only)
 - `node pacing.mjs` — all milestones within band; prestige delta **−1.87m** — bit-identical (no economy change; the bot never unlocks or switches)
+
+## Review fixes (round 1, `8b5fdbf`)
+
+- **P1 XSS via club ID** — imported club IDs restricted to `/^[A-Za-z][A-Za-z0-9_-]{0,24}$/` (fail-closed) AND switcher/ledger labels HTML-escaped
+- **P1 crew-cap bypass** — `moveJob` assign path + rendered lock state now enforce `working (crew − off) < caps(g).crew`; evicted crew can't be reassigned straight back
+- **P1 README** — Second-room controls documented
+- **P2 eviction overcount** — rebalance compares **working crew** (`g.crew − g.jobs.off`) against the cap; off-shift crew are never re-evicted
+- **P2 header overflow** — ≤900px the header wraps (flex-wrap + auto height over inline styles); shift block and ☰ stay reachable
+- **P2 golden cross-club** — offers bind to their source club (`g.golden.club`); `takeGolden` and the badge preview/cap resolve there even after a switch
+- **P2 gated-tab desync** — switching to a fresh room falls back to Club when Upgrades is not unlocked
 
 ## Docs
 
