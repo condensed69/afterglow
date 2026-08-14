@@ -1093,6 +1093,11 @@ class Game {
       ? g.activeClub
       : Object.keys(g.clubs)[0];
     for (const clubId of Object.keys(g.clubs)) {
+      // Reject club IDs that collide with Object.prototype members ('__proto__',
+      // 'constructor', 'toString', ...) — writing such a key on a plain-object
+      // map invokes inherited setters or poisons lookups instead of creating an
+      // own entry, silently dropping the club on prestige. Fail closed.
+      if (Object.prototype.hasOwnProperty.call(Object.prototype, clubId)) return false;
       const c = g.clubs[clubId];
       if (!c || typeof c !== 'object' || Array.isArray(c)) return false;
       for (const k of ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'elapsed', 'night', 'shiftT']) {

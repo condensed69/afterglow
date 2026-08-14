@@ -350,8 +350,8 @@ Best used before Peak to stack mult.
 
 Full locked design lives in **`PRESTIGE.md`** (fantasy, gate, formula, reset rules, save sketch, pacing hooks, non-goals, UI). This section is the as-shipped summary.
 
-- **Gate:** `g.regulars >= 25` (goal 14). The **Franchise offer** button appears in the header once met; modal confirms.
-- **Gain:** `legacyGain(g) = floor(sqrt(regulars) + night / 7)`.
+- **Gate:** active club's `regulars >= 25` (goal 14) — reads through `club(g)` (SAVE_VER 9). The **Franchise offer** button appears in the header once met; modal confirms.
+- **Gain:** `legacyGain(g) = floor(sqrt(activeClub.regulars) + activeClub.night / 7)`.
 - **Reset:** the next run is a `fresh()` club — cash/hype/buzz/patrons/regulars/clout/crew/buildings/research reset, and Owner's List state restarts (`clicks: 0`, `rounds: 0`, `goals: []`, same goal arc) — while **perks, managers, managerPaused, achievements, legacy, legacyTotal, prestiges** persist.
 - **Persist-before-replace:** `confirmPrestige()` builds the post-prestige candidate, `localStorage.setItem` **first**; on failure → `saveState: 'prestige failed'` and the live club is untouched (same rule as import, §13.3).
 - **Fields:** `g.legacy` (spendable), `g.legacyTotal` (lifetime earned — achievements credit this too, see §12), `g.prestiges` (count), `g.perks` (id → rank map).

@@ -48,7 +48,7 @@ This is deliberately identical to Owner's List goal 14 (`name` — "A name in th
 
 **UI affordance:**
 
-- When `g.regulars >= 25`, a header control **"Franchise offer"** appears (same header strip as shift / version badge family — not buried in Settings).
+- When the active club's `regulars >= 25` (reads through `club(g)` since SAVE_VER 9), a header control **"Franchise offer"** appears (same header strip as shift / version badge family — not buried in Settings).
 - Below gate, the control is absent (not disabled gray). No prestige teaser chrome before the gate.
 - Clicking opens the **confirmation modal** with the reset report **preview** (Legacy gain, what resets, what persists). Confirm commits; cancel closes with no state change.
 - **Stale tab (`tabStale`):** after another tab writes the save, this tab stays interactive but `save('auto')` no-ops. Prestige must not award Legacy only in memory. **Locked rule:** while `tabStale` is true, either (a) disable **Sign the deal** with copy that the player must reload the fresh save first, **or** (b) on confirm use the same **explicit/manual save path** that bypasses the stale auto-save guard (the path Settings → Save now already uses). Prefer (a) if simpler — no silent prestige that vanishes on reload banner accept. Cancel still closes with no state change.

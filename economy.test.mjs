@@ -2272,6 +2272,20 @@ test('v9 import resolves activeClub to an existing own club when main is absent'
   strictEqual(game2.state.g.activeClub, 'annex', 'unknown id falls back to an existing club');
 });
 
+test('v9 import rejects reserved club IDs like __proto__ (no prototype pollution)', () => {
+  const game = newGame(20);
+  // JSON.parse creates an own '__proto__' DATA property (object literals would
+  // invoke the setter instead) — this is exactly the hostile payload shape.
+  const evil = JSON.parse('{"saveVer":9,"g":{"clubs":{' +
+    '"__proto__":{"cash":50,"hype":0,"buzz":0,"patrons":0,"regulars":0,"elapsed":0,"night":1,"shiftIdx":0,"shiftT":0},' +
+    '"main":{"cash":20,"hype":0,"buzz":0,"patrons":0,"regulars":0,"elapsed":0,"night":1,"shiftIdx":0,"shiftT":0}},' +
+    '"activeClub":"__proto__","clout":0,"crew":0,"jobs":{"stage":0,"vipjob":0,"floor":0,"off":0},' +
+    '"goals":[],"clicks":0,"rounds":0}}');
+  strictEqual(game.importSaveFromText(JSON.stringify(evil)), false, 'reserved club id rejected fail-closed');
+  strictEqual(game.state.g.activeClub, 'main', 'live club untouched');
+  strictEqual(Object.prototype.hasOwnProperty.call(game.state.g.clubs, '__proto__'), false, 'no own __proto__ entry created');
+});
+
 test('v9 import sanitizes inherited-key activeClub to main (own-property check)', () => {
   const game = newGame(20);
   const payload = JSON.stringify({
