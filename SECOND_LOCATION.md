@@ -301,26 +301,26 @@ Stage art is unchanged. The crowd silhouette count, beam opacity, and neon flick
 
 Add a second-room pacing scenario (new file `pacing2.mjs`, or an extension in `pacing.mjs` if cleaner) that verifies the unlock pacing and the post-unlock acceleration.
 
-### Scenario: `second-room`
+### Scenario: `second-room` (implemented in `pacing.mjs` as `secondRoomRun()`)
 
-1. **Run 1:** reference bot plays from a fresh post-prestige start (1 Legacy spent on `cash10` rank 1, one manager hired, same as prestige scenario end state) until it meets the second-room gate: `prestiges >= 1` and `>= 1` manager.
-2. **Unlock:** unlock the annex.
-3. **Run 2:** bot plays the annex from fresh club state (cash = starting cash, no buildings) with the account's Legacy perks and research intact.
-4. Record wall-time of first LED upgrade in the annex (`t2`).
-5. Compare against a baseline `t1` recorded from the same bot starting a fresh club **without** any account perks/research (use a stripped fresh state).
-6. **Assert:** `t2 < t1` (account progress makes the second room faster).
+1. **Run 1:** fresh bot plays from scratch (no perks, no research, no manager) until first LED — captures the no-account-progress baseline `t1`. Then continues to the prestige gate (`regulars >= 25, night >= 10`).
+2. **Prestige 1 → cash10 rank 1.** Run 2 in main (faster with the perk) → prestige 2 → **cash10 rank 2 + rail manager** (10 Legacy — the gate's manager requirement).
+3. **Seed research:** after the final prestige (which resets `g.r` via `fresh()`), buy the two cheapest research items and verify they persist after switching to the annex.
+4. **Gate check** (`canOpenRoom()`), `confirmOpenRoom()`, `setActiveClub('annex')` — assert the switch landed (`activeClub === 'annex'`).
+5. **Run 3:** the same bot plays the annex from fresh club state (cash = starting cash, no buildings) with the account's Legacy perks and research intact. The rail manager is **paused** for the measurement (managers auto-buy unbounded on their building; unpaused → delta +0.25m, paused → −2.85m).
+6. Record wall-time of first LED upgrade in the annex (`t2`).
+7. **Assert:** `t2 < t1` (account progress makes the second room faster).
 
 ### Reporting
 
 ```text
 Second room scenario
-  gate met at: …s (prestiges=…, managers=…)
-  annex first LED (with account progress): …s
-  fresh club first LED (no progress): …s
+  run1 first LED (fresh, no perks):            …s
+  annex first LED (cash10×2 + N research seeded, manager paused): …s
   delta: …s (must be < 0)
 ```
 
-On gate miss: print `FAIL: second-room gate not reached` and skip the comparison.
+Named failures on gate miss (`FAIL: second-room gate not met`), manager unaffordable, annex not created, annex switch not verified, research not preserved, or perk purchase not confirmed.
 
 ### Tuning policy
 
@@ -389,7 +389,7 @@ Slice A (save-shape groundwork, 0.11.0), Slice B (second-room gameplay, 0.11.1),
 - [x] `ACHIEVEMENTS` checks that read `g.b.*` / `g.u.*` are routed through `club(g)` (or `check` receives the active club) so building/upgrade achievements don't throw once `b`/`u` move off `g`.
 - [x] Owner's List goal checks that read `g.b.*` / `g.hype` / `g.patrons` / etc. are routed through `club(g)` (same fix shape as achievements) — **except** `backstage` and `roster`, whose predicates read both a club field (`b`) and a shared-roster field (`jobs` / `crew`); see the §6 table.
 - [x] Ledger shows active-club label; Clout/Legacy remain account-level.
-- [x] Second-room pacing scenario green (`pacing.mjs` secondRoomRun: two prestiges → cash10 ×2 + manager → unlock annex → annex first LED faster than a no-perk fresh run; the rail manager is paused for the measurement so its unbounded auto-buy does not redirect the till).
+- [x] Second-room pacing scenario green (`pacing.mjs` secondRoomRun: fresh baseline t1 → two prestiges → cash10 ×2 + rail manager → research seeded after final prestige → unlock annex → assert switch + research persistence → annex first LED t2 < t1; the rail manager is paused for the measurement so its unbounded auto-buy does not redirect the till).
 - [x] VERSION + build + CHANGELOG together; SAVE_VER 9 (0.11.0).
 - [ ] No travel map, no cash transfers, no inactive earnings, no per-club crew, no location-specific buildings in v1.
 

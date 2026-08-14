@@ -476,10 +476,28 @@ function secondRoomRun() {
   }
   game.confirmPrestige();
   game.buyPerk(cash10Def);
+  if (game.perk(game.state.g, 'cash10') !== 2) {
+    console.log(`FAIL: expected cash10 rank 2 after second purchase, got ${game.perk(game.state.g, 'cash10')}.`);
+    process.exit(1);
+  }
   const managerDef = game.MANAGERS.find((d) => d.id === 'rail');
   game.buyManager(managerDef);
   if (!game.state.g.managers.rail) {
     console.log('FAIL: could not afford a manager after two prestiges (needs 10 Legacy) — gate unreachable.');
+    process.exit(1);
+  }
+
+  // Seed research after the final prestige (confirmPrestige resets g.r via
+  // fresh()) so the annex measures account progress with research intact.
+  // Buy the two cheapest research items to exercise carry-over.
+  const researchDefs = game.RESEARCH.filter((d) => !game.state.g.r[d.id]).sort((a, b) => a.cost - b.cost);
+  for (const rd of researchDefs.slice(0, 2)) {
+    game.state.g.clout += rd.cost; // ensure affordable in the bot harness
+    game.buyResearch(rd);
+  }
+  const seededResearch = Object.keys(game.state.g.r).filter((k) => game.state.g.r[k]);
+  if (seededResearch.length < 2) {
+    console.log(`FAIL: expected ≥2 research items seeded after prestige, got ${seededResearch.length}.`);
     process.exit(1);
   }
 
@@ -501,6 +519,19 @@ function secondRoomRun() {
   // research carry-over; delegation is exercised in live play.
   game.state.g.managerPaused.rail = true;
   game.setActiveClub('annex');
+  // Verify the switch actually landed — without this, a silent no-op would
+  // measure the main room (fresh post-prestige) and produce a false pass.
+  if (game.state.g.activeClub !== 'annex') {
+    console.log(`FAIL: setActiveClub('annex') did not switch (activeClub=${game.state.g.activeClub}).`);
+    process.exit(1);
+  }
+  // Verify seeded research survived the switch (confirmPrestige resets g.r;
+  // we re-seeded above — the annex must see it).
+  const annexResearch = Object.keys(game.state.g.r).filter((k) => game.state.g.r[k]);
+  if (annexResearch.length < 2) {
+    console.log(`FAIL: research not preserved after annex switch (expected ≥2, got ${annexResearch.length}).`);
+    process.exit(1);
+  }
 
   // Run 3: the same bot plays the annex to its first LED.
   let t2 = null;
@@ -511,7 +542,7 @@ function secondRoomRun() {
 
   const delta = (t1 != null && t2 != null) ? t2 - t1 : null;
   console.log(`  run1 first LED (fresh, no perks):            ${fmtMin(t1)}`);
-  console.log(`  annex first LED (cash10×2 + research, manager paused): ${fmtMin(t2)}`);
+  console.log(`  annex first LED (cash10×2 + ${seededResearch.length} research seeded, manager paused): ${fmtMin(t2)}`);
   console.log(`  delta: ${delta != null ? (delta / 60).toFixed(2) + 'm' : '—'} (must be < 0: account progress makes the second room faster)`);
   if (delta == null || delta >= 0) {
     console.log('\n❌ Second-room scenario failed: annex did not reach first LED faster than the fresh baseline.\n');
