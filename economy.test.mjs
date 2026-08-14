@@ -2402,6 +2402,40 @@ test('moveJob respects the active room crew cap after eviction', () => {
   strictEqual(g.jobs.off, 1);
 });
 
+test('Hire Crew card and ledger show WORKING crew, not total shared crew', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  const annex = game.freshClubState();
+  annex.b.dress = 8; // cap.crew = 18
+  g.clubs.annex = annex;
+  g.crew = 43;
+  g.jobs = { stage: 43, vipjob: 0, floor: 0, off: 0 };
+  game.setActiveClub('annex'); // cap 18 → evict 25 working crew to off
+  strictEqual(g.jobs.off, 25, '25 crew evicted to off shift');
+  // The Hire Crew card must report working crew (18), not the shared total (43).
+  game.state.tab = 'crew';
+  const v = game.renderVals();
+  const hireCard = v.cards.find(c => c.name === 'Hire Crew');
+  strictEqual(hireCard.owned, '18 / 18', 'Hire Crew card shows working crew / cap');
+  // The ledger Crew stat must match.
+  const crewStat = v.stats.find(s => s.k.startsWith('Crew'));
+  strictEqual(crewStat.v, '18 / 18', 'ledger Crew shows working crew / cap');
+});
+
+test('hireCrew caps WORKING crew, not total (off-shift crew do not block hiring)', () => {
+  const game = newGame(50000);
+  const g = game.state.g;
+  // No Dressing Rooms → cap.crew = 2. Three crew: two working, one parked.
+  g.crew = 3;
+  g.jobs = { stage: 2, vipjob: 0, floor: 0, off: 1 };
+  game.hireCrew();
+  strictEqual(g.crew, 3, 'blocked when working crew is at cap');
+  // Free a working slot: working 1 < cap 2 → hiring allowed even though total (3) ≥ cap (2).
+  g.jobs = { stage: 1, vipjob: 0, floor: 0, off: 2 };
+  game.hireCrew();
+  strictEqual(g.crew, 4, 'hiring allowed when working < cap despite total ≥ cap');
+});
+
 test('golden ticket resolves against its source club after a switch', () => {
   const game = newGame(20);
   const g = game.state.g;

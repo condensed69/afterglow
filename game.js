@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.2', build: 215, channel: 'alpha', date: '2026-08-14', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.3', build: 216, channel: 'alpha', date: '2026-08-14', codename: 'Neon Zero' };
   SAVE_VER = 9;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -158,6 +158,9 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.11.3', date: '2026-08-14', codename: 'Neon Zero', notes: [
+      'Fix: the Hire Crew card and Ledger Crew stat reported the TOTAL shared crew against the active room\'s Dressing Room cap, so switching to the annex showed the first club\'s dancer count carried over (e.g. "Hire Crew 43 / 18") instead of the crew actually working there. They now report WORKING crew (crew − Off Shift), and hireCrew caps working crew rather than the shared total, so dancers parked Off Shift no longer block a hire.'
+    ] },
     { v: '0.11.2', date: '2026-08-14', codename: 'Neon Zero', notes: [
       'Second-room pacing scenario added to the reference bot (pacing.mjs): the bot prestiges twice (cash10 ×2 + one manager), unlocks the annex, and proves account progress carries into the fresh room — annex first LED is faster than a no-perk fresh run. No gameplay change.'
     ] },
@@ -2368,7 +2371,7 @@ class Game {
     const g = this.state.g;
     const c = this.club(g);
     const cap = this.caps(g).crew;
-    if (g.crew >= cap) return;
+    if (g.crew - g.jobs.off >= cap) return;
     const price = Math.floor(280 * Math.pow(1.38, g.crew));
     if (c.cash < price) return;
     c.cash -= price;
@@ -2548,7 +2551,7 @@ class Game {
     }));
 
     const stats = [
-      { k: 'Crew' + this.helpIcon('Crew', 'Hired dancers, bartenders, and hosts. Assign them to Main Stage (Hype), VIP (cash), or Floor (buzz + regulars). Wages tick every second.'), v: g.crew + ' / ' + cap.crew },
+      { k: 'Crew' + this.helpIcon('Crew', 'Hired dancers, bartenders, and hosts. Assign them to Main Stage (Hype), VIP (cash), or Floor (buzz + regulars). Wages tick every second.'), v: (g.crew - g.jobs.off) + ' / ' + cap.crew },
       { k: 'On stage' + this.helpIcon('On stage', 'Crew assigned to Main Stage. Each one generates Hype. More Hype = higher income multiplier.'), v: String(g.jobs.stage) },
       // Sum only known building IDs (defense in depth vs unknown keys).
       { k: 'Structures' + this.helpIcon('Structures', 'Total buildings owned. Tip Rails, Back Bars, DJ Booths, Marquee Signs, Flyer Crews, VIP Booths, Door Staff, Dressing Rooms.'), v: String(this.BUILDINGS.reduce((a, d) => a + (c.b[d.id] || 0), 0)) },
@@ -2615,9 +2618,10 @@ class Game {
     } else if (this.state.tab === 'crew') {
       tabHint = 'Hire dancers, then assign them to Main Stage (Hype), VIP, or Floor. Wages tick every second — park extras Off Shift when the room is dead.';
       const price = Math.floor(280 * Math.pow(1.38, g.crew));
-      const room = g.crew < cap.crew, ok = room && c.cash >= price;
+      const working = g.crew - g.jobs.off;
+      const room = working < cap.crew, ok = room && c.cash >= price;
       cards = [{ name: 'Hire Crew', desc: 'Dancers, bartenders, hosts. New hires start on Main Stage — reassign below. Capacity comes from Dressing Rooms.',
-        owned: g.crew + ' / ' + cap.crew, btn: room ? 'Hire $' + this.fmt(price) : 'At capacity',
+        owned: working + ' / ' + cap.crew, btn: room ? 'Hire $' + this.fmt(price) : 'At capacity',
         meta: room ? (ok ? 'affordable' : 'need $' + this.fmt(price - c.cash)) : 'build a Dressing Room',
         locked: !ok, wrapStyle: cardWrap(true), btnStyle: btn(ok), act: () => this.hireCrew(),
         btnTooltip: !ok && room ? 'Need $' + this.fmt(price - c.cash) + ' cash to hire' : '' }];
