@@ -615,8 +615,8 @@ Main: three columns **`minmax(232px,300px) | minmax(320px,720px) | minmax(320px,
 
 | Region | Contents |
 |--------|----------|
-| Header | Afterglow wordmark, version badge (opens changelog), **Franchise offer** (once the 25-regulars gate is met), shift name + bar + night/mult, settings ☰ |
-| Ledger | Cash/Hype/Buzz/Patrons/Regulars/Clout with rates + notes; **Legacy** row (gold `#d4af37`, “spent on permanent perks”); Floor stats (crew, on stage, structures, night time) |
+| Header | Afterglow wordmark, version badge (opens changelog), **Franchise offer** (once the 25-regulars gate is met), **Open second room** + `[ Main ] [ Annex ]` switcher (once the §17 gate is met), shift name + bar + night/mult, settings ☰ |
+| Ledger | Cash/Hype/Buzz/Patrons/Regulars/Clout with rates + notes; **room label** ("Main Room" / "Annex", 0.11.1); **Legacy** row (gold `#d4af37`, “spent on permanent perks”); Floor stats (crew, on stage, structures, night time) |
 | Stage | CSS stage set only (lighting, haze, crowd silhouettes, marquee, lip) — **no performer figure**; Main Stage line, Room energy %, Work the room + Buy a round, Night log |
 | Systems | Tabs Club + Crew (always visible) / **Upgrades** (gated on first building owned) / **Research** (gated on first Clout earned) / **Perks** (gated on `prestiges > 0`); **Owner's List** under tabs; scrollable cards + crew assignments |
 | Footer | full version string, save format, saveState, tick count; multi-tab takeover banner above when stale |
@@ -707,6 +707,10 @@ shipped PR #43 bug.
 The residue: a surface driven by something other than a `game.state` boolean — a URL
 parameter, say — would not be discovered. Nothing in the current UI works that way.
 
+### 14.5 Second-room header controls (0.11.1)
+
+Once the second-room gate is met (`g.prestiges >= 1` **and** at least one manager — account-level, §17), the header gains an **"Open second room"** control next to the Franchise offer family; below the gate it is absent, not grayed. Clicking opens a confirmation modal (preview: fresh till/crowd/build, shared Clout/Legacy/research/crew/managers, first club untouched); confirm opens the **annex** as a one-time account unlock that is **not** a prestige. After unlock, a compact `[ Main ] [ Annex ]` switcher appears beside the shift badge — instant switch, the inactive club pauses, and the Ledger's room label ("Main Room" / "Annex") tracks the active club. `tabStale` blocks both the unlock and the switch (no account progress written only to memory).
+
 ---
 
 ## 15. Engineering rules
@@ -730,6 +734,20 @@ Primary files: `index.html`, `style.css`, `game.js`. Scripts: `economy.test.mjs`
 ## 16. Prestige status
 
 Prestige **is shipped** (0.8.0): franchise sale at 25 regulars → Legacy → perks + managers. The deep design (fantasy, reset matrix, pacing hooks, non-goals) is archived in **[`PRESTIGE.md`](./PRESTIGE.md)** — treat that file as the design archive and this §9/§10 as the as-shipped summary; do not invent prestige numbers in this file.
+
+---
+
+## 17. Second room (0.11.1, Slice B)
+
+The full design lives in **`SECOND_LOCATION.md`** (fantasy, gate, club shape, simulation, UI, non-goals). This section is the as-shipped summary.
+
+- **Save shape (SAVE_VER 9, §13).** `g.clubs` maps club id → run state; `g.activeClub` names the club being played. Club-level fields (`cash/hype/buzz/patrons/regulars/b/u/elapsed/night/shift*/_special/_whale`) live per club; account fields stay top-level. The namespace is plain strings — new rooms never bump `SAVE_VER`.
+- **Gate (locked, SECOND_LOCATION.md §2):** `g.prestiges >= 1` **and** at least one manager hired (`Object.values(g.managers).some(Boolean)`), evaluated on the account. Below the gate the header shows no second-room chrome; above it, an **Open second room** control appears.
+- **Unlock (`confirmOpenRoom`):** one-time, **not** a prestige — the first club is untouched. Creates `g.clubs.annex` from a fresh club state (starting cash, empty build stack, shift clock baseline). `tabStale` blocks open and confirm.
+- **Switcher (`setActiveClub`):** instant, re-renders; the inactive club pauses (no inactive offline window, no cross-club cash). Crew is shared — switching to a room with a smaller Dressing Room cap **evicts excess crew to `off`** (floor → stage → VIP; no auto-restore) via a cap-aware rebalance inside `setActiveClub`.
+- **Ledger:** resources read the active club; Clout/Legacy stay account-level; the room label ("Main Room" / "Annex") tracks the active club.
+- **Simulation:** `rates/caps/step/catchUp`, managers' auto-buy, and whale/critic/golden events all run through `club(g)` — active club only.
+- **Non-goals (v1):** no travel map, no cash transfers, no inactive-club offline earnings, no per-club crew/research, max 2 clubs, no location-specific buildings.
 
 ---
 

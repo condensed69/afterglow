@@ -2286,6 +2286,110 @@ test('v9 import rejects reserved club IDs like __proto__ (no prototype pollution
   strictEqual(Object.prototype.hasOwnProperty.call(game.state.g.clubs, '__proto__'), false, 'no own __proto__ entry created');
 });
 
+test('second room gate: prestiges >= 1 AND at least one manager (account-level)', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  strictEqual(game.canOpenRoom(), false, 'fresh account: gate closed');
+  g.prestiges = 1;
+  strictEqual(game.canOpenRoom(), false, 'prestige alone is not enough');
+  g.managers.rail = true;
+  strictEqual(game.canOpenRoom(), true, 'franchise + one manager opens the gate');
+  g.clubs.annex = game.freshClubState();
+  strictEqual(game.canOpenRoom(), false, 'annex already open: one-time unlock');
+});
+
+test('openRoom → confirmOpenRoom unlocks the annex; first club untouched', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g.prestiges = 1;
+  g.managers.rail = true;
+  g.cash = 500;
+  g.b.rail = 2;
+  g.regulars = 30;
+  game.openRoom();
+  strictEqual(game.state.showOpenRoom, true, 'modal opens when gate met');
+  game.confirmOpenRoom();
+  const a = game.state.g;
+  ok(a.clubs.annex, 'annex created');
+  strictEqual(a.activeClub, 'main', 'active club unchanged by unlock');
+  strictEqual(a.clubs.main.cash, 500, 'first club untouched');
+  strictEqual(a.clubs.main.b.rail, 2, 'first club buildings untouched');
+  strictEqual(a.clubs.annex.cash, 20, 'annex starts at starting cash');
+  strictEqual(a.clubs.annex.b.rail, 0, 'annex starts empty');
+  strictEqual(a.clubs.annex.night, 1, 'annex night baseline');
+  strictEqual(game.state.showOpenRoom, false, 'modal closed after confirm');
+
+  // tabStale blocks both open and confirm (no account progress in memory).
+  const game2 = newGame(20);
+  game2.state.tabStale = true;
+  game2.state.g.prestiges = 1;
+  game2.state.g.managers.rail = true;
+  game2.openRoom();
+  strictEqual(game2.state.showOpenRoom, false, 'openRoom blocked while tabStale');
+  game2.state.showOpenRoom = true;
+  game2.confirmOpenRoom();
+  strictEqual(game2.state.g.clubs.annex, undefined, 'confirmOpenRoom blocked while tabStale');
+});
+
+test('setActiveClub switches rooms and evicts excess crew to off (cap-aware)', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  const annex = game.freshClubState();
+  annex.b.dress = 1; // cap.crew = 2 + 1*2 = 4
+  g.clubs.annex = annex;
+  // main has no Dressing Rooms → cap.crew = 2
+  g.crew = 5;
+  g.jobs = { stage: 2, vipjob: 2, floor: 1, off: 0 };
+  game.setActiveClub('annex');
+  strictEqual(g.activeClub, 'annex', 'switched to annex');
+  // annex cap 4 → evict 1, floor first.
+  strictEqual(g.jobs.floor, 0, 'floor evicted first');
+  strictEqual(g.jobs.stage, 2);
+  strictEqual(g.jobs.vipjob, 2);
+  strictEqual(g.jobs.off, 1, 'excess crew parked in off');
+  // Switch back to main: cap 2 → evict 3 more (stage → vipjob).
+  game.setActiveClub('main');
+  strictEqual(g.activeClub, 'main', 'switched back');
+  strictEqual(g.jobs.stage, 0, 'stage evicted (floor already empty)');
+  strictEqual(g.jobs.vipjob, 1, 'vipjob partially evicted');
+  strictEqual(g.jobs.off, 4, 'total evicted = 5 crew − 2 cap');
+  // Same-club and unknown-id switches are no-ops.
+  const jobsBefore = JSON.stringify(g.jobs);
+  game.setActiveClub('main');
+  game.setActiveClub('nowhere');
+  strictEqual(JSON.stringify(g.jobs), jobsBefore, 'same/unknown id no-op');
+  // tabStale blocks switching (read-only tab).
+  game.state.tabStale = true;
+  game.setActiveClub('annex');
+  strictEqual(g.activeClub, 'main', 'switch blocked while tabStale');
+});
+
+test('v9 save round-trip preserves the annex club and activeClub', () => {
+  const game = newGame(20);
+  const p = game.fresh();
+  p.clubs.annex = game.freshClubState();
+  p.clubs.annex.cash = 77;
+  p.activeClub = 'annex';
+  const payload = JSON.stringify({ saveVer: 9, ver: '0.11.1', build: 214, g: p });
+  strictEqual(game.importSaveFromText(payload), true, 'annex save imports');
+  strictEqual(game.state.g.activeClub, 'annex', 'activeClub restored');
+  strictEqual(game.state.g.clubs.annex.cash, 77, 'annex till restored');
+  strictEqual(game.state.g.cash, 77, 'flat reads follow the restored annex');
+  strictEqual(game.state.g.clubs.main.cash, 20, 'main intact');
+});
+
+test('wipe (hardReset) returns to a single main club', () => {
+  const game = newGame(20);
+  game.markTabOwner();
+  game.state.tabStale = false;
+  game.state.g.clubs.annex = game.freshClubState();
+  const hr = game.renderVals().hardReset;
+  hr(); // arm
+  hr(); // wipe
+  strictEqual(game.state.g.activeClub, 'main', 'active club back to main');
+  strictEqual(Object.keys(game.state.g.clubs).join(','), 'main', 'annex wiped with the save');
+});
+
 test('v9 import sanitizes inherited-key activeClub to main (own-property check)', () => {
   const game = newGame(20);
   const payload = JSON.stringify({
