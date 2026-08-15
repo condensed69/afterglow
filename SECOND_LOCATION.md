@@ -72,6 +72,7 @@ This ties the second room to the post-prestige fantasy: the backer only trusts y
 | `g.achievements` | Account-wide permanent unlocks. |
 | `g.research` (`g.r`) | Research is account-level; one purchase benefits the whole account. |
 | `g.goals` / `g.clicks` / `g.rounds` | Owner's List stays account-level for v1. Goal checks can look at the active club or aggregate account state; see §6. |
+| `g.challenge` / `g.challengesDone` | Challenge runs (PR 4): the active challenge modifier and the permanent completed-challenge record — account-level (see REPLAY_ROADMAP.md §6). |
 
 ### Club-level (per-club; persists through active-club switches; resets on prestige)
 
@@ -134,6 +135,7 @@ clout, legacy, legacyTotal, perks, prestiges,
 research (r), managers, managerPaused, achievements,
 goals, clicks, rounds,
 whalesCount, specialsCount, golden,
+challenge, challengesDone,
 ts, log (shared night log, see §8),
 crew, jobs,
 clubs, activeClub

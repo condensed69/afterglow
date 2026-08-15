@@ -826,6 +826,33 @@ earlier band stay bit-identical (1.53 / 7.70 / 5.70 / 14.35 / 19.85 / 32.00 m).
 no research that costs Legacy/Renown (Clout only). No save-shape change —
 `SAVE_VER` stays 9.
 
+## 20. Challenge runs (`CHALLENGES`) — shipped 0.11.7
+
+Opt-in replay modifiers with permanent, derived rewards (REPLAY_ROADMAP.md §6).
+UI lives at the bottom of the Perks panel.
+
+- **`CHALLENGES`** — `{ id, name, desc, mod, reward, check }`. `check` is a
+  completion predicate over the merged club view (like achievements); `mod` is
+  the run modifier while active; `reward` is the permanent bonus.
+- **Modifiers:** `startCash` (starting till override), `incomeMult` (all cash
+  income ×N via `totalCashMult` — passive + active clicks + whale + golden,
+  no click bypass), `locked` (building ids blocked in `buyBuilding`,
+  `autoBuyManagers`, and the card).
+- **Rewards are derived, not stored:** `challengeBonus(g)` aggregates
+  `challengesDone` + the table into additive `cashMult` (+% all cash),
+  `doorMax` (+N cap), `crewOut` (+% crew output). No Clout/Legacy rewards
+  (Legacy-not-Clout rule).
+- **State:** `g.challenge` (active id or null) + `g.challengesDone` (array) —
+  additive; sanitize/import fail-closed (unknown ids dropped). `SAVE_VER`
+  stays 9.
+- **Lifecycle:** `startChallenge` (two-click armed) resets every club to fresh
+  and re-locks the annex, preserving account meta; `checkChallenge` runs inside
+  `checkAchievements` and records completion; `endChallenge` lifts the modifier
+  without reward; prestige clears the active challenge but keeps `challengesDone`.
+
+**Non-goals:** no Clout/Legacy rewards; no timed real-world challenges (all
+in-game-clock); challenges are opt-in, so the pacing bands are untouched.
+
 ## Doc maintenance
 
 - Rewrite claims against `game.js`, not against stale plans.  

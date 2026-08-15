@@ -406,6 +406,37 @@ Use this as the acceptance spine when coding prestige (not part of this doc-only
 
 ---
 
+## 10. Challenge runs (0.11.7)
+
+Opt-in replay modifiers with permanent, derived rewards (REPLAY_ROADMAP.md §6).
+UI lives at the bottom of the Perks panel.
+
+- **Starting** = a fresh run under the challenge's modifier: every club resets to
+  `freshClubState()` (the annex is re-locked — only `main` exists afterwards);
+  account meta (Legacy, perks, achievements, managers, `challengesDone`)
+  persists; run state (research, Clout, crew, jobs) resets like a franchise
+  deal. Start is two-click armed (it resets the run).
+- **Modifiers** (`mod`): `startCash` overrides the starting till; `incomeMult`
+  scales ALL cash income through `totalCashMult` (passive + clicks + whale +
+  golden — no click bypass); `locked` blocks buildings in `buyBuilding`,
+  `autoBuyManagers`, and the card.
+- **Completion** (`check`) runs on the same beats as achievements
+  (`checkAchievements` → `checkChallenge`). Completing records the id in
+  `g.challengesDone` and clears the active challenge; the permanent reward is
+  **derived** from the table (`challengeBonus(g)`), no separate reward field.
+- **Rewards** (`reward`): additive `cashMult` (+% all cash, folds into
+  `totalCashMult`), `doorMax` (+N Door Staff cap), `crewOut` (+% crew output).
+  Never Clout or Legacy — run variance must not feed the research currency
+  (Legacy-not-Clout rule).
+- **Ending:** `endChallenge()` lifts the modifier without reward (mercy rule).
+  Prestige also clears the active challenge (fresh() resets `g.challenge`);
+  `challengesDone` survives prestige.
+
+Challenges are opt-in — the pacing bot never starts one, so the existing bands
+are untouched (`pacing.mjs` unchanged).
+
+---
+
 ## Doc history
 
 | Date | Note |
