@@ -7,7 +7,7 @@
 
 This doc is intentionally complete enough that each PR below can be implemented by a fresh session with no prior context.
 
-**Execution companion:** `.hermes/plans/2026-08-15_replay-roadmap-execution.md` — the runbook with the exact branch/PR flow, sub-agent orchestration, and the checkpoint/resume protocol (breaks for context compression). Read it before implementing anything; it is the *how*, this doc is the *what*.
+**Execution companion:** `.hermes/plans/2026-08-15_replay-roadmap-execution.md` — the runbook with the exact branch/PR flow, sub-agent orchestration, and the checkpoint/resume protocol (breaks for context compression). It is gitignored under `.hermes/` and lives only in the originating workspace, so treat it as a convenience, not a dependency: **this doc is self-contained** and complete enough to implement every PR with no prior context.
 
 ---
 
@@ -65,13 +65,15 @@ Each PR is a **checkpoint** (see the runbook §"Checkpoint / resume protocol"). 
 
 ```js
 achievementMult(g) {
-  return 1 + 0.01 * (g.achievements ? g.achievements.length : 0);
+  const owned = new Set(g.achievements || []);
+  const count = this.ACHIEVEMENTS.filter(a => !a.burst && owned.has(a.id)).length;
+  return 1 + 0.01 * count;
 }
 ```
 
-Applied to cash income (passive + active clicks) in `rates()`/`workCrowd()`, alongside the existing `cashIncomeMult` (House cut). With all 38 achievements that is +38% — meaningful, not broken.
+Applied to **all** cash income — passive (`rates()`), active clicks (`workCrowd()`), **and** burst-event cash (`spawnWhale`/`takeGolden`) — alongside the existing `cashIncomeMult` (House cut). Excludes the 4 live-only burst achievements (`whale_1`, `whale_10`, `special_1`, `special_5`) and dedupes ids, so the max is +34% (34 unique non-burst achievements), not +38% — meaningful, not broken.
 
-**No save-shape change** — derived from `g.achievements.length`.
+**No save-shape change** — derived from the unique non-burst achievement count (the `burst: true` flag is data-table-only, no new persisted fields).
 
 **Pacing impact (must be handled in the same PR):** the pacing bot earns achievements deterministically as it plays, so this multiplier grows during the run and **shifts the pacing bands**. `pacing.mjs` must be re-baselined: re-measure the full milestone table (the bot's achievement count at each milestone is deterministic), and update the band anchors + the pinned assertions in `economy.test.mjs` that hardcode income values. This is the "re-measure the full milestone table, never assume monotonicity" rule from the incremental-game-design skill.
 
@@ -103,7 +105,7 @@ Applied to cash income (passive + active clicks) in `rates()`/`workCrowd()`, alo
 - Restructure `RESEARCH` entries to gain `tier` and optional `req` (prerequisite research id, mirrors `UPGRADES.req` shape but existence-based like perk reqs).
 - Expand 4 → ~12–16 items across 3 tiers:
   - **Tier 1 (cheap, multipliers):** existing 4 (loop, latemenu, promo, payroll) + a couple more.
-  - **Tier 2 (mid, mechanic unlocks):** e.g. "Franchise Binder" (unlocks the prestige gate — currently implicit), "Staff Scheduling" (unlocks a new job or automation), "VIP Concierge" (unlocks a new income channel).
+  - **Tier 2 (mid, mechanic unlocks):** e.g. "Franchise Playbook" (unlocks a new job — a floor manager that boosts patron conversion), "Staff Scheduling" (unlocks a new job or automation), "VIP Concierge" (unlocks a new income channel).
   - **Tier 3 (expensive, account-wide):** e.g. "Brand Licensing" (cross-club synergy — see PR 7), "Night School" (permanent small stat bonus).
 - Research stays **account-level** (`g.r`), so this is a data + UI change, not a save-shape change.
 
@@ -112,7 +114,7 @@ Applied to cash income (passive + active clicks) in `rates()`/`workCrowd()`, alo
 - The cheapest research still anchors the "first research" pacing milestone; keep the cheapest Tier-1 cost at its current anchor value (12 Clout) or re-baseline `pacing.mjs` if it moves. **Do not move the anchor without a pacing re-run.**
 - Mechanic-unlock nodes must be gated so the pacing bot (which buys cheapest-first) doesn't unlock a mechanic that changes its path mid-run — or, if it does, the bot's path is deterministic and the bands are re-measured.
 
-**Pacing impact:** adding research items changes the "all research" milestone and possibly "first research" (if a cheaper item is added). Re-baseline `pacing.mjs`; pin the cheapest-research anchor in a test (the `min(researchCosts) === loop.cost` pattern from the balance-pass skill reference).
+**Pacing impact:** `pacing.mjs` currently has **no "all research" milestone** — the reference bot stops at 3/4 research (only "first research" and "all upgrades owned" are tracked). PR 3 must therefore **add an `allResearch` milestone** (every `RESEARCH` entry owned) with a target band, alongside re-measuring "first research" (which shifts if a cheaper item is added). Re-baseline `pacing.mjs`; pin the cheapest-research anchor in a test (the `min(researchCosts) === loop.cost` pattern from the balance-pass skill reference).
 
 **Non-goals:** no per-club research (stays account-level per SECOND_LOCATION.md); no research that costs Legacy/Renown (Clout only).
 
@@ -124,16 +126,16 @@ Applied to cash income (passive + active clicks) in `rates()`/`workCrowd()`, alo
 
 **Mechanic:**
 - Add `g.challenge` (active challenge id or `null`) and `g.challengesDone` (array of completed ids) — **additive fields**, no SAVE_VER bump (same pattern as `goals`/`clicks`/`managerPaused`).
-- `CHALLENGES` data table, each entry `{ id, name, desc, mod, reward }`:
-  - `mod` is a modifier applied to the run (e.g. `{ flyers: 'locked' }`, `{ incomeMult: 0.5 }`, `{ startCash: 0 }`).
+- `CHALLENGES` data table, each entry `{ id, name, desc, mod, reward, check }` — `check(g)` is the completion predicate (e.g. reach N regulars, buy X building), evaluated against the same merged club view as achievements:
+  - `mod` is a modifier applied to the run (e.g. `{ flyers: 'locked' }`, `{ incomeMult: 0.5 }`, `{ startCash: 0 }`). An `incomeMult` modifier must apply to **both** passive (`rates()`) and active (`workCrowd()`) cash — routing it through `rates()` alone leaves active clicking a bypass.
   - `reward` is a permanent account bonus granted on completion (e.g. `{ cashMult: +0.05 }`, `{ doorMax: +1 }`).
-- **Start a challenge** = reset the run (fresh club) with the modifier active; the challenge is "won" when its completion condition is met (e.g. reach N regulars, buy X building).
+- **Start a challenge** = reset the run with the modifier active — since challenges are account-level, starting one **resets every club in `g.clubs`** to `freshClubState()` (not just the active club) and re-locks the annex/rooftop, so a developed annex can't satisfy the completion condition instantly; the challenge is "won" when its completion condition is met (e.g. reach N regulars, buy X building).
 - **Challenge selection UI** in the Prestige/Perks panel (or a new "Challenges" tab): list, each shows done/undone + reward.
 
 **Key decisions (locked):**
 - Challenges are **opt-in and reset the run**, so the default pacing bot never starts one — **zero pacing impact** on the existing bands. Add a *separate* `challengeRun()` in `pacing.mjs` only if a challenge's pacing needs a guard (optional; not required for ship).
 - Completion rewards are **permanent account bonuses** stored in `g.challengeRewards` (additive map) or derived from `g.challengesDone` + the `CHALLENGES` table (prefer derived — no extra field).
-- Challenge modifiers must route through the same `club(g)`/`rates(g)` paths; a locked building must be enforced in `buyBuilding` AND greyed in the card.
+- Challenge modifiers must route through the same `club(g)`/`rates(g)` paths; a locked building must be enforced in `buyBuilding` AND in `autoBuyManagers()` (which bypasses `buyBuilding` and replicates purchase logic) AND greyed in the card — otherwise an owned manager auto-buys the locked structure during the challenge.
 - A challenge must not be able to complete instantly or via a stale tab — `tabStale` guard on the start/claim actions (multi-tab convention from the skill).
 
 **Non-goals:** no challenge that rewards Clout (random/run-variance must not feed the deterministic research currency — the Legacy-not-Clout rule); no timed real-world challenges (all in-game-clock).
@@ -188,7 +190,7 @@ This is the structural fix. Full spec follows the PRESTIGE.md pattern.
 
 ### 8.2 Gate
 
-**Condition (locked):** every prestige perk is maxed (`this.PRESTIGE_PERKS.every(p => this.perk(g, p.id) >= p.max)`) **and** both clubs are unlocked (`g.clubs.main` and `g.clubs.annex` both present).
+**Condition (locked):** every prestige perk is maxed (`this.PRESTIGE_PERKS.every(p => this.perk(g, p.id) >= p.max)`) **and** every manager is hired (`this.MANAGERS.every(m => g.managers[m.id])`) **and** both clubs are unlocked (`g.clubs.main` and `g.clubs.annex` both present).
 
 The gate is evaluated on the **account**, not the active club. This ties the second prestige to "you've exhausted the first layer and proven the multi-club model."
 
@@ -206,7 +208,7 @@ Transparent, mirrors `legacyGain`'s shape (`sqrt` of lifetime + linear term). Wi
 
 ### 8.4 Reset scope (what wipes, what persists)
 
-**Wipes (everything account-level except the two below):**
+**Wipes (everything account-level except the three below):**
 
 | Field | After |
 |-------|-------|
@@ -223,12 +225,13 @@ Transparent, mirrors `legacyGain`'s shape (`sqrt` of lifetime + linear term). Wi
 | `g.goals` / `g.clicks` / `g.rounds` | fresh / `0` / `0` |
 | `g.whalesCount` / `g.specialsCount` / `g.golden` | `0` / `0` / `null` |
 
-**Persists (the two permanent layers):**
+**Persists (the permanent layers):**
 
 | Field | Behavior |
 |-------|----------|
 | `g.renown` / `g.renownTotal` | Spendable + lifetime Renown. Never wipes. |
 | `g.achievements` | Permanent unlocks, unchanged. |
+| `g.brand` | Brand perk ranks (PR 7). Never wipes — the reason to sell again. |
 
 **Order of operations (locked, mirrors prestige):** build the post-sale candidate → `setItem` must succeed → replace live state. Never replace first.
 
@@ -250,11 +253,11 @@ Transparent, mirrors `legacyGain`'s shape (`sqrt` of lifetime + linear term). Wi
 ### 8.6 UI
 
 - **Perks/Prestige panel** gains a "Sell the franchise" block (gate-aware) and, after first sale, a **Renown readout** (`g.renown` / `g.renownTotal`).
-- The **Brand panel** (PR 7) is gated on `g.renownTotal > 0` (or `g.renown > 0`), same pattern as the Perks tab gating on `prestiges > 0`.
+- The **Brand panel** (PR 7) is gated on `g.renownTotal > 0` (lifetime Renown — permanent once unlocked, so the panel stays visible after Renown is spent), same pattern as the Perks tab gating on `prestiges > 0`.
 
 ### 8.7 Pacing guard
 
-Add a `renownRun()` scenario to `pacing.mjs` (in PR 8, or a minimal version here): bot plays to max perks + both clubs → sells → asserts `renownTotal > 0` and that the reset produced a fresh `main` with `renown`/`achievements` intact. Named failures on gate miss or reset-shape violation.
+Add a `renownRun()` scenario to `pacing.mjs` (in PR 8, or a minimal version here): bot plays to the gate (max perks + all managers + both clubs) → sells → asserts `renownTotal > 0` and that the reset produced a fresh `main` with `renown`/`achievements` intact. Named failures on gate miss or reset-shape violation.
 
 ### 8.8 Non-goals (second prestige v1)
 
@@ -277,7 +280,7 @@ Add a `renownRun()` scenario to `pacing.mjs` (in PR 8, or a minimal version here
 
 **Key decisions (locked):**
 - Brand perks are bought with Renown only; they persist through the second prestige (they're the reason to sell again).
-- Location-specific content is **additive** — the shared catalog still applies everywhere; extras are appended per location.
+- Location-specific content is **additive** — the shared catalog still applies everywhere; extras are appended per location. `freshClubState()` must initialize each location's extra building/upgrade ids in the club `b`/`u` maps (the shared initializer only covers `BUILDINGS`/`UPGRADES`), and import/sanitization must backfill extras for existing saves — otherwise an uninitialized extra reads `undefined`, prices as `NaN`, and can never be bought.
 - The third club's unlock gate and its extras are data-driven; no new save-shape beyond what PR 6 added.
 
 **Pacing impact:** Brand perks + location extras change the economy; re-baseline `pacing.mjs` and add the third-club scenario to `renownRun()`.
@@ -292,7 +295,7 @@ Add a `renownRun()` scenario to `pacing.mjs` (in PR 8, or a minimal version here
 
 **Mechanic:**
 - **Endgame horizon** — a visible goal line: "Build the franchise to 3 clubs and reach $1e12 (T)" or similar, surfaced in the Owner's List / a "Vision" panel. Purely a target + progress readout; no new mechanic.
-- **Pacing guard** — extend `pacing.mjs` with `renownRun()` (full version): bot → max perks + both clubs → sell → assert reset shape + Renown accrual → buy a Brand perk → unlock rooftop → assert the third club plays faster than a no-Renown fresh run (mirrors `secondRoomRun()`'s `t2 < t1`).
+- **Pacing guard** — extend `pacing.mjs` with `renownRun()` (full version): bot → gate (max perks + all managers + both clubs) → sell → assert reset shape + Renown accrual → buy a Brand perk → unlock rooftop → assert the third club plays faster than a control run carrying the **same achievements** (PR 1 makes achievements a cash multiplier, so a no-achievement fresh control would pass on achievement carryover alone); prefer directly toggling/asserting the Brand effect, as `secondRoomRun()` does for research and House cut (mirrors `secondRoomRun()`'s `t2 < t1`).
 
 **Pacing impact:** this is the guard itself; it must be green before merge.
 
