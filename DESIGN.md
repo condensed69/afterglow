@@ -780,6 +780,48 @@ tables plus a ticker — **zero pacing impact**: nothing here is read by
 player-visible state — the ticker and names are derived, so there is no new
 `g.*` field and no `SAVE_VER` bump.
 
+## 19. Research tree (`RESEARCH`) — shipped 0.11.6
+
+Deep research tree (REPLAY_ROADMAP.md §5): 12 nodes across 3 tiers with
+prerequisites. `req` is existence-based (a research id — `g.r[req]` truthy),
+mirroring the perk-req shape, NOT the UPGRADES object-req shape. Supersedes the
+flat four-item list in §5.
+
+- **Tier 1 — cheap multipliers, no prerequisites:** loop (12), latemenu (12),
+  promo (20), cover (24), payroll (32). The cheapest item (loop, 12 Clout)
+  anchors the "first research" pacing band.
+- **Tier 2 — mechanic unlocks + stacking multipliers (req-gated):** host (45,
+  req promo) unlocks the Floor Host job; scheduling (50, req payroll);
+  concierge (55, req cover); playbook (60, req loop).
+- **Tier 3 — expensive account-wide bonuses:** brand (90, req concierge),
+  school (100, req scheduling), network (110, req playbook).
+
+**Prerequisites are an action invariant:** `buyResearch()` rejects a node whose
+`req` isn't owned (`g.r[req]` truthy) — never trust the UI alone. The research
+card reports the same unavailable state via `reqLocked`/`reqName`
+("requires X"). `pacing.mjs`'s `tryBuyCheapestResearch()` filters unmet
+prerequisites so the bot advances the tree deterministically.
+
+**Job catalog is the single source of truth for the shared roster.** Jobs gain
+`unlock` (research id that gates the job) and `prio` (eviction order when a
+club switch caps working crew). `fresh()`, `sanitizeG()`, save validation,
+`moveJob()`, and `setActiveClub()` all iterate `JOBS` — no hardcoded four-id
+list. A locked job holds zero crew, cannot receive crew via `moveJob()`, and is
+evicted to Off Shift if a load/reset drops its unlock.
+
+**Effects (all in `rates()`):** cover +50% door cover; concierge +50% VIP booth
+income; scheduling −25% wages (stacks with payroll); playbook +25% regulars
+conversion; brand +10% all cash; school +15% crew output; network +25% Clout;
+the host job adds +0.04 patrons/s each.
+
+**Pacing:** a new "all research owned" milestone (~105 min ±30%) joins
+`pacing.mjs`. The cheapest item is unchanged, so "first research" and every
+earlier band stay bit-identical (1.53 / 7.70 / 5.70 / 14.35 / 19.85 / 32.00 m).
+
+**Non-goals:** no per-club research (stays account-level per SECOND_LOCATION.md);
+no research that costs Legacy/Renown (Clout only). No save-shape change —
+`SAVE_VER` stays 9.
+
 ## Doc maintenance
 
 - Rewrite claims against `game.js`, not against stale plans.  
