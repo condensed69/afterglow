@@ -377,6 +377,52 @@ test('whale and golden event cash scales by the milk multiplier (totalCashMult)'
   ok(Math.abs((g.cash - beforeGolden) - Math.floor(25 * goldenMult)) < 0.0001, 'takeGolden cash scales by totalCashMult');
 });
 
+test('flavor tables are well-formed (FLAVOR/REGULAR_NAMES)', () => {
+  const game = newGame();
+  const g = game.state.g;
+  const c = game.club(g);
+  ok(game.FLAVOR.length >= 8, 'FLAVOR has enough lines');
+  for (const f of game.FLAVOR) {
+    ok(typeof f.cond === 'function', 'each FLAVOR entry has a cond');
+    ok(typeof f.text === 'string' && f.text.length > 0, 'each FLAVOR entry has text');
+  }
+  ok(game.FLAVOR.some(f => f.cond(g, c)), 'catch-all line guarantees a ticker string');
+  ok(game.REGULAR_NAMES.length >= 15, 'REGULAR_NAMES pool is large enough');
+  ok(new Set(game.REGULAR_NAMES).size === game.REGULAR_NAMES.length, 'REGULAR_NAMES are unique');
+});
+
+test('regularName derives deterministically from regulars count', () => {
+  const game = newGame();
+  const g = game.state.g;
+  strictEqual(game.regularName(g), null, 'no name below 5 regulars');
+  g.regulars = 4;
+  strictEqual(game.regularName(g), null, 'still no name at 4');
+  g.regulars = 5;
+  const first = game.regularName(g);
+  ok(typeof first === 'string' && first.length > 0, 'name appears at 5 regulars');
+  strictEqual(game.regularName(g), first, 'deterministic at same count');
+  g.regulars = 9;
+  strictEqual(game.regularName(g), first, 'same name through 9 regulars');
+  g.regulars = 10;
+  ok(game.regularName(g) !== first, 'new name at 10 regulars');
+});
+
+test('flavorLine returns a non-empty deterministic ticker line', () => {
+  const game = newGame();
+  const g = game.state.g;
+  const c = game.club(g);
+  const line = game.flavorLine(g, c, 0);
+  ok(typeof line === 'string' && line.length > 0, 'ticker line is non-empty');
+  strictEqual(game.flavorLine(g, c, 0), line, 'deterministic for same tick');
+  // Mid-game state: several FLAVOR conds fire, and the ~3s rotation cycles them.
+  g.regulars = 30;
+  g.hype = 100;
+  g.patrons = 50;
+  const seen = new Set();
+  for (let t = 0; t < 600; t += 30) seen.add(game.flavorLine(g, c, t));
+  ok(seen.size >= 3, 'ticker rotates through multiple applicable lines');
+});
+
 test('clout25 multiplier scales rates().clout', () => {
   const game = newGame();
   const g = game.state.g;

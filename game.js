@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.4', build: 217, channel: 'alpha', date: '2026-08-15', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.5', build: 218, channel: 'alpha', date: '2026-08-15', codename: 'Neon Zero' };
   SAVE_VER = 9;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -158,6 +158,9 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.11.5', date: '2026-08-15', codename: 'Neon Zero', notes: [
+      'Flavor layer: a slim "TODAY" ticker under the header rotates through ambient scene lines keyed on your club\'s state (regulars, hype, the crowd, your build), and Regulars gain names — one new name every 5, surfaced in the Ledger ("Margo is a regular"). Purely cosmetic: nothing feeds the economy, pacing bands are untouched, and there is no save-shape change.'
+    ] },
     { v: '0.11.4', date: '2026-08-15', codename: 'Neon Zero', notes: [
       'Achievements now pay out a milk multiplier: every achievement adds +1% to all cash income (passive + active clicks) via achievementMult(g), folded into the House cut multiplier. It counts unique, non-burst achievements (the 4 live-only burst achievements — whale_1, whale_10, special_1, special_5 — are excluded and duplicate ids are deduped), so the ceiling is +34% at all 34 deterministic achievements — the collection is a real progression path, not a checklist. The multiplier applies to ALL cash income (passive rates, active clicks, whale bonus, golden-ticket tip) through a single totalCashMult(g) composition point. No save-shape change. The pacing bot earns achievements deterministically, so the "all upgrades owned" milestone re-centers from ~45m to ~32m (pacing.mjs band updated).'
     ] },
@@ -527,6 +530,31 @@ class Game {
     { id: 'dress',   name: 'Dressing Room Manager', desc: 'Auto-buys Dressing Rooms.', cost: 10 }
   ];
 
+  // Flavor layer (REPLAY_ROADMAP.md §4) — ambient ticker lines + named regulars.
+  // Pure display: read in renderVals only, never in rates()/step(), so pacing is
+  // untouched. Conditions take (g, c) where c is the active club view.
+  FLAVOR = [
+    { cond: (g, c) => c.regulars >= 25, text: 'A regular booked the VIP booth for her anniversary.' },
+    { cond: (g, c) => c.regulars >= 10, text: 'The regulars know the door staff by name now.' },
+    { cond: (g, c) => c.regulars >= 5, text: 'A regular left a five-star review online.' },
+    { cond: (g, c) => c.hype >= 150, text: 'The DJ dropped a deep cut and the floor surged.' },
+    { cond: (g, c) => c.hype >= 80, text: 'The lights are low and the bass hits just right.' },
+    { cond: (g, c) => c.patrons >= 40, text: 'The line at the door stretches down the block.' },
+    { cond: (g, c) => c.b.bar >= 5, text: 'The back bar can\'t pour drinks fast enough.' },
+    { cond: (g, c) => c.b.dj >= 3, text: 'Three DJs trade sets — the floor never lets up.' },
+    { cond: (g, c) => c.b.marquee >= 2, text: 'The marquee out front glows two blocks away.' },
+    { cond: (g, c) => c.b.vip >= 2, text: 'The VIP room has a waiting list.' },
+    { cond: (g, c) => c.night >= 10, text: 'Ten nights in, the neighborhood knows the name.' },
+    { cond: () => true, text: 'The night is young.' }
+  ];
+
+  // Named regulars pool — one new name every 5 regulars (derived, no save field).
+  REGULAR_NAMES = [
+    'Margo', 'DeShawn', 'Priya', 'Yuki', 'Marcus', 'Elena', 'Theo', 'Rosa',
+    'Jamal', 'Ingrid', 'Felix', 'Naomi', 'Dante', 'Carmen', 'Otis', 'Hana',
+    'Leon', 'Tessa', 'Ravi', 'Sylvie'
+  ];
+
   // Achievements — permanent unlocks with small rewards (Clout/Legacy).
   ACHIEVEMENTS = [
     { id: 'first_rail', name: 'Brass Tax', desc: 'Own 1 Tip Rail', check: g => g.b.rail >= 1, reward: { clout: 1 } },
@@ -614,6 +642,25 @@ class Game {
   // golden-ticket tip — reads this, so the milk bonus can't silently skip a source.
   totalCashMult(g) {
     return this.cashIncomeMult(g) * this.achievementMult(g);
+  }
+
+  // Featured regular name — derived from the active club's regulars count
+  // (REPLAY_ROADMAP.md §4). A new name every 5 regulars; null below the first
+  // threshold (5). Pure display — never feeds rates()/step().
+  regularName(g, c = this.club(g)) {
+    const reg = Math.floor(c.regulars || 0);
+    if (reg < 5) return null;
+    return this.REGULAR_NAMES[Math.min(Math.floor(reg / 5) - 1, this.REGULAR_NAMES.length - 1)];
+  }
+
+  // Current ticker line — rotates through the applicable FLAVOR entries on a
+  // ~3s cadence (30 sim frames at 10Hz). Pure display; the pacing bot never
+  // renders it, so it cannot affect the deterministic bands.
+  flavorLine(g, c, tick) {
+    const lines = [];
+    for (const f of this.FLAVOR) if (f.cond(g, c)) lines.push(f.text);
+    if (!lines.length) lines.push('The night is young.');
+    return lines[Math.floor(tick / 30) % lines.length];
   }
 
   JOBS = [
@@ -2541,7 +2588,7 @@ class Game {
         // gate on buildings/clout/prestiges) — fall back to Club like doPrestige.
         this.setState({ showSettings: false, resetArmed: false, tab: 'club' });
       },
-      tickCount: this.state.tick, saveState: this.state.saveState,
+      tickCount: this.state.tick, saveState: this.state.saveState, ticker: '',
       tabStale: this.state.tabStale,
       // Reload adopts the other tab's save from localStorage (last-explicit-wins via reload).
       takeOverTab: () => { window.location.reload(); }
@@ -2551,6 +2598,9 @@ class Game {
     const c = this.club(g);
     const r = this.rates(g), cap = r.cap;
     const sign = v => (v >= 0 ? '+' : '') + this.fmt(v) + '/s';
+    // Flavor layer (REPLAY_ROADMAP.md §4): ticker line + featured regular name.
+    const ticker = this.flavorLine(g, c, this.state.tick);
+    const regName = this.regularName(g, c);
 
     const resources = [
       { name: 'Cash' + this.helpIcon('Cash', 'Money in the till. Used to hire crew, buy structures, upgrades, and rounds.'), val: '$' + this.fmt(c.cash), rate: sign(r.cash), pct: 100, color: '#ffc94a', note: r.strike ? 'crew unpaid — on strike' : (r.wage > 0 ? 'wages −$' + this.fmt(r.wage) + '/s' : 'no payroll yet') },
@@ -2558,7 +2608,7 @@ class Game {
       { name: 'Buzz' + this.helpIcon('Buzz', 'Street awareness. Converts into patrons entering the club. Marquee Signs and Flyer Crews generate it.'), val: this.fmt(c.buzz), rate: sign(r.buzz - r.buzzSpent), pct: c.buzz / cap.buzz * 100, color: '#22d3ee', note: 'cap ' + cap.buzz + ' · pulls patrons in' },
       // Display whole people; sim keeps fractional c.patrons (PLAN §2.4).
       { name: 'Patrons' + this.helpIcon('Patrons', 'Bodies on the floor. They pay cover at the door ($0.02/head), tip at Tip Rails, and slowly become Regulars. Cap grows with structures.'), val: this.fmt(Math.floor(c.patrons)), rate: sign(r.patrons), pct: c.patrons / cap.patrons * 100, color: '#a855f7', note: 'floor cap ' + cap.patrons },
-      { name: 'Regulars' + this.helpIcon('Regulars', 'Loyal patrons who never leave. Each one generates Clout over time. With Reputation Loop, they also pay $0.04/s cash.'), val: this.fmt(c.regulars), rate: sign(r.regulars), pct: Math.min(100, c.regulars), color: '#4ade80', note: g.r.loop ? '$0.04/s each' : 'unlock Reputation Loop' },
+      { name: 'Regulars' + this.helpIcon('Regulars', 'Loyal patrons who never leave. Each one generates Clout over time. With Reputation Loop, they also pay $0.04/s cash.'), val: this.fmt(c.regulars), rate: sign(r.regulars), pct: Math.min(100, c.regulars), color: '#4ade80', note: g.r.loop ? (regName ? regName + ' is a regular · $0.04/s each' : '$0.04/s each') : (regName ? regName + ' is a regular' : 'unlock Reputation Loop') },
       { name: 'Clout' + this.helpIcon('Clout', 'Research currency. Earned from Regulars. Spent permanently on the Research tab for global upgrades.'), val: this.fmt(g.clout), rate: sign(r.clout), pct: Math.min(100, g.clout * 2), color: '#e879f9', note: 'spent on research' }
     ];
     // Legacy appears in the ledger only once meta is unlocked (first prestige or any lifetime Legacy).
@@ -2737,7 +2787,7 @@ class Game {
 
     return {
       ...base,
-      resources: resourcesOut, stats, tabs, cards, tabHint, jobs, crewOpen: this.state.tab === 'crew' && g.crew > 0,
+      resources: resourcesOut, stats, tabs, cards, tabHint, jobs, ticker, crewOpen: this.state.tab === 'crew' && g.crew > 0,
       metaUnlocked,
       // Second room (SECOND_LOCATION.md §8): unlock control before annex exists,
       // compact switcher after. activeClubLabel names the room in the ledger.
@@ -3378,7 +3428,7 @@ class Game {
       </div>` : '';
 
     this.root.innerHTML = `
-<div style="height:100vh;height:100dvh;display:grid;grid-template-rows:auto 1fr auto;grid-template-columns:minmax(0,1fr);background:radial-gradient(1200px 700px at 50% -10%,#1a0e26 0%,#07050c 62%);overflow:hidden">
+<div style="height:100vh;height:100dvh;display:grid;grid-template-rows:auto auto 1fr auto;grid-template-columns:minmax(0,1fr);background:radial-gradient(1200px 700px at 50% -10%,#1a0e26 0%,#07050c 62%);overflow:hidden">
 
   <header style="display:flex;align-items:center;gap:20px;padding:0 18px;height:62px;border-bottom:1px solid #2a1738;background:linear-gradient(180deg,#140b1f,#0b0712);position:relative;z-index:20">
     <div style="display:flex;align-items:baseline;gap:12px">
@@ -3431,6 +3481,11 @@ class Game {
       <button data-h="${this.bind(v.toggleSettings)}" class="hv-pink" style="width:34px;height:34px;border:1px solid #2f1c42;border-radius:6px;background:#100a19;color:#9c86ab;cursor:pointer;font-size:15px">☰</button>
     </div>
   </header>
+
+  <div class="ticker-bar" style="display:flex;align-items:center;gap:9px;padding:3px 18px;background:#0d0814;border-bottom:1px solid #2a1738;overflow:hidden;white-space:nowrap">
+    <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:2px;color:#ff2d78;font-weight:700;flex-shrink:0">TODAY</span>
+    <span class="ticker-text" style="font-size:11px;color:#9c86ab;text-overflow:ellipsis;overflow:hidden">${v.ticker}</span>
+  </div>
 
   <main data-scroll="main" class="shell-grid">
 

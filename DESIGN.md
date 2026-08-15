@@ -758,6 +758,28 @@ The full design lives in **`SECOND_LOCATION.md`** (fantasy, gate, club shape, si
 
 ---
 
+## 18. Flavor layer (`FLAVOR` / `REGULAR_NAMES`) — shipped 0.11.5
+
+Ambient identity beyond numbers (REPLAY_ROADMAP.md §4). Two pure-display data
+tables plus a ticker — **zero pacing impact**: nothing here is read by
+`rates()`/`step()`, and the reference bot never renders it.
+
+- **`FLAVOR`** — a catalog of `{ cond(g, c), text }` ticker lines keyed on state
+  (regulars/hype/patrons thresholds, building counts, nights). `flavorLine(g, c, tick)`
+  filters to the applicable lines and rotates through them on a ~3s cadence
+  (`floor(tick / 30) % lines.length`, 30 sim frames at 10Hz). A catch-all entry
+  ("The night is young.") guarantees a non-empty line.
+- **`REGULAR_NAMES`** — a 20-name pool. `regularName(g)` derives the featured
+  regular from the active club's regulars count: one new name every 5 regulars,
+  `null` below 5. Surfaced in the Ledger's Regulars note ("Margo is a regular").
+- **Ticker UI** — a slim `TODAY` strip under the header (`.ticker-bar`), truncated
+  with ellipsis on narrow screens. Render-only; `ticker` is computed in `renderVals`
+  and never persisted.
+
+**Non-goals:** no dialogue trees, no narrative arc, no new currencies, no
+player-visible state — the ticker and names are derived, so there is no new
+`g.*` field and no `SAVE_VER` bump.
+
 ## Doc maintenance
 
 - Rewrite claims against `game.js`, not against stale plans.  
