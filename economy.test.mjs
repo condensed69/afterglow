@@ -5126,6 +5126,21 @@ test('manager card exposes level + level-up sub-button', () => {
   strictEqual(railCard2.subAct, null, 'no sub-action at max');
 });
 
+test('startChallenge preserves manager levels (Legacy-purchased account meta)', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.legacy = 100; g.prestiges = 1;
+  g.managers.rail = true;
+  g.managerLevels.rail = 2;
+  g.achievements = ['first_rail', 'prestige_1'];
+  const tight = game.CHALLENGES.find(c => c.id === 'tight');
+  game.startChallenge(tight); // arms
+  game.startChallenge(tight); // confirm
+  const next = game.state.g;
+  strictEqual(next.managers.rail, true, 'hired state survives challenge start');
+  strictEqual(next.managerLevels.rail, 2, 'manager level survives challenge start');
+});
+
 console.log(`Results: ${passed} passed, ${skipped} skipped, ${failed} failed`);
 console.log('───────────────────────────────────────\n');
 

@@ -2742,12 +2742,13 @@ class Game {
     }
     const snapshot = {
       legacy: (g.legacy || 0), legacyTotal: (g.legacyTotal || 0),
-      perks: {}, prestiges: (g.prestiges || 0), managers: {}, managerPaused: {}
+      perks: {}, prestiges: (g.prestiges || 0), managers: {}, managerPaused: {}, managerLevels: {}
     };
     for (const p of this.PRESTIGE_PERKS) snapshot.perks[p.id] = this.perk(g, p.id);
     for (const m of this.MANAGERS) {
       snapshot.managers[m.id] = !!(g.managers && g.managers[m.id]);
       snapshot.managerPaused[m.id] = !!(g.managerPaused && g.managerPaused[m.id]);
+      snapshot.managerLevels[m.id] = (g.managerLevels && g.managerLevels[m.id]) || 0;
     }
     const next = this.fresh(); // fresh() builds main only — the annex is re-locked
     next.challenge = def.id;
@@ -2759,6 +2760,10 @@ class Game {
     next.achievements = Array.isArray(g.achievements) ? g.achievements.slice() : [];
     next.managers = snapshot.managers;
     next.managerPaused = snapshot.managerPaused;
+    // Manager levels survive challenge starts too (PR 5) — same class of
+    // Legacy-purchased account meta as the hire itself; only the PR 6
+    // franchise sale wipes them.
+    next.managerLevels = snapshot.managerLevels;
     // Modifier startCash overrides the default starting till.
     const mod = def.mod || {};
     if (typeof mod.startCash === 'number') next.clubs.main.cash = mod.startCash;
