@@ -147,6 +147,21 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
   display: none;
 }
 
+/* Flavor ticker (REPLAY_ROADMAP.md §4) — slim rotating line under the header.
+   Inline-styled; this only guarantees a stable row height and text selection
+   hygiene. Never affects the sim (render-only). */
+.ticker-bar {
+  min-height: 22px;
+  user-select: none;
+}
+
+/* Explicit nowrap on the text span (not just inherited from the bar) so
+   ellipsis truncation is robust if the bar's inline whitespace rule ever
+   changes. */
+.ticker-text {
+  white-space: nowrap;
+}
+
 /* Small screens: stack Ledger / Stage / Systems vertically, no horizontal scroll.
    Below the sum of the three column minimums (232+320+320 = 872px) the fixed
    mins would force a page-level horizontal scrollbar; single-column removes it. */
@@ -269,5 +284,12 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
   }
   .sys-col {
     grid-template-rows: auto auto auto !important;
+  }
+
+  /* Ticker stays a single truncated line on phones — tighter padding so the
+     ~22px strip doesn't eat vertical space the stacked panels need. */
+  .ticker-bar {
+    padding: 2px 12px !important;
+    min-height: 20px;
   }
 }
