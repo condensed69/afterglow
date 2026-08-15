@@ -57,3 +57,16 @@ docs-only claim is checkable rather than asserted.
 - `VERSION`, the visible build number, and `CHANGELOG` also do not move — this is a
   documentation change with no behavior change, so the "advance together for
   behavior changes" rule does not apply.
+
+### Review-round note
+
+First review wave (14 findings) is addressed in `d4f2b8d`, reconciling the doc with
+the actual codebase: `g.brand` added to the reset-persists scope (§8.4), the sale
+gate now requires all managers hired (§8.2), the Tier-2 research node renamed to
+avoid the PRESTIGE.md §8 "Franchise Binder" conflict (§5), an `allResearch` pacing
+milestone specified for PR 3 (§5), the runbook marked optional (§0), the achievement
+multiplier scoped to unique non-burst achievements (§3), challenge locks extended to
+`autoBuyManagers()` + a `check` completion predicate + income-mod-on-clicks +
+multi-club reset scope (§6), the Brand panel locked to `renownTotal > 0` (§8.6),
+location-extras initialization specified (§9), and an achievement-matched rooftop
+control (§10).
