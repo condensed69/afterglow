@@ -656,10 +656,12 @@ class Game {
   // Current ticker line — rotates through the applicable FLAVOR entries on a
   // ~3s cadence (30 sim frames at 10Hz). Pure display; the pacing bot never
   // renders it, so it cannot affect the deterministic bands.
+  // The catch-all entry (cond: () => true) guarantees a non-empty pool, so no
+  // fallback guard is needed. FLAVOR texts are source-controlled literals;
+  // if they ever accept dynamic strings, escape before interpolating.
   flavorLine(g, c, tick) {
     const lines = [];
     for (const f of this.FLAVOR) if (f.cond(g, c)) lines.push(f.text);
-    if (!lines.length) lines.push('The night is young.');
     return lines[Math.floor(tick / 30) % lines.length];
   }
 
@@ -2599,8 +2601,14 @@ class Game {
     const r = this.rates(g), cap = r.cap;
     const sign = v => (v >= 0 ? '+' : '') + this.fmt(v) + '/s';
     // Flavor layer (REPLAY_ROADMAP.md §4): ticker line + featured regular name.
+    // Ticker text interpolates FLAVOR/REGULAR_NAMES source-controlled literals
+    // (no escaping needed); escape first if they are ever fed dynamic strings.
     const ticker = this.flavorLine(g, c, this.state.tick);
     const regName = this.regularName(g, c);
+    // Regulars ledger note: featured name when available, loop suffix when owned.
+    const regularsNote = g.r.loop
+      ? (regName ? regName + ' is a regular · $0.04/s each' : '$0.04/s each')
+      : (regName ? regName + ' is a regular' : 'unlock Reputation Loop');
 
     const resources = [
       { name: 'Cash' + this.helpIcon('Cash', 'Money in the till. Used to hire crew, buy structures, upgrades, and rounds.'), val: '$' + this.fmt(c.cash), rate: sign(r.cash), pct: 100, color: '#ffc94a', note: r.strike ? 'crew unpaid — on strike' : (r.wage > 0 ? 'wages −$' + this.fmt(r.wage) + '/s' : 'no payroll yet') },
@@ -2608,7 +2616,7 @@ class Game {
       { name: 'Buzz' + this.helpIcon('Buzz', 'Street awareness. Converts into patrons entering the club. Marquee Signs and Flyer Crews generate it.'), val: this.fmt(c.buzz), rate: sign(r.buzz - r.buzzSpent), pct: c.buzz / cap.buzz * 100, color: '#22d3ee', note: 'cap ' + cap.buzz + ' · pulls patrons in' },
       // Display whole people; sim keeps fractional c.patrons (PLAN §2.4).
       { name: 'Patrons' + this.helpIcon('Patrons', 'Bodies on the floor. They pay cover at the door ($0.02/head), tip at Tip Rails, and slowly become Regulars. Cap grows with structures.'), val: this.fmt(Math.floor(c.patrons)), rate: sign(r.patrons), pct: c.patrons / cap.patrons * 100, color: '#a855f7', note: 'floor cap ' + cap.patrons },
-      { name: 'Regulars' + this.helpIcon('Regulars', 'Loyal patrons who never leave. Each one generates Clout over time. With Reputation Loop, they also pay $0.04/s cash.'), val: this.fmt(c.regulars), rate: sign(r.regulars), pct: Math.min(100, c.regulars), color: '#4ade80', note: g.r.loop ? (regName ? regName + ' is a regular · $0.04/s each' : '$0.04/s each') : (regName ? regName + ' is a regular' : 'unlock Reputation Loop') },
+      { name: 'Regulars' + this.helpIcon('Regulars', 'Loyal patrons who never leave. Each one generates Clout over time. With Reputation Loop, they also pay $0.04/s cash.'), val: this.fmt(c.regulars), rate: sign(r.regulars), pct: Math.min(100, c.regulars), color: '#4ade80', note: regularsNote },
       { name: 'Clout' + this.helpIcon('Clout', 'Research currency. Earned from Regulars. Spent permanently on the Research tab for global upgrades.'), val: this.fmt(g.clout), rate: sign(r.clout), pct: Math.min(100, g.clout * 2), color: '#e879f9', note: 'spent on research' }
     ];
     // Legacy appears in the ledger only once meta is unlocked (first prestige or any lifetime Legacy).

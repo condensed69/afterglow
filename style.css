@@ -155,6 +155,13 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
   user-select: none;
 }
 
+/* Explicit nowrap on the text span (not just inherited from the bar) so
+   ellipsis truncation is robust if the bar's inline whitespace rule ever
+   changes. */
+.ticker-text {
+  white-space: nowrap;
+}
+
 /* Small screens: stack Ledger / Stage / Systems vertically, no horizontal scroll.
    Below the sum of the three column minimums (232+320+320 = 872px) the fixed
    mins would force a page-level horizontal scrollbar; single-column removes it. */
