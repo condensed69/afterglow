@@ -682,11 +682,12 @@ class Game {
     return 1 + 0.01 * count;
   }
 
-  // Single composition point for ALL cash income: House cut perk × milk (achievement)
-  // multiplier. Every cash grant — passive rates(), active clicks, whale bonus,
-  // golden-ticket tip — reads this, so the milk bonus can't silently skip a source.
+  // Single composition point for ALL cash income: House cut perk × milk
+  // (achievement) multiplier × Brand Licensing research (g.r.brand). Every cash
+  // grant — passive rates(), active clicks, whale bonus, golden-ticket tip —
+  // reads this, so a cash multiplier can't silently skip a source.
   totalCashMult(g) {
-    return this.cashIncomeMult(g) * this.achievementMult(g);
+    return this.cashIncomeMult(g) * this.achievementMult(g) * (g.r.brand ? 1.10 : 1);
   }
 
   // Featured regular name — derived from the active club's regulars count
@@ -1914,10 +1915,11 @@ class Game {
     let sm = shift.mult;
     if (c._specialShift == null && c.shiftIdx === 3 && g.r.latemenu) sm = 0.95;
     const hypeMult = 1 + c.hype / 140;
-    // Research tree (REPLAY_ROADMAP.md §5): school boosts all crew output; brand
-    // boosts all cash income. Both are account-level (g.r) multipliers.
+    // Research tree (REPLAY_ROADMAP.md §5): school boosts all crew output. Brand
+    // is folded into totalCashMult — the single all-cash composition point — so
+    // it covers passive income AND clicks/whale/golden (see totalCashMult()).
     const crewMult = (c.u.residency ? 1.4 : 1) * (g.r.school ? 1.15 : 1);
-    const cashMult = (c.u.twodrink ? 1.35 : 1) * hypeMult * sm * (g.r.brand ? 1.10 : 1);
+    const cashMult = (c.u.twodrink ? 1.35 : 1) * hypeMult * sm;
     const bottle = c.u.bottle ? 2.2 : 1;
 
     const railCap = c.b.rail * 6;

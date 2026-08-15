@@ -228,6 +228,10 @@ Costs and growth from post-C tables. Building price: `floor(cost × growth^owned
 
 ### 5.3 Research (`RESEARCH`) — one-shot, Clout
 
+> **Superseded by §19 (deep research tree, shipped 0.11.6):** research is now a
+> 12-node, 3-tier tree with prerequisites (`req`). The flat four-item table
+> below is historical — it is Tier 1 only.
+
 | id | Name | Cost | Effect |
 |----|------|-----:|--------|
 | loop | Reputation Loop | 12 | Regulars +$0.04/s each (× cashMult) |

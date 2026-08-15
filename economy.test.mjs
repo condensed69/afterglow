@@ -4810,6 +4810,27 @@ test('prestige reset is catalog-driven (host job zeroed, research reset)', () =>
   strictEqual(next.r.host, false, 'research reset after prestige');
 });
 
+test('brand research folds into totalCashMult (all cash, not passive-only, no double count)', () => {
+  const game = newGame();
+  const g = game.state.g;
+  const c = game.club(g);
+  // Nonzero door cover so the cash multiplier has something to scale; no crew,
+  // no jobs, so cash === nonCrewCash (pure multiplier path).
+  c.patrons = 10;
+  const rBase = game.rates(g); // brand off
+  g.r.brand = true;
+  const rBrand = game.rates(g); // brand on
+  ok(Math.abs(rBrand.cash - rBase.cash * 1.10) < 1e-6, 'rates cash scales exactly ×1.10 with brand (no double count)');
+  // totalCashMult itself includes brand — so clicks/whale/golden get it too.
+  const multBase = game.cashIncomeMult(g) * game.achievementMult(g);
+  ok(Math.abs(game.totalCashMult(g) - multBase * 1.10) < 1e-9, 'totalCashMult includes brand');
+  // Active click (Work the room) pays the brand-inclusive grant.
+  const clickVal = 1.15 + c.b.rail * 0.65 + c.hype * 0.07;
+  const before = c.cash;
+  game.renderVals().workCrowd();
+  ok(Math.abs((c.cash - before) - clickVal * game.totalCashMult(g)) < 1e-9, 'click pays the brand-inclusive grant');
+});
+
 console.log(`Results: ${passed} passed, ${skipped} skipped, ${failed} failed`);
 console.log('───────────────────────────────────────\n');
 
