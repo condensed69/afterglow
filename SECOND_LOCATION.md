@@ -69,6 +69,7 @@ This ties the second room to the post-prestige fantasy: the backer only trusts y
 | `g.perks` | Shared perk ranks. |
 | `g.prestiges` | Count of franchise deals. |
 | `g.managers` / `g.managerPaused` | Managers are account-level; their auto-buy targets whichever club is active when the manager fires. |
+| `g.managerLevels` | Manager levels (PR 5): auto-buy quantity scaling (1 / 5 / max per tick), bought with Legacy; preserved by ordinary prestige. |
 | `g.achievements` | Account-wide permanent unlocks. |
 | `g.research` (`g.r`) | Research is account-level; one purchase benefits the whole account. |
 | `g.goals` / `g.clicks` / `g.rounds` | Owner's List stays account-level for v1. Goal checks can look at the active club or aggregate account state; see §6. |
@@ -132,7 +133,7 @@ Fields that stay at the top level of `g` (account/shared):
 
 ```text
 clout, legacy, legacyTotal, perks, prestiges,
-research (r), managers, managerPaused, achievements,
+research (r), managers, managerPaused, managerLevels, achievements,
 goals, clicks, rounds,
 whalesCount, specialsCount, golden,
 challenge, challengesDone,

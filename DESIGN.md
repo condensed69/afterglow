@@ -853,6 +853,32 @@ UI lives at the bottom of the Perks panel.
 **Non-goals:** no Clout/Legacy rewards; no timed real-world challenges (all
 in-game-clock); challenges are opt-in, so the pacing bands are untouched.
 
+## 21. Upgradeable managers (`g.managerLevels`) — shipped 0.11.8
+
+Automation as a progression (REPLAY_ROADMAP.md §7). Managers stay a binary hire
+in `g.managers`; an additive `g.managerLevels` map (`buildingId → 0–3`) scales
+how many buildings each manager auto-buys per tick in `autoBuyManagers()`:
+
+| Level | Quantity per tick | Cost to reach (Legacy) |
+|------:|-------------------|------------------------|
+| 0 (hired) | 1 | — |
+| 1 | 1 | 10 |
+| 2 | 5 | 20 |
+| 3 | max affordable | 30 |
+
+- **`buyManagerLevel(def)`** — Legacy purchase from the Perks panel; requires
+  the manager hired, caps at 3, `managerLevelCost = 10 × (level + 1)`.
+- **`autoBuyManagers`** reads the level for the per-tick quantity cap
+  (`1 / 5 / Infinity`); `managerPaused` and challenge locks apply at every
+  level. Level ≥ 2 logs one line per fire ("×N") instead of one per building.
+- **Ordinary prestige preserves levels** — `confirmPrestige` snapshots and
+  restores `g.managerLevels` alongside the manager/pause whitelist; only the
+  PR 6 franchise sale wipes them.
+- **State:** additive map, fail-closed in sanitize/import (unknown ids → 0,
+  clamped to 0–3). `SAVE_VER` stays 9.
+
+**Non-goals:** no auto-prestige, no auto-assign-crew, no auto-buy-rounds.
+
 ## Doc maintenance
 
 - Rewrite claims against `game.js`, not against stale plans.  
