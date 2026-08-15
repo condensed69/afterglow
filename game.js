@@ -2694,6 +2694,13 @@ class Game {
     const mod = def.mod || {};
     if (typeof mod.startCash === 'number') next.clubs.main.cash = mod.startCash;
     this.applyStartPerks(next);
+    // Challenge locks override start perks: a seeded structure (e.g. the
+    // startFlyers perk's free Flyer Crew) must not bypass a challenge's
+    // building lock — the lock is a modifier, not just purchase prevention
+    // (REPLAY_ROADMAP.md §6).
+    for (const lid of (Array.isArray(mod.locked) ? mod.locked : [])) {
+      if (next.clubs.main.b[lid]) next.clubs.main.b[lid] = 0;
+    }
     this.checkAchievements(next);
     this.push(next, 'Challenge started: ' + def.name + ' — ' + def.desc, '#e879f9');
     try {

@@ -4967,6 +4967,23 @@ test('endChallenge lifts the active modifier without reward', () => {
   ok(!g2.challengesDone.includes('dry'), 'not recorded as done');
 });
 
+test('startChallenge lock overrides start perks (flyers seed dropped in dry)', () => {
+  // Dry (flyers locked): the startFlyers seed must NOT bypass the lock.
+  const game = newGame(5000);
+  game.state.g.perks.startFlyers = 1;
+  const dry = game.CHALLENGES.find(c => c.id === 'dry');
+  game.startChallenge(dry);
+  game.startChallenge(dry);
+  strictEqual(game.state.g.clubs.main.b.flyers, 0, 'flyers seed dropped under the flyers lock');
+  // Tight (no building lock): the seed is kept.
+  const game2 = newGame(5000);
+  game2.state.g.perks.startFlyers = 1;
+  const tight = game2.CHALLENGES.find(c => c.id === 'tight');
+  game2.startChallenge(tight);
+  game2.startChallenge(tight);
+  strictEqual(game2.state.g.clubs.main.b.flyers, 1, 'flyers seed kept when not locked');
+});
+
 console.log(`Results: ${passed} passed, ${skipped} skipped, ${failed} failed`);
 console.log('───────────────────────────────────────\n');
 
