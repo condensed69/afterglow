@@ -406,7 +406,141 @@ Use this as the acceptance spine when coding prestige (not part of this doc-only
 
 ---
 
-## 10. Challenge runs (0.11.7)
+## 10. Second prestige layer — Franchise → Renown (shipped 0.11.9)
+
+**Status:** design locked; shipped in PR 6 of the replay roadmap (`REPLAY_ROADMAP.md` §8) with `game.js` 0.11.9.  
+**Save format when implemented:** SAVE_VER 9 → **10** — the bump ships with this PR, the first since the v9 `g.clubs` map (0.11.0).
+
+This section is the locked spec of the second prestige layer, with the same authority for "Sell the franchise" that §1–§9 hold for the first. Numbers below are as shipped in `game.js` (the draft's worked examples are decorative; the code wins).
+
+### 10.1 Fantasy & name
+
+**Fantasy.** After you've maxed every prestige perk and built out both clubs, a national conglomerate offers to buy your entire operation. You **sell the franchise** — resetting *everything* (both clubs, Legacy, perks, research, Clout, managers, crew, challenges, run counters) — in exchange for **Renown**, a new permanent meta-currency that measures your brand's national footprint. Renown buys **Brand** upgrades that no single club could afford, and eventually a **third location**.
+
+**Pitch (in-world).** "The chain wants your name on every marquee in the country. Cash out, keep the brand, and build something bigger." (This is also the modal's opening line.)
+
+**Currency name: Renown** — spent and tracked like Legacy, never convertible to it.
+
+| Currency | Role |
+|----------|------|
+| **Cash / Clout / Legacy** | unchanged (per-club run / shared research / first-layer prestige) |
+| **Renown** | Second-layer meta-currency. Earned **only** by selling the franchise. Spent on Brand perks (PR 7). Never wipes. |
+
+**Internal ids (locked):**
+
+| Concept | Id / field |
+|---------|------------|
+| Renown spendable | `g.renown` (number) |
+| Renown lifetime | `g.renownTotal` (number) |
+| Brand perk ranks | `g.brand` (object map `perkId → rank`) |
+| Third club id | `'rooftop'` (unlock target, PR 7) |
+
+### 10.2 Gate
+
+**Condition (locked, account-level):** all three, evaluated on the **account**, never the active club:
+
+1. every prestige perk is maxed — `this.PRESTIGE_PERKS.every(p => this.perk(g, p.id) >= p.max)`;
+2. every manager is hired — `this.MANAGERS.every(m => g.managers[m.id])`;
+3. both clubs are unlocked — `Object.prototype.hasOwnProperty.call(g.clubs, 'main') && Object.prototype.hasOwnProperty.call(g.clubs, 'annex')`.
+
+That is `franchiseGate(g)` in `game.js`. The account-level gate ties the second prestige to "you've exhausted the first layer and proven the multi-club model."
+
+**UI affordance:** below the gate, the Perks panel shows no second-prestige chrome (the card is **absent**, not disabled gray). At the gate, a distinct cyan **"Sell the franchise"** card appears — styled as a *bigger* reset than the franchise offer. `tabStale` blocks open and confirm (same rule as §2).
+
+### 10.3 Reset rules
+
+On the confirmed sale — the confirm is **two-click armed** (`state.franchiseArmed`, mirroring the reset button): the first click arms ("⚠ Confirm sale — click again. This cannot be undone."), the second sells. Opening the modal is gate-checked.
+
+**Reset (wipe to fresh-run defaults — account-wide, both clubs):** the candidate is built from `fresh()`, so everything below resets; this is a **deeper** reset than §3 — it deletes the annex, not just the run.
+
+| Field / group | After sale |
+|---------------|------------|
+| `g.clubs` | `{ main: freshClubState() }` — the annex re-locks; only `main` remains |
+| `g.activeClub` | `'main'` |
+| `g.legacy` / `g.legacyTotal` | `0` / `0` |
+| `g.perks` / `g.prestiges` | `{}` / `0` |
+| `g.clout` | `0` |
+| `g.r` (research) | `{}` (all false) |
+| `g.managers` / `g.managerPaused` / `g.managerLevels` | `{}` / `{}` / `{}` — re-hire and re-level |
+| `g.crew` / `g.jobs` | `0` / fresh |
+| `g.challengesDone` / `g.challenge` | `[]` / `null` — challenges re-lock (like starting a challenge, minus the modifier) |
+| `g.goals` / `g.clicks` / `g.rounds` | fresh goal arc / `0` / `0` |
+| `g.whalesCount` / `g.specialsCount` / `g.golden` | `0` / `0` / `null` |
+| `log` | cleared, then one sale line (§10.6) |
+
+**Persist (carry across the sale — the permanent layers):**
+
+| Field | Behavior |
+|-------|----------|
+| `g.renown` | previous spendable + newly earned (§10.4) — never wipes |
+| `g.renownTotal` | += newly earned — never decreases |
+| `g.achievements` | permanent unlocks, unchanged |
+| `g.brand` | Brand perk ranks, unchanged — **the reason to sell again** (PR 7 sink) |
+
+**Order of operations (locked, mirrors §3):** snapshot the four permanent layers → build the post-sale candidate from `fresh()` → restore the snapshot → push the sale log line onto the candidate → `localStorage.setItem` must succeed → only then replace live `state.g`. On `setItem` throw: `saveState: 'franchise failed'` and the live state is untouched — no silent in-memory sale.
+
+### 10.4 Renown formula
+
+**Formula (locked, as shipped):**
+
+```js
+renownGain(g) {
+  return Math.floor(Math.sqrt(g.legacyTotal || 0) + (g.prestiges || 0) / 3);
+}
+```
+
+- Mirrors `legacyGain`'s shape (sqrt of lifetime + linear term) but reads the **account**, not the active club: `g.legacyTotal` (lifetime Legacy, achievement credits included) and `g.prestiges`.
+- ~105 lifetime Legacy + ~15 prestiges → ~15 Renown on the first sale.
+- No soft cap. Renown spends only on Brand perks (PR 7) in v1; no Renown → cash/Clout/Legacy conversion, no auto-sell (§8 rules carry over).
+
+### 10.5 Save format (SAVE_VER 10)
+
+**Bump `SAVE_VER` to 10** in this PR. v9 saves migrate automatically on load.
+
+**New fields on `g` (defaults):**
+
+```js
+// meta — second prestige layer
+renown: 0,        // spendable Renown
+renownTotal: 0,   // lifetime earned
+brand: {}         // { [brandPerkId]: rank } — PR 7 spends Renown here
+```
+
+`isValidSavePayload` must **not** require these fields (same pattern as the first layer, §6): migration fills them; import validates before migrate.
+
+**Migration sketch:**
+
+```js
+// MIGRATIONS[9]: v9 → v10 — add Renown + Brand fields
+9(g) {
+  if (typeof g.renown !== 'number' || !Number.isFinite(g.renown)) g.renown = 0;
+  if (typeof g.renownTotal !== 'number' || !Number.isFinite(g.renownTotal)) g.renownTotal = 0;
+  if (!g.brand || typeof g.brand !== 'object' || Array.isArray(g.brand)) g.brand = {};
+}
+```
+
+- **No-clobber:** finite numbers and a plain `brand` object pass through untouched; only missing/malformed values default.
+- `sanitizeG` fail-closes the same shape after the chain: non-numeric `renown` / `renownTotal` → 0, clamped ≥ 0; non-object / array `brand` → `{}`.
+- `completeImportedG` adds `renown` / `renownTotal` to its account-level numeric list (default from `fresh()`, reject non-finite) and defaults `brand` to `{}` (lenient fill, not reject).
+- Old saves migrate with **zero** Renown; `fresh()` initializes the three fields directly.
+
+### 10.6 UI
+
+- **Renown readout** — after the first sale (`g.renownTotal > 0`) the Perks panel gains a **Renown** card: `N spare · M lifetime`, meta "spent on Brand unlocks (coming)". Same pattern as the Legacy ledger row (§9.4): appears only once the meta is real.
+- **"Sell the franchise" card** — gate-aware (absent below the gate), cyan border/button, previewing `+N Renown · a bigger reset than the franchise deal`.
+- **Confirmation modal (`showFranchise`)** — title "Sell the franchise"; preview block:
+  - **You will earn:** `+N Renown`
+  - **You keep:** `Renown (X spare · Y lifetime) · achievements · Brand ranks`
+  - **You reset:** `EVERYTHING else — both clubs, Legacy, perks, research, Clout, managers, crew, challenges`
+  - Primary button two-click armed (§10.3), **disabled while `tabStale`** with "Reload to adopt fresh save before selling"; secondary **Not yet**.
+- **Log line (post-sale):** `Sold the franchise: +N Renown. The brand grows.` — cyan `#22d3ee`.
+- **Meta unlock:** the Perks-tab / Legacy-ledger `metaUnlocked` predicate now also unlocks on `g.renownTotal > 0`, so a save with lifetime Renown but zero prestiges still shows the meta UI.
+
+**Non-goals (v1, REPLAY_ROADMAP.md §8.9):** no third prestige layer; no Renown → cash/Clout/Legacy conversion; no auto-sell; no per-club Renown; Brand perks (PR 7) are the only Renown sink in v1.
+
+---
+
+## 11. Challenge runs (0.11.7)
 
 Opt-in replay modifiers with permanent, derived rewards (REPLAY_ROADMAP.md §6).
 UI lives at the bottom of the Perks panel.

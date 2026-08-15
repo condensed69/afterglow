@@ -137,6 +137,7 @@ research (r), managers, managerPaused, managerLevels, achievements,
 goals, clicks, rounds,
 whalesCount, specialsCount, golden,
 challenge, challengesDone,
+renown, renownTotal, brand (SAVE_VER 10 — second prestige layer, REPLAY_ROADMAP.md §8),
 ts, log (shared night log, see §8),
 crew, jobs,
 clubs, activeClub

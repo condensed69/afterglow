@@ -36,8 +36,8 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.8', build: 221, channel: 'alpha', date: '2026-08-15', codename: 'Neon Zero' };
-  SAVE_VER = 9;
+  VERSION = { num: '0.11.9', build: 222, channel: 'alpha', date: '2026-08-15', codename: 'Neon Zero' };
+  SAVE_VER = 10;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
   // A plain boolean is copied when the browser duplicates a tab, so a duplicate would
@@ -154,10 +154,22 @@ class Game {
       for (const def of this.MANAGERS) {
         if (typeof g.managers[def.id] !== 'boolean') g.managers[def.id] = false;
       }
+    },
+    // v9 → v10: Renown + Brand fields (REPLAY_ROADMAP.md §8.5) — the second
+    // prestige layer. No-clobber: values that are already finite numbers (or a
+    // plain brand object) pass through untouched; only missing/malformed
+    // values default. sanitizeG runs after the chain for the same shape.
+    9(g) {
+      if (typeof g.renown !== 'number' || !Number.isFinite(g.renown)) g.renown = 0;
+      if (typeof g.renownTotal !== 'number' || !Number.isFinite(g.renownTotal)) g.renownTotal = 0;
+      if (!g.brand || typeof g.brand !== 'object' || Array.isArray(g.brand)) g.brand = {};
     }
   };
 
   CHANGELOG = [
+    { v: '0.11.9', date: '2026-08-15', codename: 'Neon Zero', notes: [
+      'SECOND PRESTIGE LAYER (REPLAY_ROADMAP.md §8): when every prestige perk is maxed, every manager is hired, and both clubs are unlocked, the Perks panel gains a distinct "Sell the franchise" control — a national conglomerate buys your whole operation. Selling resets EVERYTHING (both clubs, Legacy, perks, research, Clout, managers, crew, challenges, run counters) in exchange for Renown, a new permanent meta-currency (floor(√lifetime Legacy + prestiges/3)). Renown and lifetime Renown never wipe; achievements and Brand ranks (g.brand, spent in a later PR) persist — the reason to build and sell again. Two-click armed confirm with a reset-scope preview, persist-before-replace like prestige, and a Renown readout after the first sale. SAVE_VER bumped to 10; v9 saves migrate with the new fields defaulted.'
+    ] },
     { v: '0.11.8', date: '2026-08-15', codename: 'Neon Zero', notes: [
       'UPGRADEABLE MANAGERS: automation is now a progression, not a binary hire (REPLAY_ROADMAP.md §7). Each hired manager can be leveled up with Legacy from the Perks panel (10 / 20 / 30 Legacy for levels 1→2→3) — the level scales how many buildings the manager buys per tick: level 1 buys 1, level 2 buys 5, level 3 buys max affordable. Leveling requires the manager to be hired; managerPaused still applies at every level, and challenge-locked buildings stay skipped at any level. Manager levels survive ordinary prestige (only the future franchise sale wipes them). Additive g.managerLevels map — no save-shape change (SAVE_VER stays 9); the pacing bot hires a level-0 manager, so all bands are bit-identical.'
     ] },
@@ -758,6 +770,29 @@ class Game {
     return Math.floor(Math.sqrt(reg) + nights / 7);
   }
 
+  // Renown earned by selling the franchise (REPLAY_ROADMAP.md §8.3): the
+  // second prestige layer. Mirrors legacyGain's shape — sqrt of LIFETIME
+  // Legacy (account-wide, not the active club's run) plus a linear term on
+  // prestige count. ~105 lifetime Legacy + ~15 prestiges → ~15 Renown.
+  renownGain(g) {
+    return Math.floor(Math.sqrt(g.legacyTotal || 0) + (g.prestiges || 0) / 3);
+  }
+
+  // Franchise-sale gate (REPLAY_ROADMAP.md §8.2): every prestige perk maxed,
+  // every manager hired, and both clubs unlocked. Evaluated on the ACCOUNT,
+  // not the active club — it ties the second prestige to "you've exhausted
+  // the first layer and proven the multi-club model."
+  franchiseGate(g) {
+    if (!g || typeof g !== 'object') return false;
+    const perksMaxed = this.PRESTIGE_PERKS.every(p => this.perk(g, p.id) >= p.max);
+    if (!perksMaxed) return false;
+    const managersHired = this.MANAGERS.every(m => !!(g.managers && g.managers[m.id]));
+    if (!managersHired) return false;
+    const clubs = g.clubs && typeof g.clubs === 'object' ? g.clubs : {};
+    return Object.prototype.hasOwnProperty.call(clubs, 'main') &&
+      Object.prototype.hasOwnProperty.call(clubs, 'annex');
+  }
+
   // Multiplier applied to all cash income (passive + active clicks) from House cut perk.
   cashIncomeMult(g) {
     return 1 + 0.15 * this.perk(g, 'cash10');
@@ -942,7 +977,7 @@ class Game {
   ];
 
   state = {
-    tab: 'club', showChangelog: false, showSettings: false, showPrestige: false, showOpenRoom: false, showAchievements: false, tick: 0, saveState: 'idle', resetArmed: false, challengeArmed: null,
+    tab: 'club', showChangelog: false, showSettings: false, showPrestige: false, showOpenRoom: false, showFranchise: false, showAchievements: false, tick: 0, saveState: 'idle', resetArmed: false, challengeArmed: null, franchiseArmed: false,
     // Golden-ticket expanded state: badge is small by default; player taps to expand.
     goldenOpen: false,
     // Ledger collapse on narrow screens: mobile players get the CASH row only and
@@ -1091,7 +1126,11 @@ class Game {
       managerPaused,
       // Manager levels (PR 5, additive) — level scales auto-buy quantity in
       // autoBuyManagers (1 / 5 / max per tick). Preserved by ordinary prestige.
-      managerLevels: this.freshManagerLevels()
+      managerLevels: this.freshManagerLevels(),
+      // Second prestige layer (PR 6, SAVE_VER 10) — Renown meta-currency,
+      // earned only by selling the franchise (REPLAY_ROADMAP.md §8). Never
+      // wipes; brand is the Brand-perk rank map (PR 7 spends Renown there).
+      renown: 0, renownTotal: 0, brand: {}
     };
     this.applyStartPerks(g);
     return g;
@@ -1244,6 +1283,14 @@ class Game {
       const lv = g.managerLevels[def.id];
       g.managerLevels[def.id] = (typeof lv === 'number' && Number.isFinite(lv) && lv >= 0) ? Math.min(3, Math.floor(lv)) : 0;
     }
+    // Renown + Brand (PR 6, SAVE_VER 10) — fail-closed: non-numeric Renown → 0
+    // (a malformed value would render NaN in the Perks readout and gate math);
+    // a non-object brand map → {} (PR 7 normalizes known perk ids).
+    if (typeof g.renown !== 'number' || !Number.isFinite(g.renown)) g.renown = 0;
+    if (typeof g.renownTotal !== 'number' || !Number.isFinite(g.renownTotal)) g.renownTotal = 0;
+    g.renown = Math.max(0, g.renown);
+    g.renownTotal = Math.max(0, g.renownTotal);
+    if (!g.brand || typeof g.brand !== 'object' || Array.isArray(g.brand)) g.brand = {};
     // 0.10.2 golden offer: fail-closed to null unless a plain object with a
     // finite at. A malformed at would make the TTL expiry check NaN >= … → never
     // auto-expire; import/load normalizes instead of leaving a stuck offer.
@@ -1315,7 +1362,7 @@ class Game {
     const defaults = this.fresh();
     // Account-level numerics. Club-level run fields (cash/hype/buzz/patrons/
     // regulars/elapsed/night/shiftIdx/shiftT) validate per club below.
-    const numeric = ['clout', 'crew', 'ts', 'legacy', 'legacyTotal', 'prestiges'];
+    const numeric = ['clout', 'crew', 'ts', 'legacy', 'legacyTotal', 'prestiges', 'renown', 'renownTotal'];
     for (const k of numeric) {
       if (g[k] === undefined) g[k] = defaults[k];
       if (typeof g[k] !== 'number' || !Number.isFinite(g[k])) return false;
@@ -1470,6 +1517,11 @@ class Game {
       managerLevelsNext[def.id] = (typeof lv === 'number' && Number.isFinite(lv) && lv >= 0) ? Math.min(3, Math.floor(lv)) : 0;
     }
     g.managerLevels = managerLevelsNext;
+
+    // Brand map (PR 6, SAVE_VER 10) — plain-object default; PR 7 normalizes
+    // known Brand-perk ids. Lenient fill (not reject): an absent/malformed
+    // brand is a fresh account, same as the migration default.
+    if (!g.brand || typeof g.brand !== 'object' || Array.isArray(g.brand)) g.brand = {};
 
     // Challenge state (PR 4, additive) — fail-closed on unknown ids.
     g.challenge = (typeof g.challenge === 'string' && this.CHALLENGES.some(c => c.id === g.challenge)) ? g.challenge : null;
@@ -2708,6 +2760,66 @@ class Game {
     this.startAutosave();
     this.setState({ tab: 'club', saveState: 'prestige saved' });
   }
+  // Sell the franchise (REPLAY_ROADMAP.md §8) — the second prestige layer.
+  // Opening the modal is gate-checked; the sale itself is TWO-CLICK ARMED
+  // (state.franchiseArmed, mirroring the reset button): it resets EVERYTHING
+  // account-level except renown/renownTotal/achievements/brand. Persist-
+  // before-replace, exactly like confirmPrestige — a setItem failure leaves
+  // the live club untouched.
+  openFranchise() {
+    if (this.state.tabStale) return;
+    if (!this.franchiseGate(this.state.g)) return;
+    this.setState({ showFranchise: true, franchiseArmed: false });
+  }
+  confirmFranchiseSale() {
+    if (this.state.tabStale) return;
+    const g = this.state.g;
+    if (!this.franchiseGate(g)) return;
+    if (!this.state.franchiseArmed) {
+      this.setState({ franchiseArmed: true });
+      return;
+    }
+    const gain = this.renownGain(g);
+
+    // Snapshot the permanent layers (REPLAY_ROADMAP.md §8.4): Renown never
+    // wipes, achievements are permanent unlocks, Brand ranks persist.
+    const snapshot = {
+      renown: (g.renown || 0),
+      renownTotal: (g.renownTotal || 0),
+      achievements: Array.isArray(g.achievements) ? g.achievements.slice() : [],
+      brand: (g.brand && typeof g.brand === 'object' && !Array.isArray(g.brand)) ? { ...g.brand } : {}
+    };
+
+    // Build the post-sale candidate from fresh() defaults — wipes both clubs
+    // (annex re-locks), Legacy/perks/research/Clout, managers/levels, crew/
+    // jobs, challenges, and all run counters, exactly per the §8.4 matrix.
+    const next = this.fresh();
+    next.renown = snapshot.renown + gain;
+    next.renownTotal = snapshot.renownTotal + gain;
+    next.achievements = snapshot.achievements;
+    next.brand = snapshot.brand;
+    this.applyStartPerks(next);
+    // Start-perk state can satisfy building achievements (parity with prestige).
+    this.checkAchievements(next);
+
+    this.push(next, 'Sold the franchise: +' + gain + ' Renown. The brand grows.', '#22d3ee');
+
+    // Persist before replacing live state.
+    try {
+      localStorage.setItem(this.KEY, JSON.stringify({
+        saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g: next
+      }));
+    } catch (e) {
+      this.setState({ saveState: 'franchise failed' });
+      return;
+    }
+
+    this._onStrike = false;
+    this.state.g = this.wrapState(next);
+    this.markTabOwner();
+    this.startAutosave();
+    this.setState({ tab: 'club', saveState: 'franchise sold', showFranchise: false, franchiseArmed: false });
+  }
   hireCrew() {
     if (this.state.tabStale) return;
     const g = this.state.g;
@@ -2861,7 +2973,7 @@ class Game {
       verLabel: 'v' + V.num, verBuild: V.build, verChannel: V.channel,
       verFull: 'v' + V.num + ' · build ' + V.build + ' · ' + V.channel + ' · ' + V.codename + ' · ' + V.date,
       saveVer: this.SAVE_VER, changelog: this.CHANGELOG.map(c => ({ ...c })),
-      showChangelog: this.state.showChangelog, showSettings: this.state.showSettings, showPrestige: this.state.showPrestige, showOpenRoom: this.state.showOpenRoom,
+      showChangelog: this.state.showChangelog, showSettings: this.state.showSettings, showPrestige: this.state.showPrestige, showOpenRoom: this.state.showOpenRoom, showFranchise: this.state.showFranchise, franchiseArmed: this.state.franchiseArmed,
       resetHint: this.state.resetArmed ? '⚠ Click "Wipe save and restart" again to confirm — this is permanent.' : '',
       resetLabel: this.state.resetArmed ? '⚠ Confirm — click again to wipe' : 'Wipe save and restart',
       saveState: this.state.saveState,
@@ -2874,6 +2986,7 @@ class Game {
       toggleChangelog: () => this.setState(s => ({ showChangelog: !s.showChangelog })),
       toggleSettings: () => this.setState(s => ({ showSettings: !s.showSettings, resetArmed: false })),
       togglePrestige: () => this.setState(s => ({ showPrestige: !s.showPrestige })),
+      toggleFranchise: () => this.setState(s => ({ showFranchise: !s.showFranchise, franchiseArmed: false })),
       ledgerOpen: this.state.ledgerOpen,
       toggleLedger: () => this.setState(s => ({ ledgerOpen: !s.ledgerOpen })),
       saveNow: () => this.save('manual'),
@@ -2975,7 +3088,7 @@ class Game {
       { name: 'Clout' + this.helpIcon('Clout', 'Research currency. Earned from Regulars. Spent permanently on the Research tab for global upgrades.'), val: this.fmt(g.clout), rate: sign(r.clout), pct: Math.min(100, g.clout * 2), color: '#e879f9', note: 'spent on research' }
     ];
     // Legacy appears in the ledger only once meta is unlocked (first prestige or any lifetime Legacy).
-    const metaUnlocked = (g.prestiges || 0) > 0 || (g.legacyTotal || 0) > 0 || Object.values(g.perks || {}).some(r => r > 0);
+    const metaUnlocked = (g.prestiges || 0) > 0 || (g.legacyTotal || 0) > 0 || Object.values(g.perks || {}).some(r => r > 0) || (g.renownTotal || 0) > 0;
     if (metaUnlocked) {
       resources.push({ name: 'Legacy' + this.helpIcon('Legacy', 'Prestige meta-currency. Earned by selling the club (franchise deal). Spent on permanent perks and managers that persist across runs.'), val: this.fmt(Math.floor(g.legacy || 0)), rate: 'perk shop', pct: Math.min(100, (g.legacy || 0) / 25 * 100), color: '#d4af37', note: 'spent on permanent perks' });
     }
@@ -3140,7 +3253,28 @@ class Game {
           act: () => this.endChallenge()
         });
       }
-      cards = perkCards.concat(managerCards, challengeCards);
+      // Second prestige layer (REPLAY_ROADMAP.md §8): the Renown readout after
+      // the first sale, and the gate-aware "Sell the franchise" control — a
+      // BIGGER reset than prestige, styled distinctly (cyan border/button).
+      const franchiseCards = [];
+      if ((g.renownTotal || 0) > 0) {
+        franchiseCards.push({
+          name: 'Renown', desc: "Your brand's national footprint. Earned by selling the franchise — it never wipes.",
+          owned: Math.floor(g.renown || 0) + ' spare · ' + Math.floor(g.renownTotal || 0) + ' lifetime',
+          btn: '—', meta: 'spent on Brand unlocks (coming)', locked: true,
+          wrapStyle: cardWrap(true), btnStyle: btn(false), act: () => {}
+        });
+      }
+      if (this.franchiseGate(g)) {
+        franchiseCards.push({
+          name: 'Sell the franchise', desc: 'A national conglomerate wants your whole operation. Reset EVERYTHING — both clubs, Legacy, perks, research, managers, crew — for permanent Renown. Achievements and Brand ranks survive.',
+          owned: '', btn: 'Sell the franchise',
+          meta: '+ ' + this.renownGain(g) + ' Renown · a bigger reset than the franchise deal',
+          locked: false, wrapStyle: { ...cardWrap(true), border: '1px solid #22d3ee' }, btnStyle: btn(true, '#22d3ee'),
+          act: () => this.openFranchise()
+        });
+      }
+      cards = perkCards.concat(managerCards, challengeCards, franchiseCards);
     } else {
       tabHint = 'Research is paid in Clout, which accrues slowly from Regulars. Permanent, global effects.';
       cards = this.RESEARCH.map(d => {
@@ -3215,6 +3349,13 @@ class Game {
       prestigeRegulars,
       prestigeNight,
       confirmPrestige: () => this.confirmPrestige(),
+      // Second prestige layer (REPLAY_ROADMAP.md §8): franchise sale gate +
+      // Renown readout for the modal and the Perks panel.
+      franchiseGate: this.franchiseGate(g),
+      franchiseGain: this.franchiseGate(g) ? this.renownGain(g) : 0,
+      renown: Math.floor(g.renown || 0),
+      renownTotal: Math.floor(g.renownTotal || 0),
+      confirmFranchiseSale: () => this.confirmFranchiseSale(),
       // Escape t/msg at the HTML boundary only (g.log stays raw for save round-trips).
       log: g.log.map(l => ({
         t: this.escapeHtml(l.t),
@@ -3765,6 +3906,35 @@ class Game {
         </div>
       </div>` : '';
 
+    const franchiseModal = v.showFranchise ? `
+      <div style="position:fixed;inset:0;background:rgba(5,3,9,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:32px">
+        <div style="width:480px;background:#0e0918;border:1px solid #22d3ee;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #241536">
+            <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#22d3ee;font-weight:700">Sell the franchise</div>
+            <button data-h="${this.bind(v.toggleFranchise)}" class="hv-pink" style="width:30px;height:30px;border:1px solid #3a2350;border-radius:6px;background:#160d22;color:#9c86ab;cursor:pointer;font-size:14px">✕</button>
+          </div>
+          <div style="padding:16px 18px;display:flex;flex-direction:column;gap:12px">
+            <div style="font-size:12px;color:#b9a5c9;line-height:1.5">The chain wants your name on every marquee in the country. Cash out, keep the brand, and build something bigger. <strong style="color:#22d3ee">Renown</strong> is the brand's national footprint — it never wipes.</div>
+            <div style="border:1px solid #2f1c42;border-radius:8px;background:#100a1a;padding:12px;display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline">
+                <span style="font-size:11px;color:#9c86ab">You will earn</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:16px;color:#22d3ee;font-weight:700">+${v.franchiseGain} Renown</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline">
+                <span style="font-size:11px;color:#9c86ab">You keep</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#e7d8f2">Renown (${v.renown} spare · ${v.renownTotal} lifetime) · achievements · Brand ranks</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline">
+                <span style="font-size:11px;color:#9c86ab">You reset</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#ff7aa8">EVERYTHING else — both clubs, Legacy, perks, research, Clout, managers, crew, challenges</span>
+              </div>
+            </div>
+            <button data-h="${this.bind(v.confirmFranchiseSale)}" ${v.tabStale ? 'disabled' : ''} style="background:${v.tabStale ? '#1a1226' : v.franchiseArmed ? '#0e3b45' : 'linear-gradient(180deg,#22d3ee,#0e7490)'};border:1px solid ${v.tabStale ? '#1a1226' : '#22d3ee'};border-radius:8px;color:${v.tabStale ? '#9c86ab' : '#fff'};font-weight:700;font-size:13px;letter-spacing:1px;text-transform:uppercase;padding:13px 16px;cursor:${v.tabStale ? 'not-allowed' : 'pointer'}">${v.tabStale ? 'Reload to adopt fresh save before selling' : v.franchiseArmed ? '⚠ Confirm sale — click again. This cannot be undone.' : 'Sell the franchise'}</button>
+            <button data-h="${this.bind(v.toggleFranchise)}" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700">Not yet</button>
+          </div>
+        </div>
+      </div>` : '';
+
     const openRoomModal = v.showOpenRoom ? `
       <div style="position:fixed;inset:0;background:rgba(5,3,9,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:32px">
         <div style="width:480px;background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
@@ -4068,6 +4238,7 @@ class Game {
   ${changelogModal}
   ${settingsModal}
   ${prestigeModal}
+  ${franchiseModal}
   ${openRoomModal}
   ${achievementsModal}
 </div>`;
