@@ -94,7 +94,10 @@ hypeMult  = 1 + hype / 140
 crewMult  = residency ? 1.4 : 1
 cashMult  = (twodrink ? 1.35 : 1) * hypeMult * sm
 bottle    = bottle service ? 2.2 : 1
-houseCut  = cashIncomeMult(g) = 1 + 0.15 × cash10 perk rank   // multiplies ALL cash income
+houseCut  = totalCashMult(g)                              // multiplies ALL cash income
+totalCashMult(g) = cashIncomeMult(g) × achievementMult(g) // single composition point for ALL cash income: passive rates(), clicks, whale bonus, golden tip
+cashIncomeMult(g) = 1 + 0.15 × cash10 perk rank
+achievementMult(g) = 1 + 0.01 × owned non-burst achievements // milk multiplier (REPLAY_ROADMAP §3), unique ids only
 cloutMult = 1 + 0.25 × clout25 perk rank                      // multiplies Clout gain
 ```
 
@@ -323,7 +326,7 @@ Goal 14 is also the prestige gate (see §9).
 
 ```
 clickVal = 1.15 + rail × 0.65 + hype × 0.07
-cash    += clickVal
+cash    += clickVal × totalCashMult(g)
 buzz     = min(cap.buzz, buzz + 0.12)
 clicks  += 1
 ```
@@ -413,7 +416,7 @@ Random high-roller burst, **live only** — gated by the `_live` flag (0.10.19; 
 
 ```
 per-tick chance = 0.0008 × chunk × (1 + hype / 200)     // ~1 per 3 min at base, scales with hype
-bonus           = floor(50 × (1 + hype / 100) × cashIncomeMult(g))
+bonus           = floor(50 × (1 + hype / 100) × totalCashMult(g))
 g.cash += bonus;  log '🐋 Whale spotted! +$…';  fx floater
 cooldown        = 120 + rand × 180 s                     // 2–5 min between whales
 ```
@@ -440,7 +443,7 @@ A rare floating offer — “VIP booked the booth” — **live only** (inside t
 per-slice chance = GOLDEN_CHANCE × (chunk / SIM)          // 0.001 × slice-time fraction, whale-style (≈1 offer per ~2 min at the 10Hz sim — 0.10.20, was 0.005 ≈ one per 20s)
 state: g.golden = { at: Date.now() }                      // additive; null when absent
 TTL:  GOLDEN_TTL = 30 s wall-clock (live tick or catchUp expiry — expireGolden)
-take the $:    cash += floor(25 × cashIncomeMult(g))      // income-scaled tip
+take the $:    cash += floor(25 × totalCashMult(g))      // income-scaled tip
 grow the crowd: patrons = min(cap, patrons + 10)          // capped
 ```
 
@@ -457,6 +460,8 @@ Permanent unlocks with small Clout/Legacy rewards. `checkAchievements(g)` iterat
 **Reward accounting rule (0.9.5, regression-tested):** achievement **Legacy rewards credit BOTH `g.legacy` (spendable) and `g.legacyTotal` (lifetime)** — matching how prestige gains are tracked — so `legacy_50` (Legacy Builder) and the Perks tab “Total Legacy earned” reflect achievement income. This matters in a single pass: `prestige_1` (+1) can push `legacyTotal` across 50 and unlock `legacy_50` (+2) in the same `checkAchievements` call.
 
 **0.10.1 density pass:** catalog grew 23 → 38 — new building tiers (10 bars, 5 DJs, 3 marquees, 5 flyer crews, max door, 3 dressing rooms), stat tiers (200 hype, 100 patrons, 50 regulars, 25 nights), 10 rounds, and burst-event achievements driven by two additive counters: `g.whalesCount` (incremented in `spawnWhale`) and `g.specialsCount` (incremented in `advanceShift` when a special actually triggers). The four burst-event achievements reward **Legacy, not Clout**: they fire early and randomly, and Clout rewards would inject variance into research pacing (Clout is the research currency; see §11 and `pacing.mjs`).
+
+**Milk multiplier (REPLAY_ROADMAP §3):** every achievement adds +1% to all cash income (passive + active clicks) via `achievementMult(g)`, folded into the `houseCut` multiplier alongside the House cut perk (§4.2). `achievementMult(g)` counts **unique, non-burst** achievements: duplicate ids are deduped, and the 4 live-only burst achievements (`whale_1`, `whale_10`, `special_1`, `special_5` — driven by `g.whalesCount`/`g.specialsCount`, which the deterministic pacing bot can never earn) are excluded. At the full 34 deterministic achievements that is +34% (not +38% of 38) — the collection is a real progression path, not a checklist. The multiplier applies to **all cash income** — passive `rates()`, active clicks, the whale bonus (§11.2), and the golden-ticket tip (§11.4) — through the single `totalCashMult(g)` composition point, so it can't silently skip a source. Derived from `g.achievements`, so no save-shape change. The pacing bot earns achievements deterministically, so this re-centers the "all upgrades owned" milestone (~45m → ~32m) — see `pacing.mjs`.
 
 | id | Name | Check | Reward |
 |----|------|-------|--------|

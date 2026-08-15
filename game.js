@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.3', build: 216, channel: 'alpha', date: '2026-08-14', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.4', build: 217, channel: 'alpha', date: '2026-08-15', codename: 'Neon Zero' };
   SAVE_VER = 9;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -158,6 +158,9 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.11.4', date: '2026-08-15', codename: 'Neon Zero', notes: [
+      'Achievements now pay out a milk multiplier: every achievement adds +1% to all cash income (passive + active clicks) via achievementMult(g), folded into the House cut multiplier. It counts unique, non-burst achievements (the 4 live-only burst achievements — whale_1, whale_10, special_1, special_5 — are excluded and duplicate ids are deduped), so the ceiling is +34% at all 34 deterministic achievements — the collection is a real progression path, not a checklist. The multiplier applies to ALL cash income (passive rates, active clicks, whale bonus, golden-ticket tip) through a single totalCashMult(g) composition point. No save-shape change. The pacing bot earns achievements deterministically, so the "all upgrades owned" milestone re-centers from ~45m to ~32m (pacing.mjs band updated).'
+    ] },
     { v: '0.11.3', date: '2026-08-14', codename: 'Neon Zero', notes: [
       'Fix: the Hire Crew card and Ledger Crew stat reported the TOTAL shared crew against the active room\'s Dressing Room cap, so switching to the annex showed the first club\'s dancer count carried over (e.g. "Hire Crew 43 / 18") instead of the crew actually working there. They now report WORKING crew (crew − Off Shift), and hireCrew caps working crew rather than the shared total, so dancers parked Off Shift no longer block a hire.'
     ] },
@@ -563,10 +566,10 @@ class Game {
     { id: 'regulars_50', name: 'Institution', desc: '50 Regulars', check: g => g.regulars >= 50, reward: { clout: 8 } },
     { id: 'night_25', name: 'A Month In', desc: 'Survive 25 nights', check: g => g.night >= 25, reward: { clout: 3 } },
     { id: 'round_10', name: 'Toast', desc: 'Buy 10 rounds', check: g => g.rounds >= 10, reward: { clout: 1 } },
-    { id: 'whale_1', name: 'Big Catch', desc: 'A whale patron spends big', check: g => (g.whalesCount || 0) >= 1, reward: { legacy: 1 } },
-    { id: 'whale_10', name: 'Whale Watcher', desc: '10 whale patrons', check: g => (g.whalesCount || 0) >= 10, reward: { legacy: 3 } },
-    { id: 'special_1', name: 'Surprise Hit', desc: 'Ride your first special shift', check: g => (g.specialsCount || 0) >= 1, reward: { legacy: 1 } },
-    { id: 'special_5', name: 'Event Planner', desc: 'Ride 5 special shifts', check: g => (g.specialsCount || 0) >= 5, reward: { legacy: 2 } }
+    { id: 'whale_1', name: 'Big Catch', desc: 'A whale patron spends big', check: g => (g.whalesCount || 0) >= 1, reward: { legacy: 1 }, burst: true },
+    { id: 'whale_10', name: 'Whale Watcher', desc: '10 whale patrons', check: g => (g.whalesCount || 0) >= 10, reward: { legacy: 3 }, burst: true },
+    { id: 'special_1', name: 'Surprise Hit', desc: 'Ride your first special shift', check: g => (g.specialsCount || 0) >= 1, reward: { legacy: 1 }, burst: true },
+    { id: 'special_5', name: 'Event Planner', desc: 'Ride 5 special shifts', check: g => (g.specialsCount || 0) >= 5, reward: { legacy: 2 }, burst: true }
   ];
 
   // Current rank of a prestige perk (0 if missing/invalid).
@@ -592,6 +595,25 @@ class Game {
   // Multiplier applied to all cash income (passive + active clicks) from House cut perk.
   cashIncomeMult(g) {
     return 1 + 0.15 * this.perk(g, 'cash10');
+  }
+
+  // Milk-style multiplier derived from owned, non-burst achievements (REPLAY_ROADMAP.md §3):
+  // each adds +1% to all cash income (passive + active clicks), so the collection is a
+  // real progression path, not a checklist. Counts UNIQUE ids (Set-deduped) and EXCLUDES
+  // the 4 burst achievements (whale_1/whale_10/special_1/special_5 — driven by live-only
+  // counters), so the deterministic pacing bot sees a stable ceiling of 1.34x (34
+  // non-burst of 38 total). Applied everywhere via totalCashMult(g).
+  achievementMult(g) {
+    const owned = new Set(Array.isArray(g.achievements) ? g.achievements : []);
+    const count = this.ACHIEVEMENTS.filter(a => !a.burst && owned.has(a.id)).length;
+    return 1 + 0.01 * count;
+  }
+
+  // Single composition point for ALL cash income: House cut perk × milk (achievement)
+  // multiplier. Every cash grant — passive rates(), active clicks, whale bonus,
+  // golden-ticket tip — reads this, so the milk bonus can't silently skip a source.
+  totalCashMult(g) {
+    return this.cashIncomeMult(g) * this.achievementMult(g);
   }
 
   JOBS = [
@@ -1791,7 +1813,7 @@ class Game {
     // here the cover REPLACES the door trickle, so an empty room earns less, not
     // more, and the patron cap bounds the early game). Patron tips still only via
     // rail (PLAN §1.6). House cut prestige perk multiplies all cash income.
-    const houseCut = this.cashIncomeMult(g);
+    const houseCut = this.totalCashMult(g);
     let nonCrewCash = (c.patrons * 0.02 + Math.min(c.patrons, railCap) * 0.06 + c.b.bar * 0.45) * cashMult * houseCut;
     nonCrewCash += c.b.vip * 1.25 * bottle * cashMult * houseCut;
     if (g.r.loop) nonCrewCash += c.regulars * 0.04 * cashMult * houseCut;
@@ -2698,6 +2720,10 @@ class Game {
 
     // Click / round numbers retuned for PLAN-NEXT §C pacing (active-play early curve).
     const clickVal = 1.15 + c.b.rail * 0.65 + c.hype * 0.07;
+    // Single grant for Work the room: base click × totalCashMult — the same
+    // composition point rates()/spawnWhale/takeGolden use, so the click payout
+    // can't drift from the displayed value.
+    const clickGrant = clickVal * this.totalCashMult(g);
     const roundPrice = this.roundPrice(g);
     const hypeRoom = Math.max(0, cap.hype - c.hype);
     const roundGain = Math.min(14, hypeRoom);
@@ -2757,10 +2783,10 @@ class Game {
       beamOpacity: (0.25 + 0.55 * Math.min(1, c.hype / cap.hype)).toFixed(2),
       spotOpacity: (0.14 + 0.46 * Math.min(1, c.hype / cap.hype)).toFixed(2),
       signLit: g.jobs.stage > 0,
-      clickValue: '$' + this.fmt(clickVal),
+      clickValue: '$' + this.fmt(clickGrant),
       workCrowd: (e) => {
         if (this.state.tabStale) return;
-        const val = clickVal * this.cashIncomeMult(g);
+        const val = clickGrant;
         c.cash += val;
         c.buzz = Math.min(cap.buzz, c.buzz + 0.12);
         g.clicks = (g.clicks || 0) + 1;
@@ -2795,7 +2821,7 @@ class Game {
         // mid-TTL shows the real gain (and cap) where the ticket will land.
         const gc = this.club(g, g.golden.club);
         return {
-          cashAmount: Math.floor(25 * this.cashIncomeMult(g)),
+          cashAmount: Math.floor(25 * this.totalCashMult(g)),
           crowdAmount: Math.round(Math.min(10, this.caps(g, gc).patrons - gc.patrons)),
           locked: this.state.tabStale
         };
@@ -3023,7 +3049,7 @@ class Game {
   spawnWhale(g) {
     const c = this.club(g);
     const mult = 1 + c.hype / 100;
-    const bonus = Math.floor(50 * mult * this.cashIncomeMult(g));
+    const bonus = Math.floor(50 * mult * this.totalCashMult(g));
     c.cash += bonus;
     // 0.10.1: lifetime whale counter (drives whale_1/whale_10).
     g.whalesCount = (g.whalesCount || 0) + 1;
@@ -3111,7 +3137,7 @@ class Game {
       const added = Math.round(c.patrons - before);
       this.push(g, 'Golden ticket: VIP brought friends. +' + added + ' patrons.', '#ffc94a');
     } else {
-      const amount = Math.floor(25 * this.cashIncomeMult(g));
+      const amount = Math.floor(25 * this.totalCashMult(g));
       c.cash += amount;
       this.push(g, 'Golden ticket: VIP tipped $' + this.fmt(amount) + '.', '#ffc94a');
     }

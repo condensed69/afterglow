@@ -108,9 +108,9 @@ const MILESTONES = [
   {
     id: 'allUpgrades',
     label: 'All upgrades owned',
-    targetLabel: '~45 min ±30%',
-    lo: 45 * 60 * 0.7,
-    hi: 45 * 60 * 1.3,
+    targetLabel: '~32 min ±30%',
+    lo: 32 * 60 * 0.7,
+    hi: 32 * 60 * 1.3,
     check: (g) => {
       const u = g.u || {};
       return Object.keys(u).length > 0 && Object.values(u).every(Boolean);

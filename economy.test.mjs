@@ -330,6 +330,53 @@ test('cash10 multiplier scales rates().cash and cashIncomeMult()', () => {
   ok(Math.abs(boosted - base * 1.75) < 0.0001, 'rates().cash scales by 1.75x at cash10 rank 5 (15%/rank)');
 });
 
+test('achievementMult counts unique non-burst achievements (milk multiplier)', () => {
+  const game = newGame();
+  const g = game.state.g;
+  strictEqual(game.achievementMult(g), 1, '1.00x at 0 achievements');
+  g.achievements = game.ACHIEVEMENTS.map(a => a.id);
+  ok(Math.abs(game.achievementMult(g) - 1.34) < 1e-9, '1.34x at all 38 (34 non-burst)');
+  g.achievements = game.ACHIEVEMENTS.map(a => a.id).concat(['first_rail', 'first_rail']);
+  ok(Math.abs(game.achievementMult(g) - 1.34) < 1e-9, 'duplicate ids ignored');
+  g.achievements = ['whale_1', 'whale_10', 'special_1', 'special_5'];
+  strictEqual(game.achievementMult(g), 1, 'burst achievements excluded');
+});
+
+test('achievement multiplier scales rates().cash alongside cashIncomeMult', () => {
+  const game = newGame(1000);
+  const g = game.state.g;
+  g.b.rail = 2;
+  g.b.bar = 1;
+  g.patrons = 10;
+  const base = game.rates(g).cash;
+  const nonBurst = game.ACHIEVEMENTS.filter(a => !a.burst).map(a => a.id).slice(0, 10);
+  g.achievements = nonBurst;
+  const boosted = game.rates(g).cash;
+  ok(Math.abs(boosted - base * 1.10) < 0.0001, 'rates().cash scales by 1.10x at 10 non-burst achievements');
+});
+
+test('whale and golden event cash scales by the milk multiplier (totalCashMult)', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g.hype = 50;
+  g.achievements = game.ACHIEVEMENTS.filter(a => !a.burst).map(a => a.id).slice(0, 10);
+  // Whale bonus: floor(50 × (1 + hype/100) × totalCashMult). No RNG in
+  // spawnWhale, so no withRandom needed; measure the cash delta because
+  // checkAchievements can credit rewards on the same call.
+  const whaleMult = game.totalCashMult(g);
+  const beforeWhale = g.cash;
+  game.spawnWhale(g);
+  ok(Math.abs((g.cash - beforeWhale) - Math.floor(50 * 1.5 * whaleMult)) < 0.0001, 'spawnWhale cash scales by totalCashMult');
+  // Golden tip: floor(25 × totalCashMult). Re-seed achievements so any unlock
+  // during spawnWhale's checkAchievements pass can't shift the multiplier.
+  g.achievements = game.ACHIEVEMENTS.filter(a => !a.burst).map(a => a.id).slice(0, 10);
+  const goldenMult = game.totalCashMult(g);
+  g.golden = { at: Date.now(), club: g.activeClub };
+  const beforeGolden = g.cash;
+  game.takeGolden(g, 'cash');
+  ok(Math.abs((g.cash - beforeGolden) - Math.floor(25 * goldenMult)) < 0.0001, 'takeGolden cash scales by totalCashMult');
+});
+
 test('clout25 multiplier scales rates().clout', () => {
   const game = newGame();
   const g = game.state.g;
