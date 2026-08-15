@@ -116,6 +116,17 @@ const MILESTONES = [
       return Object.keys(u).length > 0 && Object.values(u).every(Boolean);
     },
   },
+  {
+    id: 'allResearch',
+    label: 'All research owned',
+    targetLabel: '~105 min ±30%',
+    lo: 105 * 60 * 0.7,
+    hi: 105 * 60 * 1.3,
+    check: (g) => {
+      const r = g.r || {};
+      return Object.keys(r).length > 0 && Object.values(r).every(Boolean);
+    },
+  },
 ];
 
 const SIM_HOURS = 8;
@@ -209,8 +220,11 @@ function tryBuyCheapestUpgrade(game) {
 
 function tryBuyCheapestResearch(game) {
   const g = game.state.g;
+  // Prerequisite-aware (REPLAY_ROADMAP.md §5): skip nodes whose req isn't owned,
+  // so the bot advances the tree instead of repeatedly selecting an affordable
+  // locked node. Existence-based (g.r[reqId] truthy), matching buyResearch.
   const avail = game.RESEARCH
-    .filter((d) => !g.r[d.id] && g.clout >= d.cost)
+    .filter((d) => !g.r[d.id] && (!d.req || !!g.r[d.req]) && g.clout >= d.cost)
     .sort((a, b) => a.cost - b.cost);
   if (avail.length) game.buyResearch(avail[0]);
 }
@@ -220,10 +234,9 @@ function assignCrew(game) {
   const g = game.state.g;
   if (g.crew <= 0) return;
 
-  // Collapse everyone onto off residual, then place.
-  g.jobs.stage = 0;
-  g.jobs.vipjob = 0;
-  g.jobs.floor = 0;
+  // Collapse everyone onto off residual, then place. Catalog-driven (includes
+  // any research-unlocked job — the bot never assigns it, so its count stays 0).
+  for (const id of game.workingJobIds()) g.jobs[id] = 0;
   g.jobs.off = g.crew;
 
   if (g.hype < 40) {

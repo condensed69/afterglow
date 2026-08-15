@@ -4698,6 +4698,139 @@ if (!newGame(20).state.g.clubs) {
 });
 
 console.log('\n───────────────────────────────────────');
+// ── PR 3 — Deep research tree (REPLAY_ROADMAP.md §5) ─────────────────────────
+
+test('research tree is well-formed (tier + req)', () => {
+  const game = newGame();
+  ok(game.RESEARCH.length >= 12 && game.RESEARCH.length <= 16, '12–16 research items');
+  const ids = new Set(game.RESEARCH.map(d => d.id));
+  strictEqual(ids.size, game.RESEARCH.length, 'unique research ids');
+  for (const d of game.RESEARCH) {
+    ok(d.tier >= 1 && d.tier <= 3, `${d.id} has a valid tier`);
+    ok(typeof d.cost === 'number' && d.cost > 0, `${d.id} has a positive cost`);
+    if (d.req) {
+      ok(ids.has(d.req), `${d.id} req points at a real research id`);
+      ok(d.req !== d.id, `${d.id} req is not self-referential`);
+    }
+  }
+  const tiers = new Set(game.RESEARCH.map(d => d.tier));
+  strictEqual(tiers.size, 3, 'exactly 3 tiers present');
+});
+
+test('cheapest research anchors the first-research band (loop @ 12)', () => {
+  const game = newGame();
+  const loop = game.RESEARCH.find(d => d.id === 'loop');
+  const minCost = Math.min(...game.RESEARCH.map(d => d.cost));
+  strictEqual(loop.cost, 12, 'loop stays 12 Clout');
+  strictEqual(minCost, loop.cost, 'min(researchCosts) === loop.cost');
+});
+
+test('buyResearch rejects a locked node and honors its prerequisite', () => {
+  const game = newGame();
+  const g = game.state.g;
+  const host = game.RESEARCH.find(d => d.id === 'host');
+  const promo = game.RESEARCH.find(d => d.id === 'promo');
+  g.clout = 1000;
+  game.buyResearch(host);
+  strictEqual(g.r.host, false, 'host cannot be bought before promo');
+  strictEqual(g.clout, 1000, 'clout unchanged when rejected');
+  game.buyResearch(promo);
+  strictEqual(g.r.promo, true, 'promo bought');
+  game.buyResearch(host);
+  strictEqual(g.r.host, true, 'host buyable after promo');
+});
+
+test('research card reports the locked/unavailable state', () => {
+  const game = newGame();
+  const g = game.state.g;
+  g.clout = 1000;
+  game.state.tab = 'res';
+  const hostCard = game.renderVals().cards.find(c => c.name === 'Floor Host');
+  ok(hostCard, 'host card present');
+  ok(hostCard.reqLocked === true, 'host card reports reqLocked before promo');
+  strictEqual(hostCard.reqName, 'Promoter Network', 'host card names its prereq');
+  game.buyResearch(game.RESEARCH.find(d => d.id === 'promo'));
+  const hostCard2 = game.renderVals().cards.find(c => c.name === 'Floor Host');
+  ok(hostCard2.reqLocked === false, 'host card unlocks after promo');
+});
+
+test('research-unlocked job is catalog-driven (fresh + moveJob)', () => {
+  const game = newGame();
+  const g = game.state.g;
+  ok('host' in g.jobs, 'fresh() includes the host job id');
+  strictEqual(g.jobs.host, 0, 'host starts at 0');
+  // moveJob rejects a locked job (action invariant, not just UI).
+  g.crew = 2; g.jobs.off = 2;
+  game.moveJob('host', 1);
+  strictEqual(g.jobs.host, 0, 'moveJob rejects locked host');
+  strictEqual(g.jobs.off, 2, 'no crew consumed by a locked job');
+  // Unlock host research → moveJob allows.
+  g.r.host = true;
+  game.moveJob('host', 1);
+  strictEqual(g.jobs.host, 1, 'moveJob allows host after unlock');
+  strictEqual(g.jobs.off, 1, 'off decremented');
+});
+
+test('sanitizeG evicts a locked job to off (no phantom working crew)', () => {
+  const game = newGame();
+  const g = { crew: 3, jobs: { stage: 1, vipjob: 1, floor: 0, host: 1, off: 0 }, r: {} };
+  game.sanitizeG(g);
+  strictEqual(g.jobs.host, 0, 'locked host forced to 0');
+  strictEqual(g.jobs.off, 1, 'evicted host crew moved to off');
+  strictEqual(g.jobs.stage + g.jobs.vipjob + g.jobs.floor + g.jobs.host + g.jobs.off, 3, 'crew total honest (no loss/dup)');
+});
+
+test('import accepts the host job and rejects malformed assignments', () => {
+  const game = newGame();
+  const g = game.state.g;
+  g.r.host = true; g.crew = 1; g.jobs.off = 0; g.jobs.host = 1;
+  const base = JSON.parse(JSON.stringify(g));
+  // Valid save carrying the host job imports cleanly.
+  ok(game.importSaveFromText(JSON.stringify({ saveVer: 9, g: base })), 'host job id imports');
+  // Negative host assignment is rejected by the deep import validation.
+  const neg = JSON.parse(JSON.stringify(g));
+  neg.jobs.host = -1;
+  ok(!game.importSaveFromText(JSON.stringify({ saveVer: 9, g: neg })), 'negative host rejected');
+  // Non-numeric host assignment is rejected.
+  const str = JSON.parse(JSON.stringify(g));
+  str.jobs.host = 'x';
+  ok(!game.importSaveFromText(JSON.stringify({ saveVer: 9, g: str })), 'non-numeric host rejected');
+});
+
+test('prestige reset is catalog-driven (host job zeroed, research reset)', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.regulars = 30; g.night = 10;
+  g.r.host = true; g.crew = 3; g.jobs.stage = 2; g.jobs.host = 1;
+  game.confirmPrestige();
+  const next = game.state.g;
+  strictEqual(next.crew, 0, 'crew reset');
+  ok('host' in next.jobs, 'host id survives in the catalog shape');
+  strictEqual(next.jobs.host, 0, 'host job zeroed after prestige');
+  strictEqual(next.r.host, false, 'research reset after prestige');
+});
+
+test('brand research folds into totalCashMult (all cash, not passive-only, no double count)', () => {
+  const game = newGame();
+  const g = game.state.g;
+  const c = game.club(g);
+  // Nonzero door cover so the cash multiplier has something to scale; no crew,
+  // no jobs, so cash === nonCrewCash (pure multiplier path).
+  c.patrons = 10;
+  const rBase = game.rates(g); // brand off
+  g.r.brand = true;
+  const rBrand = game.rates(g); // brand on
+  ok(Math.abs(rBrand.cash - rBase.cash * 1.10) < 1e-6, 'rates cash scales exactly ×1.10 with brand (no double count)');
+  // totalCashMult itself includes brand — so clicks/whale/golden get it too.
+  const multBase = game.cashIncomeMult(g) * game.achievementMult(g);
+  ok(Math.abs(game.totalCashMult(g) - multBase * 1.10) < 1e-9, 'totalCashMult includes brand');
+  // Active click (Work the room) pays the brand-inclusive grant.
+  const clickVal = 1.15 + c.b.rail * 0.65 + c.hype * 0.07;
+  const before = c.cash;
+  game.renderVals().workCrowd();
+  ok(Math.abs((c.cash - before) - clickVal * game.totalCashMult(g)) < 1e-9, 'click pays the brand-inclusive grant');
+});
+
 console.log(`Results: ${passed} passed, ${skipped} skipped, ${failed} failed`);
 console.log('───────────────────────────────────────\n');
 

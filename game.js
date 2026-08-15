@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.5', build: 218, channel: 'alpha', date: '2026-08-15', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.6', build: 219, channel: 'alpha', date: '2026-08-15', codename: 'Neon Zero' };
   SAVE_VER = 9;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -158,6 +158,11 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.11.6', date: '2026-08-15', codename: 'Neon Zero', notes: [
+      'DEEP RESEARCH TREE: research expands from 4 flat one-time buys to a 12-node tree across 3 tiers with prerequisites. Tier 1 is cheap multipliers (the existing Reputation Loop / Late Kitchen / Promoter Network / Payroll Software plus Cover Charge); Tier 2 is mechanic unlocks + stacking multipliers (Floor Host — a new research-gated job that adds patron pull — plus Staff Scheduling, VIP Concierge, Franchise Playbook); Tier 3 is expensive account-wide bonuses (Brand Licensing +10% cash, Night School +15% crew output, National Network +25% Clout). Prerequisites are an action invariant: buyResearch rejects a node whose req is not owned, and the card shows "requires X" until it is.',
+      'The job catalog is now the single source of truth for the shared roster: fresh(), sanitizeG(), save validation, moveJob(), and club-switch eviction all iterate JOBS instead of a hardcoded four-id list. A research-locked job (Floor Host) holds zero crew until its research is owned, is evicted to Off Shift if a load/reset drops the unlock, and cannot be assigned via moveJob while locked. No save-shape change (SAVE_VER stays 9).',
+      'Pacing: a new "all research owned" milestone (~105 min) joins the reference bot, and tryBuyCheapestResearch now filters unmet prerequisites so the bot advances the tree deterministically. The cheapest item (Reputation Loop, 12 Clout) is unchanged, so "first research" and every earlier band stay bit-identical.'
+    ] },
     { v: '0.11.5', date: '2026-08-15', codename: 'Neon Zero', notes: [
       'Flavor layer: a slim "TODAY" ticker under the header rotates through ambient scene lines keyed on your club\'s state (regulars, hype, the crowd, your build), and Regulars gain names — one new name every 5, surfaced in the Ledger ("Margo is a regular"). Purely cosmetic: nothing feeds the economy, pacing bands are untouched, and there is no save-shape change.'
     ] },
@@ -498,11 +503,28 @@ class Game {
     { id: 'residency', name: 'Weekly Residency', cost: 8000, req: { dress: 2 }, desc: 'Crew output x1.4.' }
   ];
 
+  // Research tree (REPLAY_ROADMAP.md §5): 3 tiers, prerequisites. `req` is an
+  // existence-based prerequisite (a research id — `g.r[req]` truthy), mirroring
+  // the perk-req shape, NOT the UPGRADES object-req shape (research has no ranks).
+  // Tier 1 = cheap multipliers (no req); Tier 2 = mechanic unlocks + stacking
+  // multipliers (req-gated); Tier 3 = expensive account-wide bonuses.
+  // The cheapest item (loop, 12 Clout) anchors the "first research" pacing band.
   RESEARCH = [
-    { id: 'loop', name: 'Reputation Loop', cost: 12, desc: 'Regulars each add $0.04/s on their own.' },
-    { id: 'latemenu', name: 'Late Kitchen', cost: 12, desc: 'After Hours multiplier 0.45 → 0.95.' },
-    { id: 'promo', name: 'Promoter Network', cost: 20, desc: 'Buzz converts to patrons 60% faster.' },
-    { id: 'payroll', name: 'Payroll Software', cost: 32, desc: 'Crew wages drop 40%.' }
+    // Tier 1 — cheap multipliers, no prerequisites.
+    { id: 'loop', name: 'Reputation Loop', tier: 1, cost: 12, desc: 'Regulars each add $0.04/s on their own.' },
+    { id: 'latemenu', name: 'Late Kitchen', tier: 1, cost: 12, desc: 'After Hours multiplier 0.45 → 0.95.' },
+    { id: 'promo', name: 'Promoter Network', tier: 1, cost: 20, desc: 'Buzz converts to patrons 60% faster.' },
+    { id: 'cover', name: 'Cover Charge', tier: 1, cost: 24, desc: 'Door cover +50% — patrons pay more at the door.' },
+    { id: 'payroll', name: 'Payroll Software', tier: 1, cost: 32, desc: 'Crew wages drop 40%.' },
+    // Tier 2 — mechanic unlocks + stacking multipliers (prerequisite-gated).
+    { id: 'host', name: 'Floor Host', tier: 2, cost: 45, req: 'promo', desc: 'Unlocks the Floor Host job: +patron pull each.' },
+    { id: 'scheduling', name: 'Staff Scheduling', tier: 2, cost: 50, req: 'payroll', desc: 'Wages drop a further 25%.' },
+    { id: 'concierge', name: 'VIP Concierge', tier: 2, cost: 55, req: 'cover', desc: 'VIP booth income +50%.' },
+    { id: 'playbook', name: 'Franchise Playbook', tier: 2, cost: 60, req: 'loop', desc: 'Regulars convert 25% faster.' },
+    // Tier 3 — expensive account-wide bonuses.
+    { id: 'brand', name: 'Brand Licensing', tier: 3, cost: 90, req: 'concierge', desc: 'All cash income +10%.' },
+    { id: 'school', name: 'Night School', tier: 3, cost: 100, req: 'scheduling', desc: 'Crew output +15%.' },
+    { id: 'network', name: 'National Network', tier: 3, cost: 110, req: 'playbook', desc: 'Clout gain +25%.' }
   ];
   // Prestige perks (PRESTIGE.md). Legacy cost, max rank, effect applied in rates()/workCrowd()/catchUp()/fresh().
   // Optional `req: perkId` gates purchase on the prerequisite perk's rank >= 1 (perk tree, PLAN §4.3).
@@ -611,6 +633,29 @@ class Game {
     return (this.BUILDINGS.find(b => b.id === 'door').max || 6) + this.perk(g, 'doorPlus');
   }
 
+  // All job ids in catalog order (off last — the residual pool).
+  jobIds() {
+    return this.JOBS.map(j => j.id);
+  }
+
+  // Working (non-off) job ids in catalog order.
+  workingJobIds() {
+    return this.JOBS.filter(j => j.id !== 'off').map(j => j.id);
+  }
+
+  // Is a job currently unlocked? A job with `unlock` requires that research id
+  // owned (g.r[unlock] truthy); jobs without `unlock` are always available.
+  jobUnlocked(g, job) {
+    return !job.unlock || !!(g && g.r && g.r[job.unlock]);
+  }
+
+  // Zeroed job assignments keyed by catalog id (off included).
+  freshJobs() {
+    const jobs = {};
+    for (const id of this.jobIds()) jobs[id] = 0;
+    return jobs;
+  }
+
   // Legacy earned on prestige: floor(sqrt(regulars) + night / 7). Regulars and
   // night are per-club — the active club's progress gates the franchise.
   legacyGain(g) {
@@ -637,11 +682,12 @@ class Game {
     return 1 + 0.01 * count;
   }
 
-  // Single composition point for ALL cash income: House cut perk × milk (achievement)
-  // multiplier. Every cash grant — passive rates(), active clicks, whale bonus,
-  // golden-ticket tip — reads this, so the milk bonus can't silently skip a source.
+  // Single composition point for ALL cash income: House cut perk × milk
+  // (achievement) multiplier × Brand Licensing research (g.r.brand). Every cash
+  // grant — passive rates(), active clicks, whale bonus, golden-ticket tip —
+  // reads this, so a cash multiplier can't silently skip a source.
   totalCashMult(g) {
-    return this.cashIncomeMult(g) * this.achievementMult(g);
+    return this.cashIncomeMult(g) * this.achievementMult(g) * (g.r.brand ? 1.10 : 1);
   }
 
   // Featured regular name — derived from the active club's regulars count
@@ -665,11 +711,16 @@ class Game {
     return lines[Math.floor(tick / 30) % lines.length];
   }
 
+  // Job catalog (REPLAY_ROADMAP.md §5) — the single source of truth for the
+  // shared roster. `unlock` = research id that gates the job (null = always
+  // available); `prio` = eviction order when a club switch caps working crew
+  // (lowest evicted first). `off` is the residual pool, never a working role.
   JOBS = [
-    { id: 'stage', name: 'Main Stage', desc: '+0.24 Hype/s each' },
-    { id: 'vipjob', name: 'VIP Room', desc: '+$1.35/s each' },
-    { id: 'floor', name: 'Floor Work', desc: '+0.035 Buzz/s' },
-    { id: 'off', name: 'Off Shift', desc: 'No wage drain' }
+    { id: 'stage', name: 'Main Stage', desc: '+0.24 Hype/s each', prio: 2 },
+    { id: 'vipjob', name: 'VIP Room', desc: '+$1.35/s each', prio: 3 },
+    { id: 'floor', name: 'Floor Work', desc: '+0.035 Buzz/s', prio: 1 },
+    { id: 'host', name: 'Floor Host', desc: '+0.04 patrons/s each', prio: 0, unlock: 'host' },
+    { id: 'off', name: 'Off Shift', desc: 'No wage drain', prio: 99 }
   ];
 
   // Owner's List — sequential onboarding goals (PLAN-NEXT §B). Exactly one active at a time.
@@ -918,7 +969,7 @@ class Game {
       // Account-level (shared across clubs, persists through prestige):
       clout: 0,
       // Shared roster (top-level, resets on prestige like today).
-      crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      crew: 0, jobs: this.freshJobs(),
       r, log: [], ts: Date.now(),
       // Owner's List (SAVE_VER 5) — not required by isValidSavePayload (v4 imports lack them).
       goals: [], clicks: 0, rounds: 0,
@@ -1002,16 +1053,31 @@ class Game {
   // Jobs/crew fixups shared by load, migrations, and clipboard import (PLAN §2.1 / §2.2).
   sanitizeG(g) {
     if (!g || typeof g !== 'object') return g;
-    g.jobs = g.jobs || { stage: 0, vipjob: 0, floor: 0, off: 0 };
+    // Jobs are catalog-driven (REPLAY_ROADMAP.md §5): initialize/iterate from
+    // this.JOBS, never a hardcoded four-id list. A locked job (unlock research
+    // not owned) is forced to 0 and its crew evicted to off, so a load/reset
+    // that drops the unlock can't leave phantom working crew.
+    if (!g.jobs || typeof g.jobs !== 'object' || Array.isArray(g.jobs)) g.jobs = this.freshJobs();
     g.crew = Math.max(0, g.crew | 0);
     // Keep assignment totals honest after old saves / partial migrations.
-    for (const k of ['stage', 'vipjob', 'floor', 'off']) g.jobs[k] = Math.max(0, g.jobs[k] | 0);
-    let jobSum = g.jobs.stage + g.jobs.vipjob + g.jobs.floor + g.jobs.off;
+    for (const id of this.jobIds()) g.jobs[id] = Math.max(0, g.jobs[id] | 0);
+    for (const j of this.JOBS) {
+      if (j.unlock && !this.jobUnlocked(g, j) && (g.jobs[j.id] || 0) > 0) {
+        g.jobs.off = (g.jobs.off || 0) + g.jobs[j.id];
+        g.jobs[j.id] = 0;
+      }
+    }
+    let jobSum = 0;
+    for (const id of this.jobIds()) jobSum += g.jobs[id] || 0;
     if (jobSum < g.crew) g.jobs.off += g.crew - jobSum;
     else if (jobSum > g.crew) {
       let over = jobSum - g.crew;
-      for (const k of ['off', 'floor', 'vipjob', 'stage']) {
-        const take = Math.min(g.jobs[k], over);
+      // Evict from off first, then working roles least-valuable-first (prio asc).
+      const evictOrder = ['off'].concat(
+        this.JOBS.filter(j => j.id !== 'off').sort((a, b) => a.prio - b.prio).map(j => j.id)
+      );
+      for (const k of evictOrder) {
+        const take = Math.min(g.jobs[k] || 0, over);
         g.jobs[k] -= take;
         over -= take;
         if (!over) break;
@@ -1245,11 +1311,11 @@ class Game {
 
     if (!g.jobs || typeof g.jobs !== 'object' || Array.isArray(g.jobs)) return false;
     const jobsNext = Object.create(null);
-    for (const k of ['stage', 'vipjob', 'floor', 'off']) {
-      let value = g.jobs[k];
+    for (const id of this.jobIds()) {
+      let value = g.jobs[id];
       if (value === undefined) value = 0;
       if (!Number.isFinite(value) || value < 0) return false;
-      jobsNext[k] = value;
+      jobsNext[id] = value;
     }
     g.jobs = jobsNext;
 
@@ -1849,7 +1915,10 @@ class Game {
     let sm = shift.mult;
     if (c._specialShift == null && c.shiftIdx === 3 && g.r.latemenu) sm = 0.95;
     const hypeMult = 1 + c.hype / 140;
-    const crewMult = c.u.residency ? 1.4 : 1;
+    // Research tree (REPLAY_ROADMAP.md §5): school boosts all crew output. Brand
+    // is folded into totalCashMult — the single all-cash composition point — so
+    // it covers passive income AND clicks/whale/golden (see totalCashMult()).
+    const crewMult = (c.u.residency ? 1.4 : 1) * (g.r.school ? 1.15 : 1);
     const cashMult = (c.u.twodrink ? 1.35 : 1) * hypeMult * sm;
     const bottle = c.u.bottle ? 2.2 : 1;
 
@@ -1863,11 +1932,12 @@ class Game {
     // more, and the patron cap bounds the early game). Patron tips still only via
     // rail (PLAN §1.6). House cut prestige perk multiplies all cash income.
     const houseCut = this.totalCashMult(g);
-    let nonCrewCash = (c.patrons * 0.02 + Math.min(c.patrons, railCap) * 0.06 + c.b.bar * 0.45) * cashMult * houseCut;
-    nonCrewCash += c.b.vip * 1.25 * bottle * cashMult * houseCut;
+    const coverRate = g.r.cover ? 0.03 : 0.02;
+    let nonCrewCash = (c.patrons * coverRate + Math.min(c.patrons, railCap) * 0.06 + c.b.bar * 0.45) * cashMult * houseCut;
+    nonCrewCash += c.b.vip * 1.25 * (g.r.concierge ? 1.5 : 1) * bottle * cashMult * houseCut;
     if (g.r.loop) nonCrewCash += c.regulars * 0.04 * cashMult * houseCut;
 
-    let wage = (g.crew - g.jobs.off) * 0.20 * (g.r.payroll ? 0.6 : 1);
+    let wage = (g.crew - g.jobs.off) * 0.20 * (g.r.payroll ? 0.6 : 1) * (g.r.scheduling ? 0.75 : 1);
     let vipCrewCash = g.jobs.vipjob * 1.35 * crewMult * bottle * cashMult * houseCut;
     let stageHype = g.jobs.stage * 0.24 * crewMult;
     let floorBuzz = g.jobs.floor * 0.035 * crewMult;
@@ -1898,14 +1968,16 @@ class Game {
     // clamped at the launch-day floor (issue #29).
     const basis = (c.buzz > 0 ? Math.min(c.buzz, cap.buzz * 0.0013) : 0) * promoMult;
     // Walk-in trickle: flat +0.02 patrons/s, unscaled by Hype (PLAN §1.4).
-    const pull = basis * (1 + c.hype / 200) + 0.02;
+    // Floor Hosts (research-unlocked job) add a flat patron pull each.
+    const hostPull = (g.jobs.host || 0) * 0.04 * crewMult;
+    const pull = basis * (1 + c.hype / 200) + 0.02 + hostPull;
     const space = Math.max(0, cap.patrons - c.patrons);
     const admitted = Math.min(pull, space);
     const buzzSpent = basis > 0 && pull > 0 ? basis * (admitted / pull) : 0;
     const patrons = admitted - c.patrons * 0.008;
     // Regulars / Clout paced for first-research ~25 min under the §C reference bot.
-    const regulars = c.patrons * 0.00045 * (1 + c.b.vip * 0.18) * sm;
-    const clout = c.regulars * 0.0011 * (1 + 0.25 * this.perk(g, 'clout25'));
+    const regulars = c.patrons * 0.00045 * (1 + c.b.vip * 0.18) * sm * (g.r.playbook ? 1.25 : 1);
+    const clout = c.regulars * 0.0011 * (1 + 0.25 * this.perk(g, 'clout25')) * (g.r.network ? 1.25 : 1);
     return { cash, hype, buzz, patrons, regulars, clout, wage, cap, shift, sm, pull, buzzSpent, strike };
   }
 
@@ -2225,6 +2297,10 @@ class Game {
     if (this.state.tabStale) return;
     const g = this.state.g;
     if (g.r[def.id] || g.clout < def.cost) return;
+    // Prerequisite is an action invariant (REPLAY_ROADMAP.md §5): existence-based
+    // (g.r[req] truthy), not rank-based. Reject a node whose req isn't owned —
+    // do not trust the UI alone.
+    if (def.req && !g.r[def.req]) return;
     g.clout -= def.cost;
     g.r[def.id] = true;
     this.push(g, 'Researched ' + def.name + '.', '#a855f7');
@@ -2340,15 +2416,18 @@ class Game {
     if (!Object.prototype.hasOwnProperty.call(g.clubs, id) || g.activeClub === id) return;
     g.activeClub = id;
     // Cap-aware crew rebalance (SECOND_LOCATION.md §5): crew is shared; the new
-    // active club's Dressing Rooms cap WORKING crew (stage + VIP + floor — off
-    // shift is not working). Evict excess working crew to off, floor → stage →
-    // VIP (least-valuable roles first). Evicted crew stay in off until manually
+    // active club's Dressing Rooms cap WORKING crew (all non-off jobs — off
+    // shift is not working). Evict excess working crew to off, least-valuable
+    // roles first (prio asc). Evicted crew stay in off until manually
     // reassigned (non-goal: no auto-restore).
     const cap = this.caps(g).crew;
     const working = g.crew - (g.jobs.off || 0);
     if (working > cap) {
       let excess = working - cap;
-      for (const k of ['floor', 'stage', 'vipjob']) {
+      const evictOrder = this.JOBS.filter(j => j.id !== 'off')
+        .sort((a, b) => a.prio - b.prio)
+        .map(j => j.id);
+      for (const k of evictOrder) {
         const drop = Math.min(g.jobs[k] || 0, excess);
         g.jobs[k] -= drop;
         g.jobs.off = (g.jobs.off || 0) + drop;
@@ -2459,6 +2538,10 @@ class Game {
     const g = this.state.g;
     // Off Shift is the residual pool (display-only); never assign to it directly.
     if (id === 'off') return;
+    // Locked job: its unlock research isn't owned, so it can't receive crew
+    // (REPLAY_ROADMAP.md §5). This is an action invariant, not just a UI hint.
+    const job = this.JOBS.find(j => j.id === id);
+    if (!job || !this.jobUnlocked(g, job)) return;
     if (d > 0) {
       if (g.jobs.off < 1) return;
       // Crew capacity (SECOND_LOCATION.md §5): the active room's Dressing Rooms
@@ -2754,11 +2837,18 @@ class Game {
     } else {
       tabHint = 'Research is paid in Clout, which accrues slowly from Regulars. Permanent, global effects.';
       cards = this.RESEARCH.map(d => {
-        const bought = g.r[d.id], ok = !bought && g.clout >= d.cost;
+        const bought = g.r[d.id];
+        // Prerequisite gate (REPLAY_ROADMAP.md §5): existence-based, mirrors the
+        // perk tree's reqLocked/reqName presentation.
+        const reqMet = !d.req || !!g.r[d.req];
+        const reqDef = d.req ? this.RESEARCH.find(x => x.id === d.req) : null;
+        const ok = !bought && reqMet && g.clout >= d.cost;
         return { name: d.name, desc: d.desc, owned: bought ? 'done' : '',
           btn: bought ? 'Researched' : d.cost + ' Clout',
-          meta: bought ? '' : (ok ? 'ready' : this.fmt(d.cost - g.clout) + ' Clout short'),
-          locked: !ok, wrapStyle: cardWrap(!bought), btnStyle: btn(ok, '#a855f7'), act: () => this.buyResearch(d) };
+          meta: bought ? '' : (!reqMet ? '' : (ok ? 'ready' : this.fmt(d.cost - g.clout) + ' Clout short')),
+          reqLocked: !reqMet,
+          reqName: reqDef ? reqDef.name : (d.req || ''),
+          locked: !ok, wrapStyle: cardWrap(!bought && reqMet), btnStyle: btn(ok, '#a855f7'), act: () => this.buyResearch(d) };
       });
     }
 
@@ -2767,10 +2857,13 @@ class Game {
         // Passive roster row: count only, no steppers (PLAN §1.7).
         return { name: j.name, rawName: j.name, desc: j.desc, n: g.jobs.off, passive: true };
       }
+      const unlocked = this.jobUnlocked(g, j);
       return {
         name: j.name, rawName: j.name, desc: j.desc, n: g.jobs[j.id], passive: false,
+        locked: !unlocked,
+        unlockName: j.unlock ? (this.RESEARCH.find(x => x.id === j.unlock) || {}).name : '',
         inc: () => this.moveJob(j.id, 1), dec: () => this.moveJob(j.id, -1),
-        incLocked: g.jobs.off < 1 || (g.crew - g.jobs.off) >= cap.crew,
+        incLocked: !unlocked || g.jobs.off < 1 || (g.crew - g.jobs.off) >= cap.crew,
         decLocked: g.jobs[j.id] < 1,
         stepStyle: (locked) => ({ width: '26px', height: '26px', border: '1px solid ' + (locked ? '#1f1430' : '#3a2350'), borderRadius: '5px', background: locked ? '#120c1c' : '#170e22', color: locked ? '#4a3860' : '#e7d8f2', cursor: locked ? 'not-allowed' : 'pointer', fontSize: '14px', lineHeight: 1 })
       };
@@ -3291,9 +3384,11 @@ class Game {
           <div style="font-size:12px;font-weight:700;color:#e7d8f2">${j.name}</div>
           <div style="font-size:10px;color:#6f5885">${j.desc}</div>
         </div>
-        <button data-h="${this.bind(j.dec)}" ${j.decLocked ? 'disabled' : ''} title="${j.decLocked ? 'No crew assigned here' : `Remove crew from ${j.rawName}`}" style="${css(j.stepStyle(j.decLocked))}">−</button>
+        ${j.locked
+          ? `<span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#6f5885;font-weight:600;text-align:right">requires ${j.unlockName}</span>`
+          : `<button data-h="${this.bind(j.dec)}" ${j.decLocked ? 'disabled' : ''} title="${j.decLocked ? 'No crew assigned here' : `Remove crew from ${j.rawName}`}" style="${css(j.stepStyle(j.decLocked))}">−</button>
         <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#ffc94a;min-width:20px;text-align:center;font-weight:600">${j.n}</span>
-        <button data-h="${this.bind(j.inc)}" ${j.incLocked ? 'disabled' : ''} title="${j.incLocked ? 'No free crew available' : `Assign crew to ${j.rawName}`}" style="${css(j.stepStyle(j.incLocked))}">+</button>
+        <button data-h="${this.bind(j.inc)}" ${j.incLocked ? 'disabled' : ''} title="${j.incLocked ? 'No free crew available' : `Assign crew to ${j.rawName}`}" style="${css(j.stepStyle(j.incLocked))}">+</button>`}
       </div>`).join('');
 
     const assignments = v.crewOpen ? `
