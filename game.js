@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.6', build: 219, channel: 'alpha', date: '2026-08-15', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.7', build: 220, channel: 'alpha', date: '2026-08-15', codename: 'Neon Zero' };
   SAVE_VER = 9;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -158,6 +158,9 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.11.7', date: '2026-08-15', codename: 'Neon Zero', notes: [
+      'CHALLENGE RUNS: the Perks panel gains 4 opt-in replay challenges with permanent rewards (REPLAY_ROADMAP.md §6). Starting a challenge resets every club to a fresh run under a modifier — Tight Till ($0 till), Slim Margins (all income ×0.5), No Street Team (Flyer Crew locked), Lean Night (Back Bar locked) — and re-locks the annex. Completing one records it in challengesDone and permanently grants a derived bonus: +5% all cash (Tight Till, Lean Night), +1 Door Staff cap (Slim Margins), +5% crew output (No Street Team). Modifiers are action invariants: income cuts flow through totalCashMult (passive AND active clicks), locked buildings are rejected in buyBuilding, skipped by autoBuyManagers, and greyed in the card. Two-click armed start; an active challenge can be ended without reward. Rewards never grant Clout (Legacy-not-Clout rule). Additive g.challenge/g.challengesDone — no save-shape change (SAVE_VER stays 9). Challenges are opt-in, so the pacing bands are untouched.'
+    ] },
     { v: '0.11.6', date: '2026-08-15', codename: 'Neon Zero', notes: [
       'DEEP RESEARCH TREE: research expands from 4 flat one-time buys to a 12-node tree across 3 tiers with prerequisites. Tier 1 is cheap multipliers (the existing Reputation Loop / Late Kitchen / Promoter Network / Payroll Software plus Cover Charge); Tier 2 is mechanic unlocks + stacking multipliers (Floor Host — a new research-gated job that adds patron pull — plus Staff Scheduling, VIP Concierge, Franchise Playbook); Tier 3 is expensive account-wide bonuses (Brand Licensing +10% cash, Night School +15% crew output, National Network +25% Clout). Prerequisites are an action invariant: buyResearch rejects a node whose req is not owned, and the card shows "requires X" until it is.',
       'The job catalog is now the single source of truth for the shared roster: fresh(), sanitizeG(), save validation, moveJob(), and club-switch eviction all iterate JOBS instead of a hardcoded four-id list. A research-locked job (Floor Host) holds zero crew until its research is owned, is evicted to Off Shift if a load/reset drops the unlock, and cannot be assigned via moveJob while locked. No save-shape change (SAVE_VER stays 9).',
@@ -526,6 +529,21 @@ class Game {
     { id: 'school', name: 'Night School', tier: 3, cost: 100, req: 'scheduling', desc: 'Crew output +15%.' },
     { id: 'network', name: 'National Network', tier: 3, cost: 110, req: 'playbook', desc: 'Clout gain +25%.' }
   ];
+
+  // Challenge runs (REPLAY_ROADMAP.md §6) — opt-in replay modifiers with
+  // permanent rewards. `mod` = run constraints applied while active (startCash,
+  // incomeMult, locked buildings). `reward` = permanent account bonus DERIVED
+  // from g.challengesDone + this table (no separate reward field). `check` =
+  // completion predicate against the merged club view (like achievements).
+  // Rewards never grant Clout (Legacy-not-Clout rule — run variance must not
+  // feed the deterministic research currency). Challenges are opt-in; the
+  // pacing bot never starts one, so the existing bands are untouched.
+  CHALLENGES = [
+    { id: 'tight', name: 'Tight Till', desc: 'Start with an empty till — no starting cash.', mod: { startCash: 0 }, reward: { cashMult: 0.05 }, check: v => v.regulars >= 25 },
+    { id: 'slim', name: 'Slim Margins', desc: 'The house takes half — all income ×0.5.', mod: { incomeMult: 0.5 }, reward: { doorMax: 1 }, check: v => v.regulars >= 20 },
+    { id: 'dry', name: 'No Street Team', desc: 'Flyer Crew is locked — word of mouth only.', mod: { locked: ['flyers'] }, reward: { crewOut: 0.05 }, check: v => v.b.dj >= 2 },
+    { id: 'lean', name: 'Lean Night', desc: 'The Back Bar is locked — no bar revenue.', mod: { locked: ['bar'] }, reward: { cashMult: 0.05 }, check: v => v.b.vip >= 1 }
+  ];
   // Prestige perks (PRESTIGE.md). Legacy cost, max rank, effect applied in rates()/workCrowd()/catchUp()/fresh().
   // Optional `req: perkId` gates purchase on the prerequisite perk's rank >= 1 (perk tree, PLAN §4.3).
   // Note: unlike UPGRADES.req ({ buildingId: count }), a perk req is a bare perkId string (existence-based,
@@ -630,7 +648,7 @@ class Game {
 
   // Effective max Door Staff count (base 6 + doorPlus perk).
   doorMax(g) {
-    return (this.BUILDINGS.find(b => b.id === 'door').max || 6) + this.perk(g, 'doorPlus');
+    return (this.BUILDINGS.find(b => b.id === 'door').max || 6) + this.perk(g, 'doorPlus') + this.challengeBonus(g).doorMax;
   }
 
   // All job ids in catalog order (off last — the residual pool).
@@ -654,6 +672,65 @@ class Game {
     const jobs = {};
     for (const id of this.jobIds()) jobs[id] = 0;
     return jobs;
+  }
+
+  // Active challenge def (null when none). Challenges are opt-in replay runs
+  // (REPLAY_ROADMAP.md §6); the pacing bot never starts one, so these no-op
+  // for the deterministic bands.
+  activeChallenge(g) {
+    if (!g || !g.challenge) return null;
+    return this.CHALLENGES.find(c => c.id === g.challenge) || null;
+  }
+
+  // Modifier of the active challenge ({} when none).
+  challengeMod(g) {
+    const ch = this.activeChallenge(g);
+    return (ch && ch.mod) || {};
+  }
+
+  // Is a building locked by the active challenge's modifier? Enforced in
+  // buyBuilding AND autoBuyManagers AND greyed in the card (an owned manager
+  // must not auto-buy a locked structure mid-challenge).
+  buildingLocked(g, id) {
+    const mod = this.challengeMod(g);
+    return Array.isArray(mod.locked) && mod.locked.includes(id);
+  }
+
+  // Permanent challenge rewards, DERIVED from g.challengesDone + the table
+  // (no separate reward field). Aggregates the additive bonuses: cashMult
+  // (all cash +%), doorMax (Door Staff cap +N), crewOut (crew output +%).
+  challengeBonus(g) {
+    const done = new Set(Array.isArray(g.challengesDone) ? g.challengesDone : []);
+    const bonus = { cashMult: 0, doorMax: 0, crewOut: 0 };
+    for (const ch of this.CHALLENGES) {
+      if (!done.has(ch.id) || !ch.reward) continue;
+      bonus.cashMult += ch.reward.cashMult || 0;
+      bonus.doorMax += ch.reward.doorMax || 0;
+      bonus.crewOut += ch.reward.crewOut || 0;
+    }
+    return bonus;
+  }
+
+  // Human-readable modifier summary for the challenge card.
+  challengeModDesc(d) {
+    const mod = d.mod || {};
+    const parts = [];
+    if (typeof mod.startCash === 'number') parts.push('$' + mod.startCash + ' start');
+    if (typeof mod.incomeMult === 'number') parts.push('income ×' + mod.incomeMult);
+    if (Array.isArray(mod.locked) && mod.locked.length) {
+      parts.push('locked: ' + mod.locked.map(id => (this.BUILDINGS.find(b => b.id === id) || {}).name || id).join(', '));
+    }
+    return parts.length ? parts.join(' · ') : 'modified run';
+  }
+
+  // Human-readable reward summary for the challenge card.
+  challengeRewardDesc(d) {
+    const r = d.reward || {};
+    const parts = [];
+    if (r.cashMult) parts.push('+ ' + Math.round(r.cashMult * 100) + '% all cash');
+    if (r.doorMax) parts.push('+ ' + r.doorMax + ' Door Staff cap');
+    if (r.crewOut) parts.push('+ ' + Math.round(r.crewOut * 100) + '% crew output');
+    return parts.length ? parts.join(' · ') : 'permanent bonus';
   }
 
   // Legacy earned on prestige: floor(sqrt(regulars) + night / 7). Regulars and
@@ -687,7 +764,14 @@ class Game {
   // grant — passive rates(), active clicks, whale bonus, golden-ticket tip —
   // reads this, so a cash multiplier can't silently skip a source.
   totalCashMult(g) {
-    return this.cashIncomeMult(g) * this.achievementMult(g) * (g.r.brand ? 1.10 : 1);
+    // Single composition point for ALL cash income (passive + clicks + whale +
+    // golden). Challenge layer (REPLAY_ROADMAP.md §6): the active challenge's
+    // incomeMult modifier applies to EVERY source — routing it through rates()
+    // alone would leave active clicking a bypass — and permanent cashMult
+    // rewards derive from challengesDone.
+    const mod = this.challengeMod(g);
+    const incomeMod = typeof mod.incomeMult === 'number' ? mod.incomeMult : 1;
+    return this.cashIncomeMult(g) * this.achievementMult(g) * (g.r.brand ? 1.10 : 1) * (1 + this.challengeBonus(g).cashMult) * incomeMod;
   }
 
   // Featured regular name — derived from the active club's regulars count
@@ -842,7 +926,7 @@ class Game {
   ];
 
   state = {
-    tab: 'club', showChangelog: false, showSettings: false, showPrestige: false, showOpenRoom: false, showAchievements: false, tick: 0, saveState: 'idle', resetArmed: false,
+    tab: 'club', showChangelog: false, showSettings: false, showPrestige: false, showOpenRoom: false, showAchievements: false, tick: 0, saveState: 'idle', resetArmed: false, challengeArmed: null,
     // Golden-ticket expanded state: badge is small by default; player taps to expand.
     goldenOpen: false,
     // Ledger collapse on narrow screens: mobile players get the CASH row only and
@@ -973,6 +1057,8 @@ class Game {
       r, log: [], ts: Date.now(),
       // Owner's List (SAVE_VER 5) — not required by isValidSavePayload (v4 imports lack them).
       goals: [], clicks: 0, rounds: 0,
+      // Challenge runs (PR 4, additive) — active challenge id + completed ids.
+      challenge: null, challengesDone: [],
       // Burst-event counters (0.10.1, additive) — whalesCount/specialsCount drive
       // whale/special achievements. Not required by isValidSavePayload, so they
       // never force a SAVE_VER bump on their own.
@@ -1137,6 +1223,11 @@ class Game {
     // finite at. A malformed at would make the TTL expiry check NaN >= … → never
     // auto-expire; import/load normalizes instead of leaving a stuck offer.
     if (!g.golden || typeof g.golden !== 'object' || Array.isArray(g.golden) || !Number.isFinite(g.golden.at)) g.golden = null;
+    // Challenge state (PR 4, additive) — fail-closed on unknown ids (old saves
+    // or hand-edited payloads start with no active challenge).
+    g.challenge = (typeof g.challenge === 'string' && this.CHALLENGES.some(c => c.id === g.challenge)) ? g.challenge : null;
+    if (!Array.isArray(g.challengesDone)) g.challengesDone = [];
+    g.challengesDone = g.challengesDone.filter(id => typeof id === 'string' && this.CHALLENGES.some(c => c.id === id));
     return g;
   }
 
@@ -1345,6 +1436,11 @@ class Game {
       managerPausedNext[def.id] = g.managerPaused[def.id] === true;
     }
     g.managerPaused = managerPausedNext;
+
+    // Challenge state (PR 4, additive) — fail-closed on unknown ids.
+    g.challenge = (typeof g.challenge === 'string' && this.CHALLENGES.some(c => c.id === g.challenge)) ? g.challenge : null;
+    if (!Array.isArray(g.challengesDone)) g.challengesDone = [];
+    g.challengesDone = g.challengesDone.filter(id => typeof id === 'string' && this.CHALLENGES.some(c => c.id === id));
 
     if (!Array.isArray(g.log)) g.log = [];
     // Keep raw validated t/msg (length-capped) so export→import is idempotent.
@@ -1918,7 +2014,7 @@ class Game {
     // Research tree (REPLAY_ROADMAP.md §5): school boosts all crew output. Brand
     // is folded into totalCashMult — the single all-cash composition point — so
     // it covers passive income AND clicks/whale/golden (see totalCashMult()).
-    const crewMult = (c.u.residency ? 1.4 : 1) * (g.r.school ? 1.15 : 1);
+    const crewMult = (c.u.residency ? 1.4 : 1) * (g.r.school ? 1.15 : 1) * (1 + this.challengeBonus(g).crewOut);
     const cashMult = (c.u.twodrink ? 1.35 : 1) * hypeMult * sm;
     const bottle = c.u.bottle ? 2.2 : 1;
 
@@ -2204,6 +2300,23 @@ class Game {
         this.push(g, 'Achievement: ' + ach.name + ' — ' + ach.desc, '#ffd700');
       }
     }
+    // Challenge completion runs on the same progress beats (live step, actions,
+    // offline catch-up) — folding it in keeps one call site per beat.
+    this.checkChallenge(g);
+  }
+
+  // Challenge completion (REPLAY_ROADMAP.md §6): when the active challenge's
+  // check passes, record it in challengesDone (the permanent reward is DERIVED
+  // from the table — no separate grant step) and clear the active challenge.
+  checkChallenge(g) {
+    const ch = this.activeChallenge(g);
+    if (!ch || !ch.check) return;
+    if ((g.challengesDone || []).includes(ch.id)) return;
+    if (!ch.check(this.clubView(g))) return;
+    if (!Array.isArray(g.challengesDone)) g.challengesDone = [];
+    g.challengesDone.push(ch.id);
+    g.challenge = null;
+    this.push(g, 'Challenge complete: ' + ch.name + ' — permanent bonus granted!', '#ffd700');
   }
 
   save(kind) {
@@ -2235,6 +2348,9 @@ class Game {
     if (this.state.tabStale) return;
     const g = this.state.g;
     const c = this.club(g);
+    // Challenge lock (REPLAY_ROADMAP.md §6): a locked building can't be bought —
+    // action invariant, not just a greyed card.
+    if (this.buildingLocked(g, def.id)) return;
     if (!count || count < 1) count = 1;
     let bought = 0;
     let lastPrice = 0;
@@ -2261,6 +2377,7 @@ class Game {
   buildingMaxAffordable(def, cash = this.club(this.state.g).cash) {
     const g = this.state.g;
     const c = this.club(g);
+    if (this.buildingLocked(g, def.id)) return 0;
     let n = c.b[def.id];
     const cap = def.id === 'door' ? this.doorMax(g) : def.max;
     let count = 0;
@@ -2365,6 +2482,9 @@ class Game {
       if (g.managerPaused && g.managerPaused[def.id]) continue;
       const bdef = this.BUILDINGS.find(b => b.id === def.id);
       if (!bdef) continue;
+      // Challenge lock (REPLAY_ROADMAP.md §6): an owned manager must not
+      // auto-buy a structure the active challenge locks.
+      if (this.buildingLocked(g, bdef.id)) continue;
       const n = c.b[def.id];
       const max = def.id === 'door' ? this.doorMax(g) : bdef.max;
       if (max != null && n >= max) continue;
@@ -2491,6 +2611,9 @@ class Game {
     next.perks = snapshot.perks;
     next.prestiges = snapshot.prestiges + 1;
     next.achievements = Array.isArray(g.achievements) ? g.achievements.slice() : [];
+    // Completed challenges persist (permanent rewards derive from them); the
+    // ACTIVE challenge ends on prestige — fresh() clears g.challenge.
+    next.challengesDone = Array.isArray(g.challengesDone) ? g.challengesDone.slice() : [];
     next.managers = snapshot.managers;
     next.managerPaused = snapshot.managerPaused;
     this.applyStartPerks(next);
@@ -2531,6 +2654,81 @@ class Game {
     this.push(g, 'Hired crew member #' + g.crew + ' for $' + this.fmt(price) + ' — on Main Stage.', '#ff2d78');
     this.noteGoals(g);
     this.checkAchievements(g);
+    this.forceUpdate();
+  }
+  // Start a challenge (REPLAY_ROADMAP.md §6): a fresh run under the challenge's
+  // modifier. Resets EVERY club to freshClubState() — a developed annex must not
+  // satisfy the completion condition instantly — and re-locks the annex (fresh()
+  // builds main only). Account meta (legacy/perks/achievements/managers/
+  // challengesDone) persists; run state (research/clout/crew/jobs) resets like
+  // prestige. Persist-before-replace, matching confirmPrestige.
+  startChallenge(def) {
+    if (this.state.tabStale) return;
+    const g = this.state.g;
+    if (g.challenge || (g.challengesDone || []).includes(def.id)) return;
+    // Two-click arm: starting a challenge resets the run — first click arms.
+    if (this.state.challengeArmed !== def.id) {
+      this.setState({ challengeArmed: def.id });
+      return;
+    }
+    const snapshot = {
+      legacy: (g.legacy || 0), legacyTotal: (g.legacyTotal || 0),
+      perks: {}, prestiges: (g.prestiges || 0), managers: {}, managerPaused: {}
+    };
+    for (const p of this.PRESTIGE_PERKS) snapshot.perks[p.id] = this.perk(g, p.id);
+    for (const m of this.MANAGERS) {
+      snapshot.managers[m.id] = !!(g.managers && g.managers[m.id]);
+      snapshot.managerPaused[m.id] = !!(g.managerPaused && g.managerPaused[m.id]);
+    }
+    const next = this.fresh(); // fresh() builds main only — the annex is re-locked
+    next.challenge = def.id;
+    next.challengesDone = Array.isArray(g.challengesDone) ? g.challengesDone.slice() : [];
+    next.legacy = snapshot.legacy;
+    next.legacyTotal = snapshot.legacyTotal;
+    next.perks = snapshot.perks;
+    next.prestiges = snapshot.prestiges;
+    next.achievements = Array.isArray(g.achievements) ? g.achievements.slice() : [];
+    next.managers = snapshot.managers;
+    next.managerPaused = snapshot.managerPaused;
+    // Modifier startCash overrides the default starting till.
+    const mod = def.mod || {};
+    if (typeof mod.startCash === 'number') next.clubs.main.cash = mod.startCash;
+    this.applyStartPerks(next);
+    // Challenge locks override start perks: a seeded structure (e.g. the
+    // startFlyers perk's free Flyer Crew) must not bypass a challenge's
+    // building lock — the lock is a modifier, not just purchase prevention
+    // (REPLAY_ROADMAP.md §6).
+    for (const lid of (Array.isArray(mod.locked) ? mod.locked : [])) {
+      if (next.clubs.main.b[lid]) next.clubs.main.b[lid] = 0;
+    }
+    this.checkAchievements(next);
+    this.push(next, 'Challenge started: ' + def.name + ' — ' + def.desc, '#e879f9');
+    try {
+      localStorage.setItem(this.KEY, JSON.stringify({
+        saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g: next
+      }));
+    } catch (e) {
+      this.setState({ saveState: 'challenge failed' });
+      return;
+    }
+    this._onStrike = false;
+    this.state.g = this.wrapState(next);
+    this.markTabOwner();
+    this.startAutosave();
+    this.setState({ tab: 'club', challengeArmed: null });
+    this.forceUpdate();
+  }
+
+  // End the active challenge without reward: the run continues as-is, the
+  // modifier lifts. Mercy rule — a challenge the player can't complete must
+  // not lock its modifier on forever.
+  endChallenge() {
+    if (this.state.tabStale) return;
+    const g = this.state.g;
+    if (!g.challenge) return;
+    g.challenge = null;
+    this.push(g, 'Challenge ended — no reward.', '#ff2d78');
+    this.setState({ challengeArmed: null });
     this.forceUpdate();
   }
   moveJob(id, d) {
@@ -2753,9 +2951,10 @@ class Game {
       tabHint = 'Structures are permanent and scale in price. Everything on this tab is bought with cash. A few regulars wander in on their own; Buzz fills the floor faster. Use the ×1 / ×5 / ×10 / ×Max buttons (or Shift-click a Build button on desktop) to buy multiple at once.';
       cards = this.BUILDINGS.map(d => {
         const n = c.b[d.id], price = Math.floor(d.cost * Math.pow(d.growth, n));
+        const chLocked = this.buildingLocked(g, d.id);
         const max = d.id === 'door' ? this.doorMax(g) : d.max;
         const maxed = max != null && n >= max;
-        const ok = !maxed && c.cash >= price;
+        const ok = !maxed && !chLocked && c.cash >= price;
         const affordable = maxed ? 0 : this.buildingMaxAffordable(d);
         const can5 = !maxed && affordable >= 5;
         const can10 = !maxed && affordable >= 10;
@@ -2763,10 +2962,10 @@ class Game {
         let desc = d.desc;
         if (d.id === 'door') desc = desc.replace('(max 6)', '(max ' + max + ')');
         return {
-          name: d.name, desc: desc, owned: n > 0 ? '×' + n : '—',
-          btn: maxed ? 'Maxed' : 'Build $' + this.fmt(price),
-          meta: maxed ? 'maxed' : (ok ? 'affordable' : 'need $' + this.fmt(price - c.cash)),
-          locked: !ok, wrapStyle: cardWrap(!maxed), btnStyle: btn(ok),
+          name: d.name, desc: desc, owned: chLocked ? 'LOCKED' : (n > 0 ? '×' + n : '—'),
+          btn: chLocked ? 'Locked' : (maxed ? 'Maxed' : 'Build $' + this.fmt(price)),
+          meta: chLocked ? 'locked by the active challenge' : (maxed ? 'maxed' : (ok ? 'affordable' : 'need $' + this.fmt(price - c.cash))),
+          locked: !ok, wrapStyle: cardWrap(!maxed && !chLocked), btnStyle: btn(ok),
           act: () => this.buyBuilding(d, 1),
           buildingId: d.id,
           multi: {
@@ -2833,7 +3032,31 @@ class Game {
           locked: !hired && !ok, wrapStyle: cardWrap(true), btnStyle: btn(hired || ok, '#a855f7'),
           act: () => hired ? this.toggleManager(d) : this.buyManager(d) };
       });
-      cards = perkCards.concat(managerCards);
+      // Challenge runs (REPLAY_ROADMAP.md §6): opt-in replay modifiers with
+      // permanent, derived rewards. Start is two-click armed (it resets the run).
+      const challengeCards = this.CHALLENGES.map(d => {
+        const done = (g.challengesDone || []).includes(d.id);
+        const active = g.challenge === d.id;
+        const armed = this.state.challengeArmed === d.id;
+        return {
+          name: d.name, desc: d.desc, owned: done ? 'done' : (active ? 'ACTIVE' : '—'),
+          btn: done ? 'Completed' : (active ? 'Active' : (armed ? 'Confirm start?' : 'Start')),
+          meta: done ? 'reward: ' + this.challengeRewardDesc(d)
+            : (active ? this.challengeModDesc(d) + ' · ' + this.challengeRewardDesc(d)
+              : this.challengeModDesc(d) + ' → ' + this.challengeRewardDesc(d)),
+          locked: done || active, wrapStyle: cardWrap(!done && !active), btnStyle: btn(!done && !active, '#e879f9'),
+          act: () => this.startChallenge(d)
+        };
+      });
+      // Mercy rule: an active challenge can be ended without reward.
+      if (g.challenge) {
+        challengeCards.push({
+          name: 'End challenge', desc: 'Stop the active challenge without reward. The run continues; the modifier lifts.', owned: '',
+          btn: 'End challenge', meta: 'no reward', locked: false, wrapStyle: cardWrap(true), btnStyle: btn(true, '#ff2d78'),
+          act: () => this.endChallenge()
+        });
+      }
+      cards = perkCards.concat(managerCards, challengeCards);
     } else {
       tabHint = 'Research is paid in Clout, which accrues slowly from Regulars. Permanent, global effects.';
       cards = this.RESEARCH.map(d => {

@@ -4626,6 +4626,7 @@ const ACCOUNT_FIELDS = [
   'r', 'managers', 'managerPaused', 'achievements',
   'goals', 'clicks', 'rounds',
   'whalesCount', 'specialsCount', 'golden',
+  'challenge', 'challengesDone',
   'ts', 'log',
   'crew', 'jobs',
   'clubs', 'activeClub',
@@ -4829,6 +4830,158 @@ test('brand research folds into totalCashMult (all cash, not passive-only, no do
   const before = c.cash;
   game.renderVals().workCrowd();
   ok(Math.abs((c.cash - before) - clickVal * game.totalCashMult(g)) < 1e-9, 'click pays the brand-inclusive grant');
+});
+
+// ── PR 4 — Challenge runs (REPLAY_ROADMAP.md §6) ─────────────────────────────
+
+test('CHALLENGES table is well-formed; rewards never grant Clout', () => {
+  const game = newGame();
+  ok(game.CHALLENGES.length >= 3, 'at least 3 challenges');
+  const ids = new Set(game.CHALLENGES.map(c => c.id));
+  strictEqual(ids.size, game.CHALLENGES.length, 'unique challenge ids');
+  for (const c of game.CHALLENGES) {
+    ok(typeof c.name === 'string' && c.name.length > 0, `${c.id} has a name`);
+    ok(typeof c.desc === 'string' && c.desc.length > 0, `${c.id} has a desc`);
+    ok(typeof c.check === 'function', `${c.id} has a completion predicate`);
+    ok(c.mod && typeof c.mod === 'object', `${c.id} has a modifier`);
+    ok(c.reward && typeof c.reward === 'object', `${c.id} has a reward`);
+    ok(!('clout' in c.reward), `${c.id} grants no Clout (Legacy-not-Clout rule)`);
+    ok(!('legacy' in c.reward), `${c.id} grants no Legacy — derived bonuses only`);
+  }
+});
+
+test('startChallenge resets every club, re-locks the annex, preserves account meta', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.regulars = 30; g.night = 10;
+  g.legacy = 8; g.legacyTotal = 20; g.prestiges = 2;
+  g.perks.cash10 = 1;
+  g.managers.rail = true;
+  // Pre-record the achievements this setup satisfies (prestige_1 fires at
+  // prestiges >= 1) so the post-start catch-up credits nothing new.
+  g.achievements = ['first_rail', 'prestige_1'];
+  g.clubs.annex = game.freshClubState();
+  g.activeClub = 'annex';
+  const tight = game.CHALLENGES.find(c => c.id === 'tight');
+  game.startChallenge(tight); // first click arms only
+  strictEqual(game.state.g.challenge, null, 'first click only arms');
+  game.startChallenge(tight); // confirm
+  const next = game.state.g;
+  strictEqual(next.challenge, 'tight', 'challenge active');
+  strictEqual(next.clubs.main.cash, 0, 'startCash modifier applied (tight = $0 till)');
+  ok(!next.clubs.annex, 'annex re-locked (removed)');
+  strictEqual(next.activeClub, 'main', 'returns to main');
+  strictEqual(next.regulars, 0, 'club run state reset');
+  strictEqual(next.legacy, 8, 'legacy preserved');
+  strictEqual(next.perks.cash10, 1, 'perk preserved');
+  strictEqual(next.managers.rail, true, 'manager preserved');
+  ok(next.achievements.includes('first_rail'), 'achievements preserved');
+});
+
+test('challenge incomeMult modifier hits passive AND active clicks', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.regulars = 30; g.night = 10; g.legacy = 8; g.prestiges = 2;
+  const slim = game.CHALLENGES.find(c => c.id === 'slim');
+  game.startChallenge(slim); game.startChallenge(slim);
+  const g2 = game.state.g;
+  const c = game.club(g2);
+  c.patrons = 10;
+  const base = game.cashIncomeMult(g2) * game.achievementMult(g2);
+  ok(Math.abs(game.totalCashMult(g2) - base * 0.5) < 1e-9, 'incomeMult halves totalCashMult');
+  const clickVal = 1.15 + c.b.rail * 0.65 + c.hype * 0.07;
+  const before = c.cash;
+  game.renderVals().workCrowd();
+  ok(Math.abs((c.cash - before) - clickVal * game.totalCashMult(g2)) < 1e-9, 'click pays the halved grant');
+});
+
+test('challenge locked building is enforced in buyBuilding, managers, and cards', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.regulars = 30; g.night = 10; g.legacy = 8; g.prestiges = 2;
+  g.managers.flyers = true;
+  const dry = game.CHALLENGES.find(c => c.id === 'dry');
+  game.startChallenge(dry); game.startChallenge(dry);
+  const g2 = game.state.g;
+  const c = game.club(g2);
+  c.cash = 10000;
+  const flyers = game.BUILDINGS.find(b => b.id === 'flyers');
+  game.buyBuilding(flyers);
+  strictEqual(c.b.flyers, 0, 'buyBuilding rejects locked flyers');
+  strictEqual(game.buildingMaxAffordable(flyers), 0, 'buildingMaxAffordable returns 0 when locked');
+  strictEqual(game.autoBuyManagers(g2), 0, 'autoBuyManagers skips locked flyers');
+  game.state.tab = 'club';
+  const card = game.renderVals().cards.find(cd => cd.buildingId === 'flyers');
+  ok(card, 'flyers card present');
+  strictEqual(card.owned, 'LOCKED', 'card shows LOCKED');
+  strictEqual(card.btn, 'Locked', 'card button reads Locked');
+});
+
+test('challenge completes via checkAchievements and grants the derived reward', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.regulars = 30; g.night = 10; g.legacy = 8; g.prestiges = 2;
+  const tight = game.CHALLENGES.find(c => c.id === 'tight');
+  game.startChallenge(tight); game.startChallenge(tight);
+  const g2 = game.state.g;
+  strictEqual(g2.challenge, 'tight', 'challenge active');
+  game.checkAchievements(g2);
+  strictEqual(g2.challenge, 'tight', 'still active below the threshold');
+  game.club(g2).regulars = 25;
+  game.checkAchievements(g2);
+  strictEqual(g2.challenge, null, 'challenge cleared on completion');
+  ok(g2.challengesDone.includes('tight'), 'challenge recorded as done');
+  const bonus = game.challengeBonus(g2);
+  strictEqual(bonus.cashMult, 0.05, 'cashMult reward derived from the table');
+  const multBase = game.cashIncomeMult(g2) * game.achievementMult(g2);
+  ok(Math.abs(game.totalCashMult(g2) - multBase * 1.05) < 1e-9, 'completed reward scales totalCashMult');
+});
+
+test('challenge doorMax and crewOut rewards are wired', () => {
+  const game = newGame();
+  const g = game.state.g;
+  const baseDoor = game.doorMax(g);
+  g.challengesDone = ['slim'];
+  strictEqual(game.doorMax(g), baseDoor + 1, 'doorMax +1 from Slim Margins');
+  g.challengesDone = ['slim', 'dry'];
+  strictEqual(game.doorMax(g), baseDoor + 1, 'dry adds no doorMax');
+  // crewOut: stage crew output scales exactly ×1.05 with No Street Team done.
+  const c = game.club(g);
+  g.crew = 1; g.jobs.stage = 1; g.jobs.off = 0;
+  const rBase = game.rates(g);
+  g.challengesDone = ['slim', 'dry'];
+  const rDry = game.rates(g);
+  ok(Math.abs(rDry.hype - rBase.hype * 1.05) < 1e-9, 'crewOut scales stage hype ×1.05');
+});
+
+test('endChallenge lifts the active modifier without reward', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.regulars = 30; g.night = 10; g.legacy = 8; g.prestiges = 2;
+  const dry = game.CHALLENGES.find(c => c.id === 'dry');
+  game.startChallenge(dry); game.startChallenge(dry);
+  const g2 = game.state.g;
+  strictEqual(g2.challenge, 'dry', 'challenge active');
+  game.endChallenge();
+  strictEqual(g2.challenge, null, 'challenge cleared');
+  ok(!g2.challengesDone.includes('dry'), 'not recorded as done');
+});
+
+test('startChallenge lock overrides start perks (flyers seed dropped in dry)', () => {
+  // Dry (flyers locked): the startFlyers seed must NOT bypass the lock.
+  const game = newGame(5000);
+  game.state.g.perks.startFlyers = 1;
+  const dry = game.CHALLENGES.find(c => c.id === 'dry');
+  game.startChallenge(dry);
+  game.startChallenge(dry);
+  strictEqual(game.state.g.clubs.main.b.flyers, 0, 'flyers seed dropped under the flyers lock');
+  // Tight (no building lock): the seed is kept.
+  const game2 = newGame(5000);
+  game2.state.g.perks.startFlyers = 1;
+  const tight = game2.CHALLENGES.find(c => c.id === 'tight');
+  game2.startChallenge(tight);
+  game2.startChallenge(tight);
+  strictEqual(game2.state.g.clubs.main.b.flyers, 1, 'flyers seed kept when not locked');
 });
 
 console.log(`Results: ${passed} passed, ${skipped} skipped, ${failed} failed`);
