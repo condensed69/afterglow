@@ -58,6 +58,7 @@ their bands.
 | `economy.test.mjs` | 3 tests: `achievementMult` unique-non-burst (1.00 @ 0 / 1.34 @ all / dedupe / burst-excluded), `rates().cash` scaling, and whale/golden event-cash scaling. |
 | `pacing.mjs` | "All upgrades owned" band re-centered ~45m → ~32m. |
 | `DESIGN.md` | §4.2 (shared multipliers + `totalCashMult`), §8.1 (Work the room click), §11.2/§11.4 (whale/golden formulas), §12 (milk multiplier note). |
+| `PRESTIGE.md` | §5 apply rules: `houseCut = totalCashMult(g)` (House cut × achievement) and `clickGrant` for the click grant. |
 
 ### Verification gates
 
