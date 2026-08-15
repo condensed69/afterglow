@@ -113,6 +113,8 @@ Applied to **all** cash income — passive (`rates()`), active clicks (`workCrow
 - `req` is existence-based (`g.r[reqId]` truthy), not rank-based — research has no ranks.
 - The cheapest research still anchors the "first research" pacing milestone; keep the cheapest Tier-1 cost at its current anchor value (12 Clout) or re-baseline `pacing.mjs` if it moves. **Do not move the anchor without a pacing re-run.**
 - Mechanic-unlock nodes must be gated so the pacing bot (which buys cheapest-first) doesn't unlock a mechanic that changes its path mid-run — or, if it does, the bot's path is deterministic and the bands are re-measured.
+- Prerequisites are an action invariant, not just presentation metadata. `buyResearch()` must reject a node whose `req` is not owned; the research card must expose the same unavailable state; and `pacing.mjs`'s `tryBuyCheapestResearch()` must filter out unmet prerequisites before choosing the cheapest candidate. This prevents direct calls from bypassing the tree and prevents the bot from repeatedly selecting an affordable locked node instead of advancing toward `allResearch`. Add `economy.test.mjs` regressions proving a locked node cannot be bought directly, becomes available after its prerequisite, and is reported unavailable by the card/view model.
+- Research-unlocked jobs must use the job catalog as the source of truth throughout the state lifecycle. PR 3 must replace the four-id assumptions in `fresh()`, `sanitizeG()`, crew-sum correction, `moveJob()`, and club-switch eviction/rebalance with catalog-driven initialization and iteration. A locked job has a numeric zero assignment, cannot receive crew before its research is owned, remains included in crew-total correction, and is deterministically evicted/rebalanced if a load or reset makes its unlock unavailable. Add save/import and ordinary-prestige reset regressions covering the new job, including malformed/missing assignments and no crew loss or duplication.
 
 **Pacing impact:** `pacing.mjs` currently has **no "all research" milestone** — the reference bot stops at 3/4 research (only "first research" and "all upgrades owned" are tracked). PR 3 must therefore **add an `allResearch` milestone** (every `RESEARCH` entry owned) with a target band, alongside re-measuring "first research" (which shifts if a cheaper item is added). Re-baseline `pacing.mjs`; pin the cheapest-research anchor in a test (the `min(researchCosts) === loop.cost` pattern from the balance-pass skill reference).
 
@@ -155,6 +157,7 @@ Applied to **all** cash income — passive (`rates()`), active clicks (`workCrow
 - Keep the existing `g.managers` boolean map as "hired" (don't migrate it); `g.managerLevels` is additive on top.
 - Leveling a manager is a Legacy purchase from the Perks panel; `managerPaused` still applies at every level.
 - The second-prestige reset (PR 6) wipes `g.managers` + `g.managerLevels` (managers are account-level but reset with the deeper layer).
+- Ordinary prestige does **not** wipe manager levels. Because `confirmPrestige()` builds `next` from `fresh()`, it must snapshot and restore the sanitized `g.managerLevels` map alongside the existing manager and pause-state whitelist; reserving the wipe for `confirmFranchiseSale()` is intentional. Add an `economy.test.mjs` reset regression that levels a manager, performs ordinary prestige, and proves the hired state, pause state, and level all survive.
 
 **Pacing impact:** the pacing bot hires a rail manager in the second-room scenario; if manager levels change auto-buy behavior, re-check `secondRoomRun()` (the manager is paused for that measurement anyway, so impact is minimal — but verify).
 
@@ -255,11 +258,22 @@ Transparent, mirrors `legacyGain`'s shape (`sqrt` of lifetime + linear term). Wi
 - **Perks/Prestige panel** gains a "Sell the franchise" block (gate-aware) and, after first sale, a **Renown readout** (`g.renown` / `g.renownTotal`).
 - The **Brand panel** (PR 7) is gated on `g.renownTotal > 0` (lifetime Renown — permanent once unlocked, so the panel stays visible after Renown is spent), same pattern as the Perks tab gating on `prestiges > 0`.
 
-### 8.7 Pacing guard
+### 8.7 Shipping regression guards
+
+PR 6 changes the save version and a destructive reset path, so its regression coverage ships **in PR 6**, not in the later pacing PR. `economy.test.mjs` must cover:
+
+- v9 → v10 migration defaults plus sanitization of malformed `renown`, `renownTotal`, and `brand` values;
+- the complete §8.4 wipe/persistence matrix, including achievements and Brand ranks persisting while both clubs, first-layer currencies/progression, managers/levels, research, crew/jobs, challenges, and run counters reset;
+- exact Renown gain and lifetime/spendable accrual across a successful sale; and
+- persist-before-replace atomicity: when `localStorage.setItem` throws, the live state remains entirely unchanged and no success-side effects run.
+
+Use explicit before/after fixtures so a newly added account field cannot silently escape the matrix. These tests are required for the shipping PR under the repository's economy/save/prestige gate; the pacing scenario below is additional coverage, not a substitute.
+
+### 8.8 Pacing guard
 
 Add a `renownRun()` scenario to `pacing.mjs` (in PR 8, or a minimal version here): bot plays to the gate (max perks + all managers + both clubs) → sells → asserts `renownTotal > 0` and that the reset produced a fresh `main` with `renown`/`achievements` intact. Named failures on gate miss or reset-shape violation.
 
-### 8.8 Non-goals (second prestige v1)
+### 8.9 Non-goals (second prestige v1)
 
 - No third prestige layer (that's a future "Renown → Transcendence" if ever).
 - No Renown → cash/Clout/Legacy conversion.
