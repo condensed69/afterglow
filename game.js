@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.3', build: 216, channel: 'alpha', date: '2026-08-14', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.4', build: 217, channel: 'alpha', date: '2026-08-15', codename: 'Neon Zero' };
   SAVE_VER = 9;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -158,6 +158,9 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.11.4', date: '2026-08-15', codename: 'Neon Zero', notes: [
+      'Achievements now pay out a milk multiplier: every achievement adds +1% to all cash income (passive + active clicks) via achievementMult(g), folded into the House cut multiplier. At the full 38 that is +38% — the collection is a real progression path, not a checklist. Derived from g.achievements.length, so no save-shape change. The pacing bot earns achievements deterministically, so the "all upgrades owned" milestone re-centers from ~45m to ~32m (pacing.mjs band updated).'
+    ] },
     { v: '0.11.3', date: '2026-08-14', codename: 'Neon Zero', notes: [
       'Fix: the Hire Crew card and Ledger Crew stat reported the TOTAL shared crew against the active room\'s Dressing Room cap, so switching to the annex showed the first club\'s dancer count carried over (e.g. "Hire Crew 43 / 18") instead of the crew actually working there. They now report WORKING crew (crew − Off Shift), and hireCrew caps working crew rather than the shared total, so dancers parked Off Shift no longer block a hire.'
     ] },
@@ -592,6 +595,15 @@ class Game {
   // Multiplier applied to all cash income (passive + active clicks) from House cut perk.
   cashIncomeMult(g) {
     return 1 + 0.15 * this.perk(g, 'cash10');
+  }
+
+  // Milk-style multiplier derived from achievement count (REPLAY_ROADMAP.md §3):
+  // each achievement adds +1% to all cash income (passive + active clicks), so the
+  // 38-achievement collection is a real progression path, not a checklist. Derived
+  // from g.achievements.length — no save-shape change. Applied alongside
+  // cashIncomeMult in rates()/workCrowd().
+  achievementMult(g) {
+    return 1 + 0.01 * (g.achievements ? g.achievements.length : 0);
   }
 
   JOBS = [
@@ -1791,7 +1803,7 @@ class Game {
     // here the cover REPLACES the door trickle, so an empty room earns less, not
     // more, and the patron cap bounds the early game). Patron tips still only via
     // rail (PLAN §1.6). House cut prestige perk multiplies all cash income.
-    const houseCut = this.cashIncomeMult(g);
+    const houseCut = this.cashIncomeMult(g) * this.achievementMult(g);
     let nonCrewCash = (c.patrons * 0.02 + Math.min(c.patrons, railCap) * 0.06 + c.b.bar * 0.45) * cashMult * houseCut;
     nonCrewCash += c.b.vip * 1.25 * bottle * cashMult * houseCut;
     if (g.r.loop) nonCrewCash += c.regulars * 0.04 * cashMult * houseCut;
@@ -2760,7 +2772,7 @@ class Game {
       clickValue: '$' + this.fmt(clickVal),
       workCrowd: (e) => {
         if (this.state.tabStale) return;
-        const val = clickVal * this.cashIncomeMult(g);
+        const val = clickVal * this.cashIncomeMult(g) * this.achievementMult(g);
         c.cash += val;
         c.buzz = Math.min(cap.buzz, c.buzz + 0.12);
         g.clicks = (g.clicks || 0) + 1;

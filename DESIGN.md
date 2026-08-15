@@ -94,7 +94,9 @@ hypeMult  = 1 + hype / 140
 crewMult  = residency ? 1.4 : 1
 cashMult  = (twodrink ? 1.35 : 1) * hypeMult * sm
 bottle    = bottle service ? 2.2 : 1
-houseCut  = cashIncomeMult(g) = 1 + 0.15 × cash10 perk rank   // multiplies ALL cash income
+houseCut  = cashIncomeMult(g) × achievementMult(g)          // multiplies ALL cash income
+cashIncomeMult(g) = 1 + 0.15 × cash10 perk rank
+achievementMult = 1 + 0.01 × achievements.length            // milk multiplier (REPLAY_ROADMAP §3)
 cloutMult = 1 + 0.25 × clout25 perk rank                      // multiplies Clout gain
 ```
 
@@ -323,7 +325,7 @@ Goal 14 is also the prestige gate (see §9).
 
 ```
 clickVal = 1.15 + rail × 0.65 + hype × 0.07
-cash    += clickVal
+cash    += clickVal × cashIncomeMult(g) × achievementMult(g)
 buzz     = min(cap.buzz, buzz + 0.12)
 clicks  += 1
 ```
@@ -457,6 +459,8 @@ Permanent unlocks with small Clout/Legacy rewards. `checkAchievements(g)` iterat
 **Reward accounting rule (0.9.5, regression-tested):** achievement **Legacy rewards credit BOTH `g.legacy` (spendable) and `g.legacyTotal` (lifetime)** — matching how prestige gains are tracked — so `legacy_50` (Legacy Builder) and the Perks tab “Total Legacy earned” reflect achievement income. This matters in a single pass: `prestige_1` (+1) can push `legacyTotal` across 50 and unlock `legacy_50` (+2) in the same `checkAchievements` call.
 
 **0.10.1 density pass:** catalog grew 23 → 38 — new building tiers (10 bars, 5 DJs, 3 marquees, 5 flyer crews, max door, 3 dressing rooms), stat tiers (200 hype, 100 patrons, 50 regulars, 25 nights), 10 rounds, and burst-event achievements driven by two additive counters: `g.whalesCount` (incremented in `spawnWhale`) and `g.specialsCount` (incremented in `advanceShift` when a special actually triggers). The four burst-event achievements reward **Legacy, not Clout**: they fire early and randomly, and Clout rewards would inject variance into research pacing (Clout is the research currency; see §11 and `pacing.mjs`).
+
+**Milk multiplier (REPLAY_ROADMAP §3):** every achievement adds +1% to all cash income (passive + active clicks) via `achievementMult(g) = 1 + 0.01 × achievements.length`, folded into the `houseCut` multiplier alongside the House cut perk (§4.2). At the full 38 that is +38% — the collection is a real progression path, not a checklist. Derived from `g.achievements.length`, so no save-shape change. The pacing bot earns achievements deterministically, so this re-centers the "all upgrades owned" milestone (~45m → ~32m) — see `pacing.mjs`.
 
 | id | Name | Check | Reward |
 |----|------|-------|--------|

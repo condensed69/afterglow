@@ -330,6 +330,26 @@ test('cash10 multiplier scales rates().cash and cashIncomeMult()', () => {
   ok(Math.abs(boosted - base * 1.75) < 0.0001, 'rates().cash scales by 1.75x at cash10 rank 5 (15%/rank)');
 });
 
+test('achievementMult derives a milk multiplier from achievement count', () => {
+  const game = newGame();
+  const g = game.state.g;
+  strictEqual(game.achievementMult(g), 1, '1.00x at 0 achievements');
+  g.achievements = new Array(38).fill('dummy');
+  ok(Math.abs(game.achievementMult(g) - 1.38) < 1e-9, '1.38x at 38 achievements');
+});
+
+test('achievement multiplier scales rates().cash alongside cashIncomeMult', () => {
+  const game = newGame(1000);
+  const g = game.state.g;
+  g.b.rail = 2;
+  g.b.bar = 1;
+  g.patrons = 10;
+  const base = game.rates(g).cash;
+  g.achievements = new Array(10).fill('dummy');
+  const boosted = game.rates(g).cash;
+  ok(Math.abs(boosted - base * 1.10) < 0.0001, 'rates().cash scales by 1.10x at 10 achievements');
+});
+
 test('clout25 multiplier scales rates().clout', () => {
   const game = newGame();
   const g = game.state.g;
