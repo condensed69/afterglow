@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.7', build: 220, channel: 'alpha', date: '2026-08-15', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.8', build: 221, channel: 'alpha', date: '2026-08-15', codename: 'Neon Zero' };
   SAVE_VER = 9;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -158,6 +158,9 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.11.8', date: '2026-08-15', codename: 'Neon Zero', notes: [
+      'UPGRADEABLE MANAGERS: automation is now a progression, not a binary hire (REPLAY_ROADMAP.md §7). Each hired manager can be leveled up with Legacy from the Perks panel (10 / 20 / 30 Legacy for levels 1→2→3) — the level scales how many buildings the manager buys per tick: level 1 buys 1, level 2 buys 5, level 3 buys max affordable. Leveling requires the manager to be hired; managerPaused still applies at every level, and challenge-locked buildings stay skipped at any level. Manager levels survive ordinary prestige (only the future franchise sale wipes them). Additive g.managerLevels map — no save-shape change (SAVE_VER stays 9); the pacing bot hires a level-0 manager, so all bands are bit-identical.'
+    ] },
     { v: '0.11.7', date: '2026-08-15', codename: 'Neon Zero', notes: [
       'CHALLENGE RUNS: the Perks panel gains 4 opt-in replay challenges with permanent rewards (REPLAY_ROADMAP.md §6). Starting a challenge resets every club to a fresh run under a modifier — Tight Till ($0 till), Slim Margins (all income ×0.5), No Street Team (Flyer Crew locked), Lean Night (Back Bar locked) — and re-locks the annex. Completing one records it in challengesDone and permanently grants a derived bonus: +5% all cash (Tight Till, Lean Night), +1 Door Staff cap (Slim Margins), +5% crew output (No Street Team). Modifiers are action invariants: income cuts flow through totalCashMult (passive AND active clicks), locked buildings are rejected in buyBuilding, skipped by autoBuyManagers, and greyed in the card. Two-click armed start; an active challenge can be ended without reward. Rewards never grant Clout (Legacy-not-Clout rule). Additive g.challenge/g.challengesDone — no save-shape change (SAVE_VER stays 9). Challenges are opt-in, so the pacing bands are untouched.'
     ] },
@@ -674,6 +677,19 @@ class Game {
     return jobs;
   }
 
+  // Zeroed manager levels keyed by catalog id (default 0 = base auto-buy).
+  freshManagerLevels() {
+    const levels = {};
+    for (const def of this.MANAGERS) levels[def.id] = 0;
+    return levels;
+  }
+
+  // Legacy cost to raise a manager from `level` to `level + 1` (PR 5):
+  // 10 × (level + 1) — 10 / 20 / 30 Legacy for levels 0→1→2→3.
+  managerLevelCost(def, level) {
+    return 10 * ((level || 0) + 1);
+  }
+
   // Active challenge def (null when none). Challenges are opt-in replay runs
   // (REPLAY_ROADMAP.md §6); the pacing bot never starts one, so these no-op
   // for the deterministic bands.
@@ -1072,7 +1088,10 @@ class Game {
       // Managers (SAVE_VER 8) — auto-buyers, one per building type.
       managers,
       // Manager pause state — additive, like goals/clicks (not required by isValidSavePayload).
-      managerPaused
+      managerPaused,
+      // Manager levels (PR 5, additive) — level scales auto-buy quantity in
+      // autoBuyManagers (1 / 5 / max per tick). Preserved by ordinary prestige.
+      managerLevels: this.freshManagerLevels()
     };
     this.applyStartPerks(g);
     return g;
@@ -1218,6 +1237,12 @@ class Game {
     if (!g.managerPaused || typeof g.managerPaused !== 'object' || Array.isArray(g.managerPaused)) g.managerPaused = {};
     for (const def of this.MANAGERS) {
       g.managerPaused[def.id] = g.managerPaused[def.id] === true;
+    }
+    // Manager levels (PR 5): known ids, integer 0–3, fail-closed.
+    if (!g.managerLevels || typeof g.managerLevels !== 'object' || Array.isArray(g.managerLevels)) g.managerLevels = {};
+    for (const def of this.MANAGERS) {
+      const lv = g.managerLevels[def.id];
+      g.managerLevels[def.id] = (typeof lv === 'number' && Number.isFinite(lv) && lv >= 0) ? Math.min(3, Math.floor(lv)) : 0;
     }
     // 0.10.2 golden offer: fail-closed to null unless a plain object with a
     // finite at. A malformed at would make the TTL expiry check NaN >= … → never
@@ -1436,6 +1461,15 @@ class Game {
       managerPausedNext[def.id] = g.managerPaused[def.id] === true;
     }
     g.managerPaused = managerPausedNext;
+
+    // Manager levels (PR 5) — additive, known ids, integer 0–3, fail-closed.
+    if (!g.managerLevels || typeof g.managerLevels !== 'object' || Array.isArray(g.managerLevels)) g.managerLevels = {};
+    const managerLevelsNext = Object.create(null);
+    for (const def of this.MANAGERS) {
+      const lv = g.managerLevels[def.id];
+      managerLevelsNext[def.id] = (typeof lv === 'number' && Number.isFinite(lv) && lv >= 0) ? Math.min(3, Math.floor(lv)) : 0;
+    }
+    g.managerLevels = managerLevelsNext;
 
     // Challenge state (PR 4, additive) — fail-closed on unknown ids.
     g.challenge = (typeof g.challenge === 'string' && this.CHALLENGES.some(c => c.id === g.challenge)) ? g.challenge : null;
@@ -2459,6 +2493,25 @@ class Game {
     this.push(g, (next ? 'Paused' : 'Resumed') + ' manager: ' + def.name + '.', '#a855f7');
     this.forceUpdate();
   }
+  // Raise a hired manager's level (PR 5, Legacy purchase, Perks panel). Levels
+  // scale the auto-buy quantity in autoBuyManagers: 1 / 5 / max per tick.
+  // managerPaused still applies at every level.
+  buyManagerLevel(def) {
+    if (this.state.tabStale) return;
+    const g = this.state.g;
+    if (!(g.managers && g.managers[def.id])) return;
+    if (!g.managerLevels || typeof g.managerLevels !== 'object') g.managerLevels = this.freshManagerLevels();
+    const level = g.managerLevels[def.id] || 0;
+    if (level >= 3) return;
+    const cost = this.managerLevelCost(def, level);
+    if ((g.legacy || 0) < cost) return;
+    g.legacy -= cost;
+    g.managerLevels[def.id] = level + 1;
+    const qty = level + 1 >= 3 ? 'max' : (level + 1 >= 2 ? '5' : '1');
+    this.push(g, def.name + ' upgraded to level ' + (level + 1) + ' — buys ' + qty + ' per tick.', '#a855f7');
+    this.checkAchievements(g);
+    this.forceUpdate();
+  }
 
   // Auto-buy buildings for hired managers (PLAN.md §4.1).
   // Mutates g directly (does NOT route through buyBuilding, which reads this.state.g).
@@ -2485,16 +2538,27 @@ class Game {
       // Challenge lock (REPLAY_ROADMAP.md §6): an owned manager must not
       // auto-buy a structure the active challenge locks.
       if (this.buildingLocked(g, bdef.id)) continue;
-      const n = c.b[def.id];
-      const max = def.id === 'door' ? this.doorMax(g) : bdef.max;
-      if (max != null && n >= max) continue;
-      const price = Math.floor(bdef.cost * Math.pow(bdef.growth, n));
-      if (c.cash < price) continue;
-      c.cash -= price;
-      c.b[def.id] = n + 1;
-      bought++;
-      if (opts.log) {
-        this.push(g, 'Manager built ' + bdef.name + ' #' + (n + 1) + ' for $' + this.fmt(price) + '.', '#a855f7');
+      // Manager level (PR 5) scales the per-tick quantity: 1 / 5 / max affordable.
+      const level = (g.managerLevels && g.managerLevels[def.id]) || 0;
+      const qtyCap = level >= 3 ? Infinity : (level >= 2 ? 5 : 1);
+      let here = 0;
+      let lastPrice = 0;
+      while (here < qtyCap) {
+        const n = c.b[def.id];
+        const max = def.id === 'door' ? this.doorMax(g) : bdef.max;
+        if (max != null && n >= max) break;
+        const price = Math.floor(bdef.cost * Math.pow(bdef.growth, n));
+        if (c.cash < price) break;
+        c.cash -= price;
+        c.b[def.id] = n + 1;
+        bought++;
+        here++;
+        lastPrice = price;
+      }
+      if (here > 0 && opts.log) {
+        this.push(g, here === 1
+          ? 'Manager built ' + bdef.name + ' #' + c.b[def.id] + ' for $' + this.fmt(lastPrice) + '.'
+          : 'Manager built ' + bdef.name + ' ×' + here + ' for $' + this.fmt(lastPrice) + '.', '#a855f7');
       }
     }
     return bought;
@@ -2581,11 +2645,13 @@ class Game {
       perks: {},
       prestiges: (g.prestiges || 0),
       managers: {},
-      managerPaused: {}
+      managerPaused: {},
+      managerLevels: {}
     };
     for (const def of this.PRESTIGE_PERKS) snapshot.perks[def.id] = this.perk(g, def.id);
     for (const def of this.MANAGERS) snapshot.managers[def.id] = g.managers && g.managers[def.id] === true;
     for (const def of this.MANAGERS) snapshot.managerPaused[def.id] = g.managerPaused && g.managerPaused[def.id] === true;
+    for (const def of this.MANAGERS) snapshot.managerLevels[def.id] = g.managerLevels && g.managerLevels[def.id] || 0;
 
     // Build post-prestige candidate from fresh() defaults.
     const next = this.fresh();
@@ -2616,6 +2682,9 @@ class Game {
     next.challengesDone = Array.isArray(g.challengesDone) ? g.challengesDone.slice() : [];
     next.managers = snapshot.managers;
     next.managerPaused = snapshot.managerPaused;
+    // Manager levels survive ordinary prestige (PR 5) — only the PR 6
+    // franchise sale wipes them.
+    next.managerLevels = snapshot.managerLevels;
     this.applyStartPerks(next);
     // Start-perk state can satisfy building achievements.
     this.checkAchievements(next);
@@ -2673,12 +2742,13 @@ class Game {
     }
     const snapshot = {
       legacy: (g.legacy || 0), legacyTotal: (g.legacyTotal || 0),
-      perks: {}, prestiges: (g.prestiges || 0), managers: {}, managerPaused: {}
+      perks: {}, prestiges: (g.prestiges || 0), managers: {}, managerPaused: {}, managerLevels: {}
     };
     for (const p of this.PRESTIGE_PERKS) snapshot.perks[p.id] = this.perk(g, p.id);
     for (const m of this.MANAGERS) {
       snapshot.managers[m.id] = !!(g.managers && g.managers[m.id]);
       snapshot.managerPaused[m.id] = !!(g.managerPaused && g.managerPaused[m.id]);
+      snapshot.managerLevels[m.id] = (g.managerLevels && g.managerLevels[m.id]) || 0;
     }
     const next = this.fresh(); // fresh() builds main only — the annex is re-locked
     next.challenge = def.id;
@@ -2690,6 +2760,10 @@ class Game {
     next.achievements = Array.isArray(g.achievements) ? g.achievements.slice() : [];
     next.managers = snapshot.managers;
     next.managerPaused = snapshot.managerPaused;
+    // Manager levels survive challenge starts too (PR 5) — same class of
+    // Legacy-purchased account meta as the hire itself; only the PR 6
+    // franchise sale wipes them.
+    next.managerLevels = snapshot.managerLevels;
     // Modifier startCash overrides the default starting till.
     const mod = def.mod || {};
     if (typeof mod.startCash === 'number') next.clubs.main.cash = mod.startCash;
@@ -3017,20 +3091,30 @@ class Game {
       const managerCards = this.MANAGERS.map(d => {
         const hired = g.managers && g.managers[d.id];
         const paused = hired && g.managerPaused && g.managerPaused[d.id];
+        const level = (g.managerLevels && g.managerLevels[d.id]) || 0;
+        const maxed = level >= 3;
         const bdef = this.BUILDINGS.find(b => b.id === d.id);
         const n = c.b[d.id];
         const price = bdef ? Math.floor(bdef.cost * Math.pow(bdef.growth, n)) : 0;
         const max = bdef && bdef.id === 'door' ? this.doorMax(g) : bdef ? bdef.max : null;
         const atCap = max != null && n >= max;
         const ok = !hired && g.legacy >= d.cost;
-        return { name: d.name, desc: d.desc, owned: hired ? (paused ? 'paused' : 'hired') : '—',
+        const lvCost = this.managerLevelCost(d, level);
+        const lvOk = hired && !maxed && (g.legacy || 0) >= lvCost;
+        const qty = maxed ? 'max' : (level >= 2 ? '5' : '1');
+        return { name: d.name, desc: d.desc, owned: hired ? (paused ? 'paused · Lv ' + level + '/3' : 'hired · Lv ' + level + '/3') : '—',
           btn: hired ? (paused ? 'Resume' : 'Pause') : d.cost + ' Legacy',
           meta: hired
             ? (paused ? 'paused — click to resume auto-buying ' + (bdef ? bdef.name : d.id)
-              : (atCap ? 'auto-buys ' + (bdef ? bdef.name : d.id) + ' (capped — no more builds)' : 'auto-buys ' + (bdef ? bdef.name : d.id) + ' (next $' + this.fmt(price) + ')'))
+              : (atCap ? 'auto-buys ' + (bdef ? bdef.name : d.id) + ' ×' + qty + '/tick (capped — no more builds)' : 'auto-buys ' + (bdef ? bdef.name : d.id) + ' ×' + qty + '/tick (next $' + this.fmt(price) + ')'))
             : (ok ? 'ready' : this.fmt(d.cost - g.legacy) + ' Legacy short'),
           locked: !hired && !ok, wrapStyle: cardWrap(true), btnStyle: btn(hired || ok, '#a855f7'),
-          act: () => hired ? this.toggleManager(d) : this.buyManager(d) };
+          act: () => hired ? this.toggleManager(d) : this.buyManager(d),
+          // Level-up sub-button (PR 5): Legacy purchase, only while hired.
+          subBtn: hired ? (maxed ? 'Maxed' : 'Level up ' + lvCost + ' Legacy') : '',
+          subAct: hired && !maxed ? () => this.buyManagerLevel(d) : null,
+          subLocked: hired && !maxed && !lvOk,
+          subStyle: btn(maxed || lvOk, '#d4af37') };
       });
       // Challenge runs (REPLAY_ROADMAP.md §6): opt-in replay modifiers with
       // permanent, derived rewards. Start is two-click armed (it resets the run).
@@ -3589,7 +3673,8 @@ class Game {
                   <button data-h="${this.bind(cd.multi.x10.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.multi.x10.locked ? 'disabled' : ''} style="${css({ ...cd.multi.x10.style, minWidth: '40px', padding: '8px 6px' })}">${cd.multi.x10.label}</button>
                   <button data-h="${this.bind(cd.multi.max.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.multi.max.locked ? 'disabled' : ''} style="${css({ ...cd.multi.max.style, minWidth: '48px', padding: '8px 6px' })}">${cd.multi.max.label}</button>
                 </div>`
-              : `<button data-h="${this.bind(cd.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.locked ? 'disabled' : ''} title="${cd.buildingId ? 'Shift-click to buy the maximum affordable' : (cd.btnTooltip || '')}" style="${css(cd.btnStyle)}">${cd.btn}</button>`}
+              : `<button data-h="${this.bind(cd.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.locked ? 'disabled' : ''} title="${cd.buildingId ? 'Shift-click to buy the maximum affordable' : (cd.btnTooltip || '')}" style="${css(cd.btnStyle)}">${cd.btn}</button>
+        ${cd.subAct ? `<button data-h="${this.bind(cd.subAct)}" ${cd.subLocked ? 'disabled' : ''} style="${css(cd.subStyle)}">${cd.subBtn}</button>` : ''}`}
           <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#6f5885;text-align:right;flex:1">${cd.meta}</span>
         </div>
       </div>`).join('');

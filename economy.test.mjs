@@ -4623,7 +4623,7 @@ const CLUB_FIELDS = [
 // Verbatim from SECOND_LOCATION.md §4 "Fields that stay at the top level".
 const ACCOUNT_FIELDS = [
   'clout', 'legacy', 'legacyTotal', 'perks', 'prestiges',
-  'r', 'managers', 'managerPaused', 'achievements',
+  'r', 'managers', 'managerPaused', 'managerLevels', 'achievements',
   'goals', 'clicks', 'rounds',
   'whalesCount', 'specialsCount', 'golden',
   'challenge', 'challengesDone',
@@ -4982,6 +4982,163 @@ test('startChallenge lock overrides start perks (flyers seed dropped in dry)', (
   game2.startChallenge(tight);
   game2.startChallenge(tight);
   strictEqual(game2.state.g.clubs.main.b.flyers, 1, 'flyers seed kept when not locked');
+});
+
+// ── PR 5 — Upgradeable managers (REPLAY_ROADMAP.md §7) ───────────────────────
+
+test('manager levels: fresh() seeds zeros, level costs scale 10/20/30', () => {
+  const game = newGame();
+  const g = game.state.g;
+  ok(g.managerLevels && typeof g.managerLevels === 'object', 'managerLevels map exists');
+  for (const def of game.MANAGERS) {
+    strictEqual(g.managerLevels[def.id], 0, `${def.id} starts at level 0`);
+  }
+  const rail = game.MANAGERS.find(d => d.id === 'rail');
+  strictEqual(game.managerLevelCost(rail, 0), 10, 'level 0→1 costs 10 Legacy');
+  strictEqual(game.managerLevelCost(rail, 1), 20, 'level 1→2 costs 20 Legacy');
+  strictEqual(game.managerLevelCost(rail, 2), 30, 'level 2→3 costs 30 Legacy');
+});
+
+test('buyManagerLevel requires hired, deducts Legacy, caps at 3', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.legacy = 100;
+  const rail = game.MANAGERS.find(d => d.id === 'rail');
+  game.buyManagerLevel(rail);
+  strictEqual(g.managerLevels.rail, 0, 'cannot level an unhired manager');
+  g.managers.rail = true;
+  game.buyManagerLevel(rail);
+  strictEqual(g.managerLevels.rail, 1, 'level 1 after purchase');
+  strictEqual(g.legacy, 90, '10 Legacy spent');
+  game.buyManagerLevel(rail);
+  strictEqual(g.managerLevels.rail, 2, 'level 2');
+  strictEqual(g.legacy, 70, '20 Legacy spent');
+  game.buyManagerLevel(rail);
+  strictEqual(g.managerLevels.rail, 3, 'level 3');
+  strictEqual(g.legacy, 40, '30 Legacy spent');
+  game.buyManagerLevel(rail);
+  strictEqual(g.managerLevels.rail, 3, 'capped at 3');
+  strictEqual(g.legacy, 40, 'no spend at max');
+  g.legacy = 5;
+  const bar = game.MANAGERS.find(d => d.id === 'bar');
+  g.managers.bar = true;
+  game.buyManagerLevel(bar);
+  strictEqual(g.managerLevels.bar, 0, 'unaffordable level-up rejected');
+  strictEqual(g.legacy, 5, 'no spend when short');
+});
+
+test('autoBuyManagers scales quantity with level (1 / 5 / max)', () => {
+  const game = newGame(50000);
+  const g = game.state.g;
+  const c = game.club(g);
+  c.cash = 50000;
+  g.legacy = 100;
+  g.managers.rail = true;
+  const rail = game.MANAGERS.find(d => d.id === 'rail');
+  c.b.rail = 0;
+  strictEqual(game.autoBuyManagers(g), 1, 'level 0 buys 1 per call');
+  strictEqual(c.b.rail, 1, 'rail = 1');
+  game.buyManagerLevel(rail);
+  game.buyManagerLevel(rail);
+  strictEqual(g.managerLevels.rail, 2, 'rail at level 2');
+  strictEqual(game.autoBuyManagers(g), 5, 'level 2 buys 5 per call');
+  strictEqual(c.b.rail, 6, 'rail = 6');
+  game.buyManagerLevel(rail);
+  strictEqual(g.managerLevels.rail, 3, 'rail at level 3');
+  const before = c.b.rail;
+  const n = game.autoBuyManagers(g);
+  ok(n > 5, `level 3 buys max affordable (${n} > 5)`);
+  strictEqual(c.b.rail, before + n, 'count matches delta');
+  const price = Math.floor(140 * Math.pow(1.16, c.b.rail));
+  ok(c.cash < price, 'stopped only when unaffordable (or capped)');
+});
+
+test('ordinary prestige preserves hired state, pause state, and manager levels', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.regulars = 30; g.night = 10;
+  g.legacy = 100;
+  g.managers.rail = true;
+  g.managerPaused.rail = true;
+  g.managerLevels.rail = 2;
+  g.achievements = ['first_rail', 'prestige_1'];
+  game.confirmPrestige();
+  const next = game.state.g;
+  strictEqual(next.managers.rail, true, 'hired state survives ordinary prestige');
+  strictEqual(next.managerPaused.rail, true, 'pause state survives');
+  strictEqual(next.managerLevels.rail, 2, 'manager level survives ordinary prestige');
+});
+
+test('sanitizeG/import fail-closed on malformed manager levels', () => {
+  const game = newGame();
+  const g = { managerLevels: { rail: 99, bar: -1, dj: 'x', flyers: 2 } };
+  game.sanitizeG(g);
+  strictEqual(g.managerLevels.rail, 3, '99 clamps to max 3');
+  strictEqual(g.managerLevels.bar, 0, 'negative → 0');
+  strictEqual(g.managerLevels.dj, 0, 'non-numeric → 0');
+  strictEqual(g.managerLevels.flyers, 2, 'valid level kept');
+  // Import path: same normalization through completeImportedG.
+  const g2 = game.state.g;
+  g2.managers.rail = true;
+  g2.managerLevels.rail = 2;
+  const raw = JSON.parse(JSON.stringify(g2));
+  raw.managerLevels.rail = 99;
+  game.importSaveFromText(JSON.stringify({ saveVer: 9, g: raw }));
+  strictEqual(game.state.g.managerLevels.rail, 3, 'imported level clamped to max 3');
+});
+
+test('managerPaused and challenge locks still apply at any level', () => {
+  const game = newGame(50000);
+  const g = game.state.g;
+  const c = game.club(g);
+  c.cash = 50000;
+  g.legacy = 100;
+  g.managers.rail = true;
+  const rail = game.MANAGERS.find(d => d.id === 'rail');
+  game.buyManagerLevel(rail);
+  game.buyManagerLevel(rail);
+  game.buyManagerLevel(rail);
+  g.managerPaused.rail = true;
+  strictEqual(game.autoBuyManagers(g), 0, 'paused level-3 manager buys nothing');
+  g.managerPaused.rail = false;
+  g.managers.rail = false;
+  g.managers.flyers = true;
+  g.managerLevels.flyers = 3;
+  g.challenge = 'dry';
+  strictEqual(game.autoBuyManagers(g), 0, 'level-3 manager skips a challenge-locked building');
+});
+
+test('manager card exposes level + level-up sub-button', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.legacy = 100; g.prestiges = 1;
+  g.managers.rail = true;
+  game.state.tab = 'perks';
+  const cards = game.renderVals().cards;
+  const railCard = cards.find(cd => typeof cd.subBtn === 'string' && cd.subBtn.includes('Level up'));
+  ok(railCard, 'hired manager has a level-up sub-button');
+  strictEqual(railCard.subBtn, 'Level up 10 Legacy', 'level 0 → costs 10 Legacy');
+  ok(railCard.owned.includes('Lv 0/3'), 'owned shows the level');
+  // Level 3 → Maxed, no sub-action.
+  g.managerLevels.rail = 3;
+  const railCard2 = game.renderVals().cards.find(cd => cd.name === railCard.name);
+  strictEqual(railCard2.subBtn, 'Maxed', 'maxed shows Maxed');
+  strictEqual(railCard2.subAct, null, 'no sub-action at max');
+});
+
+test('startChallenge preserves manager levels (Legacy-purchased account meta)', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.legacy = 100; g.prestiges = 1;
+  g.managers.rail = true;
+  g.managerLevels.rail = 2;
+  g.achievements = ['first_rail', 'prestige_1'];
+  const tight = game.CHALLENGES.find(c => c.id === 'tight');
+  game.startChallenge(tight); // arms
+  game.startChallenge(tight); // confirm
+  const next = game.state.g;
+  strictEqual(next.managers.rail, true, 'hired state survives challenge start');
+  strictEqual(next.managerLevels.rail, 2, 'manager level survives challenge start');
 });
 
 console.log(`Results: ${passed} passed, ${skipped} skipped, ${failed} failed`);
