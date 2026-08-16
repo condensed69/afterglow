@@ -581,10 +581,12 @@ class Game {
     { id: 'network', name: 'National Network', tier: 3, cost: 110, req: 'playbook', desc: 'Clout gain +25%.' }
   ];
 
-  // Challenge runs (REPLAY_ROADMAP.md §6) — opt-in replay modifiers with
-  // permanent rewards. `mod` = run constraints applied while active (startCash,
-  // incomeMult, locked buildings). `reward` = permanent account bonus DERIVED
-  // from g.challengesDone + this table (no separate reward field). `check` =
+  // Challenge runs (REPLAY_ROADMAP.md §6, next-roadmap PR 2) — opt-in replay
+  // modifiers with permanent rewards, now a 3-tier ladder. `mod` = run
+  // constraints applied while active (startCash, incomeMult, locked buildings);
+  // `tiers` = tier-2/3 mods (self-contained; tier 1 is `mod`). `reward` =
+  // permanent account bonus DERIVED from g.challengeTiers × completed tier
+  // (no separate reward field — completing tier N grants reward × N). `check` =
   // completion predicate against the merged club view (like achievements).
   // Rewards never grant Clout (Legacy-not-Clout rule — run variance must not
   // feed the deterministic research currency). Challenges are opt-in; the
