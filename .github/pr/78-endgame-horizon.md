@@ -28,16 +28,18 @@ replay pass behind a regression check.
     in the shared catalog, so it never buys them).
   - **Extras:** the same account with Helipad Lounge + Panorama Deck seeded
     (the player bought them).
-  - Asserts `extras < control` — the third club's location content must make
-    it play faster than a same-achievements account without it.
+  - Asserts the extras run wins by **≥15%** (`t3Extras < t3Control * 0.85` —
+    deterministic, so a plain strict `<` would pass a regression that merely
+    narrows the advantage): the third club's location content must clearly
+    beat a same-achievements account without it.
 
 ## Gates (all run locally, same as CI)
 
 | Gate | Result |
 |------|--------|
 | `node --check game.js` | ✅ |
-| `node economy.test.mjs` | ✅ (no economy change — readout + pacing guard only) |
-| `node pacing.mjs` | ✅ all 7 milestone bands **bit-identical** to the PR 6/7 baseline + prestige + second-room + renown scenario with the new §10 control (rooftop control vs extras-seeded, same achievements) |
+| `node economy.test.mjs` | ✅ 280 passed (new: `renderVals().horizon` math test — worth = sum of club cash, `done` needs both legs, blended pct 50/100) |
+| `node pacing.mjs` | ✅ all 7 milestone bands **bit-identical** to the PR 6/7 baseline + prestige + second-room + renown scenario with the new §10 control (rooftop control vs extras-seeded, same achievements; margin assert) |
 
 ## Docs touched
 
@@ -47,6 +49,9 @@ replay pass behind a regression check.
 - `README.md` — new "Vision — the long game (0.11.11)" section.
 - `VERSION` 0.11.10/223 → **0.11.11/224**; in-file `CHANGELOG` entry added
   (newest first, per repo convention).
+- Review round 1: added `renderVals().horizon` math tests (worth sum,
+  both-legs `done`, blended pct) and tightened the §10 guard to a ≥15% margin
+  assert (`t3Extras < t3Control * 0.85`). DESIGN.md §23 updated to match.
 
 ## SAVE_VER
 

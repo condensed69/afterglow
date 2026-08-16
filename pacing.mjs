@@ -873,12 +873,15 @@ function renownRun() {
     console.log('\n❌ Rooftop scenario failed: extras first LED not reached within the wall cap.\n');
     process.exit(1);
   }
-  if (t3Extras >= t3Control) {
-    console.log(`\n❌ Rooftop scenario failed: extras run ${fmtMin(t3Extras)} is NOT faster than the same-achievements control ${fmtMin(t3Control)} — the location content is dead weight.\n`);
+  // Margin assert: the extras must win by at least 15%. The run is
+  // deterministic, so strict `<` alone would pass a regression that merely
+  // narrows the location content's advantage without inverting it.
+  if (!(t3Extras < t3Control * 0.85)) {
+    console.log(`\n❌ Rooftop scenario failed: extras run ${fmtMin(t3Extras)} is not ≥15% faster than the same-achievements control ${fmtMin(t3Control)} (needs < ${fmtMin(t3Control * 0.85)}) — the location content is dead weight.\n`);
     process.exit(1);
   }
   console.log(`  rooftop first LED (control, extras unavailable):  ${fmtMin(t3Control)}`);
-  console.log(`  rooftop first LED (extras seeded: heli + vista):  ${fmtMin(t3Extras)} (same achievements, must be faster)`);
+  console.log(`  rooftop first LED (extras seeded: heli + vista):  ${fmtMin(t3Extras)} (same achievements, must be ≥15% faster)`);
 
   console.log(`\n✅ Renown scenario passed: franchise sold at ${fmtMin(gateAt)} for +${gain} Renown; ` +
     `${a.achievements.length} achievements kept, annex re-locked, rooftop opened and playing (control ${fmtMin(t3Control)} → extras ${fmtMin(t3Extras)}, extras verified live).`);

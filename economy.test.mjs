@@ -5560,6 +5560,34 @@ test('rooftop unlock: brand perk gates the third club with its extras', () => {
   ok(switcher.includes('rooftop'), 'rooftop in the switcher');
 });
 
+test('renderVals().horizon: worth sums club cash; done needs BOTH legs (3 clubs + $1e12)', () => {
+  const game = newGame();
+  const g = game.state.g;
+  g.clubs.annex = game.freshClubState('annex');
+  g.clubs.rooftop = game.freshClubState('rooftop');
+  g.clubs.main.cash = 100;
+  g.clubs.annex.cash = 200;
+  g.clubs.rooftop.cash = 300;
+  let h = game.renderVals().horizon;
+  strictEqual(h.nClubs, 3, 'three clubs counted');
+  strictEqual(h.worth, 600, 'worth is the sum of per-club cash');
+  strictEqual(h.done, false, 'not done below $1e12');
+  strictEqual(h.pct, 50, 'clubs leg done (100) + worth leg ~0 → blended 50');
+  // Worth leg alone finishing is impossible without clubs — 3 clubs + $1e12.
+  g.clubs.rooftop.cash = 1e12;
+  h = game.renderVals().horizon;
+  strictEqual(h.done, true, 'done at 3 clubs AND >= $1e12');
+  strictEqual(h.pct, 100, 'both legs done → 100%');
+  // One leg only: 3/3 clubs with no net worth reads 50%, not 100 — the
+  // blended bar keeps the worth leg from being hidden by the clubs leg.
+  g.clubs.main.cash = 0;
+  g.clubs.annex.cash = 0;
+  g.clubs.rooftop.cash = 0;
+  h = game.renderVals().horizon;
+  strictEqual(h.done, false, 'worth leg not done');
+  strictEqual(h.pct, 50, '3/3 clubs alone reads 50%');
+});
+
 test('freshClubState(loc) initializes that location\'s extras; sanitize backfills missing ones', () => {
   const game = newGame();
   const main = game.freshClubState('main');

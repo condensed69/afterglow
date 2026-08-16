@@ -988,9 +988,11 @@ reset shape → lease → rooftop → extras verified live via `rates()` toggles
 it snapshots the post-sale account and measures the rooftop's first LED twice:
 once played by the standard bot (extras are not in the shared catalog, so it
 never buys them — the control) and once with Helipad Lounge + Panorama Deck
-seeded (the player bought them). The extras run must be strictly faster than
-the control — a no-achievement fresh control would pass on achievement
-carryover alone, which is exactly the comparison §10 forbids.
+seeded (the player bought them). The extras run must win by **at least 15%**
+(`t3Extras < t3Control * 0.85` — the run is deterministic, so a plain strict
+`<` would pass a regression that merely narrows the advantage). A
+no-achievement fresh control would pass on achievement carryover alone, which
+is exactly the comparison §10 forbids.
 
 ## Doc maintenance
 
