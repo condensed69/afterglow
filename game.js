@@ -168,7 +168,7 @@ class Game {
 
   CHANGELOG = [
     { v: '0.11.10', date: '2026-08-15', codename: 'Neon Zero', notes: [
-      'RENOWN UNLOCKS (REPLAY_ROADMAP.md §9): Renown is now a spendable sink — the reason to sell the franchise again. The Perks panel gains 5 Brand perks bought with Renown: Nationwide Reach (+10% all cash per rank, through the single totalCashMult composition point), Loyalty Program (start each run with +1 Regular per rank, restored before start perks on prestige), R&D Lab (−10% research cost per rank via researchCost), Night Owl Network (+10% offline rate per rank), and Rooftop Lease (unlocks the Rooftop, a third location). Brand ranks persist through the franchise sale and ordinary prestige. The third club reuses the g.clubs map and freshClubState(); each location now has its own additive buildings/upgrades (LOCATION_EXTRAS: Neon Pool in the Main Room; Rooftop Bar + Skyline View in the Annex; Helipad Lounge + Panorama Deck on the Rooftop) appended to the shared catalog — superseding SECOND_LOCATION.md §11\'s "no location-specific buildings" non-goal. Existing saves backfill the new ids on load, and a club missing an extra id prices it as 0 owned instead of NaN — fixing a real infinite loop in buy-max. Additive fields only, SAVE_VER stays 10. The pacing bot never buys brand perks or location extras, so every main-run band is bit-identical; renownRun() gains a rooftop scenario (lease → open → extras verified live via rates() toggles → third club plays to its first LED).'
+      'RENOWN UNLOCKS (REPLAY_ROADMAP.md §9): Renown is now a spendable sink — the reason to sell the franchise again. The Perks panel gains 5 Brand perks bought with Renown: Nationwide Reach (+10% all cash per rank, through the single totalCashMult composition point), Loyalty Program (start each run with +1 Regular per rank, restored before start perks on prestige), R&D Lab (−10% research cost per rank via researchCost), Night Owl Network (+10% offline rate per rank), and Rooftop Lease (unlocks the Rooftop, a third location). Brand ranks persist through the franchise sale, ordinary prestige, and challenge starts (startChallenge snapshots the brand map like the managers — a challenge run must not wipe Renown-purchased perks). The third club reuses the g.clubs map and freshClubState(); each location now has its own additive buildings/upgrades (LOCATION_EXTRAS: Neon Pool in the Main Room; Rooftop Bar + Skyline View in the Annex; Helipad Lounge + Panorama Deck on the Rooftop) appended to the shared catalog — superseding SECOND_LOCATION.md §11\'s "no location-specific buildings" non-goal. Existing saves backfill the new ids on load, and a club missing an extra id prices it as 0 owned instead of NaN — fixing a real infinite loop in buy-max. Additive fields only, SAVE_VER stays 10. The pacing bot never buys brand perks or location extras, so every main-run band is bit-identical; renownRun() gains a rooftop scenario (lease → open → extras verified live via rates() toggles → third club plays to its first LED).'
     ] },
     { v: '0.11.9', date: '2026-08-15', codename: 'Neon Zero', notes: [
       'SECOND PRESTIGE LAYER (REPLAY_ROADMAP.md §8): when every prestige perk is maxed, every manager is hired, and both clubs are unlocked, the Perks panel gains a distinct "Sell the franchise" control — a national conglomerate buys your whole operation. Selling resets EVERYTHING (both clubs, Legacy, perks, research, Clout, managers, crew, challenges, run counters) in exchange for Renown, a new permanent meta-currency (floor(√lifetime Legacy + prestiges/3)). Renown and lifetime Renown never wipe; achievements and Brand ranks (g.brand, spent in a later PR) persist — the reason to build and sell again. Two-click armed confirm with a reset-scope preview, persist-before-replace like prestige, and a Renown readout after the first sale. SAVE_VER bumped to 10; v9 saves migrate with the new fields defaulted.'
@@ -1377,12 +1377,16 @@ class Game {
     g.challenge = (typeof g.challenge === 'string' && this.CHALLENGES.some(c => c.id === g.challenge)) ? g.challenge : null;
     if (!Array.isArray(g.challengesDone)) g.challengesDone = [];
     g.challengesDone = g.challengesDone.filter(id => typeof id === 'string' && this.CHALLENGES.some(c => c.id === id));
-    // Brand perks (PR 7): known ids, integer 0–max, fail-closed.
+    // Brand perks (PR 7): known ids, integer 0–max, fail-closed. Rebuild so
+    // unknown keys are dropped — parity with completeImportedG (an unknown
+    // brand id is not a real perk and brandRank would fail closed on it).
     if (!g.brand || typeof g.brand !== 'object' || Array.isArray(g.brand)) g.brand = {};
+    const brandNext = Object.create(null);
     for (const def of this.BRAND_PERKS) {
       const r = g.brand[def.id];
-      g.brand[def.id] = (typeof r === 'number' && Number.isFinite(r) && r >= 0) ? Math.min(def.max, Math.floor(r)) : 0;
+      brandNext[def.id] = (typeof r === 'number' && Number.isFinite(r) && r >= 0) ? Math.min(def.max, Math.floor(r)) : 0;
     }
+    g.brand = brandNext;
     return g;
   }
 
@@ -2999,7 +3003,7 @@ class Game {
   // Start a challenge (REPLAY_ROADMAP.md §6): a fresh run under the challenge's
   // modifier. Resets EVERY club to freshClubState() — a developed annex must not
   // satisfy the completion condition instantly — and re-locks the annex (fresh()
-  // builds main only). Account meta (legacy/perks/achievements/managers/
+  // builds main only). Account meta (legacy/perks/brand/achievements/managers/
   // challengesDone) persists; run state (research/clout/crew/jobs) resets like
   // prestige. Persist-before-replace, matching confirmPrestige.
   startChallenge(def) {
@@ -3013,7 +3017,8 @@ class Game {
     }
     const snapshot = {
       legacy: (g.legacy || 0), legacyTotal: (g.legacyTotal || 0),
-      perks: {}, prestiges: (g.prestiges || 0), managers: {}, managerPaused: {}, managerLevels: {}
+      perks: {}, prestiges: (g.prestiges || 0), managers: {}, managerPaused: {}, managerLevels: {},
+      brand: {}
     };
     for (const p of this.PRESTIGE_PERKS) snapshot.perks[p.id] = this.perk(g, p.id);
     for (const m of this.MANAGERS) {
@@ -3021,6 +3026,9 @@ class Game {
       snapshot.managerPaused[m.id] = !!(g.managerPaused && g.managerPaused[m.id]);
       snapshot.managerLevels[m.id] = (g.managerLevels && g.managerLevels[m.id]) || 0;
     }
+    // Brand ranks (PR 7) are Renown-sink account meta — a challenge start must
+    // not wipe them (only the franchise sale does). Same class as managers.
+    for (const def of this.BRAND_PERKS) snapshot.brand[def.id] = this.brandRank(g, def.id);
     const next = this.fresh(); // fresh() builds main only — the annex is re-locked
     next.challenge = def.id;
     next.challengesDone = Array.isArray(g.challengesDone) ? g.challengesDone.slice() : [];
@@ -3035,6 +3043,9 @@ class Game {
     // Legacy-purchased account meta as the hire itself; only the PR 6
     // franchise sale wipes them.
     next.managerLevels = snapshot.managerLevels;
+    // Brand ranks (PR 7) survive challenge starts too — restore BEFORE start
+    // perks so loyalty (fresh-regulars) seeds the challenge run.
+    next.brand = snapshot.brand;
     // Modifier startCash overrides the default starting till.
     const mod = def.mod || {};
     if (typeof mod.startCash === 'number') next.clubs.main.cash = mod.startCash;

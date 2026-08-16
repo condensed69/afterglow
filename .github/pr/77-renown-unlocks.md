@@ -20,7 +20,10 @@ buildings/upgrades.
   (+10% offline rate per rank in `catchUp`), **Rooftop Lease** (unlocks the
   third club).
 - Brand ranks **persist through the franchise sale** (they are the sink — the
-  sale snapshot/restore carries `brand`) and through ordinary prestige.
+  sale snapshot/restore carries `brand`), through ordinary prestige, and
+  through challenge starts (`startChallenge` snapshots the brand map like the
+  managers — a challenge run must not wipe Renown-purchased perks; Loyalty
+  seeds the challenge run's regulars).
 
 **Third club — the Rooftop**
 - `Rooftop Lease` rank ≥ 1 opens `canOpenRooftop()`; `confirmOpenRooftop()`
@@ -46,7 +49,7 @@ buildings/upgrades.
 | Gate | Result |
 |------|--------|
 | `node --check game.js` | ✅ |
-| `node economy.test.mjs` | ✅ 278 passed, 0 failed (6 new PR-7 tests: table well-formedness, buyBrandPerk spend/cap/req/shortage, effect wiring nationwide/loyalty/rnd/offline, rooftop unlock gate, freshClubState(loc) + sanitize backfill, extras in rates/caps) |
+| `node economy.test.mjs` | ✅ 279 passed, 0 failed (7 new PR-7 tests: table well-formedness, buyBrandPerk spend/cap/req/shortage, effect wiring nationwide/loyalty/rnd/offline, rooftop unlock gate, freshClubState(loc) + sanitize backfill, extras in rates/caps, challenge-start brand survival + loyalty seeding) |
 | `node pacing.mjs` | ✅ all 7 milestone bands **bit-identical** to the PR 6 baseline (rail 1.53m, crew 7.70m, patrons 5.70m, LED 14.35m, research 19.85m, all-upgrades 32.00m, all-research 105.18m — the bot never buys brand perks or location extras) + prestige + second-room + `renownRun()` extended with the §9 rooftop scenario: lease bought (+14 Renown → −10), rooftop opened with extras initialized, extras verified live via `rates()` toggles (heli cash, vista hype — per §10, a fresh-baseline LED control would pass on achievement carryover alone), third club plays to first LED 11.82m |
 
 ## Docs touched
@@ -62,6 +65,10 @@ buildings/upgrades.
 - `README.md` — new "Renown, Brand perks & the Rooftop" controls section.
 - `VERSION` 0.11.9/222 → **0.11.10/223**; in-file `CHANGELOG` entry added
   (newest first, per repo convention).
+- Review round 1: `startChallenge` now snapshots/restores `g.brand` (it wiped
+  every Renown-purchased perk — challenge data loss), with a regression test;
+  `sanitizeG` brand normalization rebuilt to drop unknown keys (parity with
+  `completeImportedG`). DESIGN.md §22.1 + CHANGELOG updated to match.
 
 ## SAVE_VER
 

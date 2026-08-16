@@ -916,7 +916,10 @@ account-level `g.brand` map (`brandRank(g, id)`, fail-closed to 0), bought via
 `buyBrandPerk`, and **persist through the franchise sale** — they are the
 reason to sell again. Ordinary prestige also preserves them (`confirmPrestige`
 snapshots brand and restores it BEFORE `applyStartPerks`, so Loyalty seeds the
-new run's regulars).
+new run's regulars), and so does a challenge start (`startChallenge` snapshots
+the brand map like the managers — a challenge run must not wipe
+Renown-purchased perks; Loyalty seeds the challenge run's regulars the same
+way).
 
 | Perk | Cost (Renown) | Max | Effect per rank |
 |------|--------------:|----:|-----------------|

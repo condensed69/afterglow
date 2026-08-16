@@ -5516,6 +5516,32 @@ test('brand perk effects are wired (nationwide/loyalty/rnd/offline)', () => {
   ok(gain4 > gain3 * 1.15 && gain4 < gain3 * 1.25, `offline rank 2 ≈ ×1.2 (${(gain4 / gain3).toFixed(2)})`);
 });
 
+test('challenge starts preserve brand ranks; loyalty seeds the challenge run', () => {
+  const game = newGame();
+  const g = game.state.g;
+  g.renown = 20;
+  g.brand.nationwide = 2;
+  g.brand.rooftop = 1;
+  g.brand.loyalty = 2;
+  // The exact path that used to wipe brand: startChallenge rebuilt from
+  // fresh() (brand {}) without a brand snapshot, permanently deleting every
+  // Renown-purchased perk. Two-click arm + confirm.
+  const tight = game.CHALLENGES.find(c => c.id === 'tight');
+  game.startChallenge(tight); // first click arms only
+  strictEqual(game.state.g.challenge, null, 'first click only arms');
+  game.startChallenge(tight); // confirm
+  const next = game.state.g;
+  strictEqual(next.challenge, 'tight', 'challenge active');
+  strictEqual(next.brand.nationwide, 2, 'nationwide rank survives challenge start');
+  strictEqual(next.brand.rooftop, 1, 'rooftop rank survives challenge start');
+  strictEqual(next.clubs.main.regulars, 2, 'loyalty seeds the challenge run regulars');
+  // Ending the challenge keeps the run and the brand map.
+  game.endChallenge();
+  strictEqual(game.state.g.challenge, null, 'challenge ended');
+  strictEqual(game.state.g.brand.nationwide, 2, 'brand survives challenge end');
+  strictEqual(game.state.g.brand.rooftop, 1, 'rooftop rank survives challenge end');
+});
+
 test('rooftop unlock: brand perk gates the third club with its extras', () => {
   const game = newGame();
   const g = game.state.g;
