@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.10', build: 223, channel: 'alpha', date: '2026-08-15', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.11', build: 224, channel: 'alpha', date: '2026-08-16', codename: 'Neon Zero' };
   SAVE_VER = 10;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -167,6 +167,9 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.11.11', date: '2026-08-16', codename: 'Neon Zero', notes: [
+      'ENDGAME HORIZON (REPLAY_ROADMAP.md §10): the Owner\'s List gains a "Vision — the long game" readout — a visible goal line of 3 clubs and $1e12 franchise net worth, with a blended progress bar (clubs leg + net-worth leg) and a ★ reached state. Purely a target + progress readout computed from existing state (clubs map + per-club cash): no new mechanic, no save-shape change (SAVE_VER stays 10), no economy coupling, zero pacing impact (render-time only).'
+    ] },
     { v: '0.11.10', date: '2026-08-15', codename: 'Neon Zero', notes: [
       'RENOWN UNLOCKS (REPLAY_ROADMAP.md §9): Renown is now a spendable sink — the reason to sell the franchise again. The Perks panel gains 5 Brand perks bought with Renown: Nationwide Reach (+10% all cash per rank, through the single totalCashMult composition point), Loyalty Program (start each run with +1 Regular per rank, restored before start perks on prestige), R&D Lab (−10% research cost per rank via researchCost), Night Owl Network (+10% offline rate per rank), and Rooftop Lease (unlocks the Rooftop, a third location). Brand ranks persist through the franchise sale, ordinary prestige, and challenge starts (startChallenge snapshots the brand map like the managers — a challenge run must not wipe Renown-purchased perks). The third club reuses the g.clubs map and freshClubState(); each location now has its own additive buildings/upgrades (LOCATION_EXTRAS: Neon Pool in the Main Room; Rooftop Bar + Skyline View in the Annex; Helipad Lounge + Panorama Deck on the Rooftop) appended to the shared catalog — superseding SECOND_LOCATION.md §11\'s "no location-specific buildings" non-goal. Existing saves backfill the new ids on load, and a club missing an extra id prices it as 0 owned instead of NaN — fixing a real infinite loop in buy-max. Additive fields only, SAVE_VER stays 10. The pacing bot never buys brand perks or location extras, so every main-run band is bit-identical; renownRun() gains a rooftop scenario (lease → open → extras verified live via rates() toggles → third club plays to its first LED).'
     ] },
@@ -3666,6 +3669,22 @@ class Game {
           onboardingPulse
         };
       })(),
+      // Endgame horizon (REPLAY_ROADMAP.md §10): a visible goal line — 3 clubs
+      // and $1e12 franchise net worth — in the Owner's List "Vision" block.
+      // Purely a target + progress readout computed from existing state; no new
+      // mechanic, no save-shape change, and no economy coupling (read-only).
+      horizon: (() => {
+        const clubIds = Object.keys(g.clubs || {});
+        const TARGET = 1e12;
+        let worth = 0;
+        for (const id of clubIds) worth += (g.clubs[id].cash || 0);
+        const nClubs = clubIds.length;
+        const done = nClubs >= 3 && worth >= TARGET;
+        // Both legs must finish; the blended bar keeps one leg from hiding the
+        // other (clubs 3/3 alone reads 50%).
+        const pct = Math.round((Math.min(100, (nClubs / 3) * 100) + Math.min(100, (worth / TARGET) * 100)) / 2);
+        return { nClubs, clubMax: 3, worth, target: TARGET, done, pct };
+      })(),
       achievements: this.ACHIEVEMENTS.map(a => ({
         id: a.id,
         name: a.name,
@@ -4406,6 +4425,28 @@ class Game {
           <div style="font-size:10.5px;color:#6f5885;font-style:italic;line-height:1.4;margin-bottom:4px">${ol.why}</div>
           <div style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#22d3ee;line-height:1.4">${ol.hint}</div>
           ${prog}
+          ${(() => {
+            const h = v.horizon;
+            if (!h) return '';
+            // Endgame horizon (REPLAY_ROADMAP.md §10): readout only — the goal
+            // line is 3 clubs + $1e12 net worth; progress is computed, not a
+            // mechanic. Rendered under the active goal so it never steals the
+            // onboarding banner's place.
+            return `<div style="margin-top:9px;padding-top:8px;border-top:1px dashed #2a1738">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px">
+                <span style="font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:#7b5f90;font-weight:700">Vision — the long game</span>
+                ${h.done ? '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#ffd700;font-weight:700">★ reached</span>' : ''}
+              </div>
+              <div style="display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#c4a8e0;margin-bottom:3px">
+                <span>Clubs ${h.nClubs}/${h.clubMax} · Net worth ${this.fmt(h.worth)} / ${this.fmt(h.target)}</span>
+                <span>${h.pct}%</span>
+              </div>
+              <div style="height:4px;background:#1c1129;border-radius:3px;overflow:hidden">
+                <div style="width:${h.pct}%;height:100%;background:linear-gradient(90deg,#ffc94a,#22d3ee);border-radius:3px;transition:width .18s linear"></div>
+              </div>
+              ${h.done ? '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#ffc94a;margin-top:4px">The empire is built. Sell it, and build again.</div>' : ''}
+            </div>`;
+          })()}
         </div>`;
       })() : ''}
 
