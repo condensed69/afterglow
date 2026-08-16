@@ -392,7 +392,7 @@ Full locked design: **`REPLAY_ROADMAP.md` §8**; implementation: `renownGain`, `
 | `clout`, `r` → 0 / `{}`; `managers`, `managerPaused`, `managerLevels` → `{}` ×3 | `g.brand` — the PR 7 sink, the reason to sell again |
 | `crew` / `jobs`, `challengesDone` / `challenge`, `goals` / `clicks` / `rounds`, `whalesCount` / `specialsCount` / `golden` → fresh / 0 | |
 
-- **Save format (SAVE_VER 10, §13):** `fresh()` adds `renown: 0, renownTotal: 0, brand: {}`; `MIGRATIONS[9]` defaults missing/malformed values only (**no-clobber** — valid values pass through); `sanitizeG` fail-closes (non-numeric → 0, clamped ≥ 0; non-object `brand` → `{}`); `completeImportedG` adds `renown` / `renownTotal` to the numeric list and defaults `brand` to `{}`; `isValidSavePayload` does not require them (migration fills them).
+- **Save format (SAVE_VER 11, §13):** `fresh()` adds `renown: 0, renownTotal: 0, brand: {}` (SAVE_VER 10, `MIGRATIONS[9]`) and `brandLevel: 0` (SAVE_VER 11, `MIGRATIONS[10]`); each migration defaults missing/malformed values only (**no-clobber** — valid values pass through); `sanitizeG` fail-closes (non-numeric → 0, clamped ≥ 0; non-object `brand` → `{}`; fractional `brandLevel` floored); `completeImportedG` adds `renown` / `renownTotal` to the numeric list and defaults `brand` to `{}`; `isValidSavePayload` does not require them (migration fills them).
 - **UI (Perks panel):** after the first sale (`g.renownTotal > 0`) a **Renown** readout card ("`N spare · M lifetime`", meta "spent on Brand unlocks (coming)"); at the gate a distinct cyan **"Sell the franchise"** card previewing "+N Renown · a bigger reset than the franchise deal". The `showFranchise` modal previews "You keep Renown (X spare · Y lifetime) · achievements · Brand ranks" and "You reset **EVERYTHING else** — both clubs, Legacy, perks, research, Clout, managers, crew, challenges". Confirm is **two-click armed** (`state.franchiseArmed` — first click arms, second sells) and **disabled while `tabStale`** ("Reload to adopt fresh save before selling").
 - **Persist-before-replace:** the sale candidate is persisted with `localStorage.setItem` **first**; on throw → `saveState: 'franchise failed'` and the live state stays untouched (same rule as prestige above and import, §13.3).
 
@@ -567,9 +567,9 @@ renown, renownTotal,        // 0.11.9 Renown meta (second prestige layer)
 brand: { perkId: rank }     // 0.11.9 Brand-perk ranks (PR 7 spends Renown)
 ```
 
-Club-level run fields live under `g.clubs[<id>]`; account/shared fields stay top-level. `club(g)` reads/writes the active club (SECOND_LOCATION.md §5), so club fields must never be treated as top-level. Flat `g.cash`-style access exists only through the `wrapState` compat proxy (same shape on disk: `JSON.stringify` emits the real v10 layout).
+Club-level run fields live under `g.clubs[<id>]`; account/shared fields stay top-level. `club(g)` reads/writes the active club (SECOND_LOCATION.md §5), so club fields must never be treated as top-level. Flat `g.cash`-style access exists only through the `wrapState` compat proxy (same shape on disk: `JSON.stringify` emits the real v11 layout).
 
-Additive fields (`managerPaused`, the 0.10.1 counters `whalesCount` / `specialsCount`, and the 0.10.2 `golden` offer) default to 0/false/null when absent — not required by `isValidSavePayload`, so they never force a SAVE_VER bump on their own. The 0.11.9 Renown fields (`renown`, `renownTotal`, `brand`) are part of SAVE_VER 10 itself — `MIGRATIONS[9]` defaults them, `sanitizeG` / `completeImportedG` fail close on malformed values, and `isValidSavePayload` still does not require them (migration fills them).
+Additive fields (`managerPaused`, the 0.10.1 counters `whalesCount` / `specialsCount`, and the 0.10.2 `golden` offer) default to 0/false/null when absent — not required by `isValidSavePayload`, so they never force a SAVE_VER bump on their own. The 0.11.9 Renown fields (`renown`, `renownTotal`, `brand`) are part of SAVE_VER 10 itself — `MIGRATIONS[9]` defaults them, `sanitizeG` / `completeImportedG` fail close on malformed values, and `isValidSavePayload` still does not require them (migration fills them). The 0.11.12 Brand Endorsement level (`brandLevel`) is part of SAVE_VER 11 — `MIGRATIONS[10]` defaults it, same fail-closed shape (the repo convention: a new persisted field bumps, even when additive — PR 6/PR 1 review precedent).
 
 ### 13.2 Paths
 
@@ -961,8 +961,36 @@ missing an extra id prices it as 0 owned — the NaN-price infinite loop in
 `buildingMaxAffordable`/`buyBuilding` (NaN < cash is false, so the buy loop
 never broke) is fixed by this.
 
+### 22.4 Brand Endorsement — the repeatable Renown sink (0.11.12)
+
+The five Brand perks are a finite sink (~58 Renown maxes them in ~5 sales).
+**Brand Endorsement** is the repeatable one: +2% all cash per level, forever,
+at an escalating cost — `endorsementCost(g) = floor(15 × 1.35^level)` (15, 20,
+27, 37, 50, 67…). Each sale's Renown always has a spend target, so the sell
+loop keeps its reason to reset; the 1.35 cost growth outpaces the linear +2%,
+so the sink never needs a cap.
+
+- Level lives in the account-level `g.brandLevel` (additive integer ≥ 0,
+  fail-closed in `sanitizeG`/`completeImportedG`, default 0 in `fresh()`).
+  **SAVE_VER bumped to 11** for the new persisted field (repo convention,
+  PR 6 precedent) — `MIGRATIONS[10]` defaults `brandLevel` to 0 for v10
+  saves, no-clobber.
+- The multiplier folds into `totalCashMult(g)` — passive AND
+  clicks/whale/golden — via `(1 + 0.02 × brandLevel(g))`.
+- **Persists through every reset, like brand ranks** (the PR #77 lesson:
+  every reset-style action carries its own snapshot list — `confirmPrestige`,
+  `startChallenge`, and `confirmFranchiseSale` all snapshot and restore
+  `brandLevel` alongside `brand`).
+- UI: a Brand Endorsement card under the five Brand perks in the Perks panel,
+  always visible — "N Renown short" is itself a goal line before the first
+  sale. Renders `owned` as `N levels`, button shows the next cost.
+- The pacing bot never buys it (`buyAllMeta` untouched), so every main-run
+  band stays bit-identical; `renownRun()` is unchanged.
+
 **Non-goals:** still max 3 clubs; no cross-club cash transfer; no per-club
-research; brand perks are Renown-only (no conversion from/to Clout/Legacy).
+research; brand perks and the endorsement are Renown-only (no conversion
+from/to Clout/Legacy — the endorsement is a permanent multiplier, never a
+Renown → cash exchange).
 
 ## 23. Endgame horizon (REPLAY_ROADMAP.md §10) — 0.11.11
 

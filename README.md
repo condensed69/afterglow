@@ -17,7 +17,7 @@ After your **first franchise deal** (prestige) **and** at least one manager, the
 
 Max **every prestige perk**, hire **every manager**, and own **both rooms** — the Perks panel then gains **Sell the franchise**: a bigger reset (everything wipes except Renown, achievements, and Brand ranks) in exchange for **Renown**.
 
-- **Renown** (shown as `N spare · M lifetime` on the Perks panel) buys **Brand perks**: Nationwide Reach (+10% all cash per rank), Loyalty Program (start each run with +1 Regular per rank), R&D Lab (−10% research cost per rank), Night Owl Network (+10% offline per rank), and **Rooftop Lease** — which unlocks the **Rooftop**, a third room with its own till, crowd, and build stack (open it from the Perks panel after buying the lease).
+- **Renown** (shown as `N spare · M lifetime` on the Perks panel) buys **Brand perks**: Nationwide Reach (+10% all cash per rank), Loyalty Program (start each run with +1 Regular per rank), R&D Lab (−10% research cost per rank), Night Owl Network (+10% offline per rank), and **Rooftop Lease** — which unlocks the **Rooftop**, a third room with its own till, crowd, and build stack (open it from the Perks panel after buying the lease). Once the five perks max out, **Brand Endorsement** keeps the sink going: +2% all cash per level, forever, at an escalating Renown cost (15, 20, 27, 37…).
 - Each room has its own **location extras**: the Neon Pool in the Main Room, the Rooftop Bar + Skyline View in the Annex, and the Helipad Lounge + Panorama Deck on the Rooftop — bought from the same Structures/Upgrades tabs, alongside the shared catalog.
 - Switch rooms with the header buttons; Brand ranks survive selling the franchise — they are the reason to build and sell again.
 

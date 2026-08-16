@@ -424,7 +424,7 @@ This section is the locked spec of the second prestige layer, with the same auth
 | Currency | Role |
 |----------|------|
 | **Cash / Clout / Legacy** | unchanged (per-club run / shared research / first-layer prestige) |
-| **Renown** | Second-layer meta-currency. Earned **only** by selling the franchise. Spent on Brand perks (PR 7). Never wipes. |
+| **Renown** | Second-layer meta-currency. Earned **only** by selling the franchise. Spent on Brand perks (PR 7) and Brand Endorsements (0.11.12). Never wipes. |
 
 **Internal ids (locked):**
 
@@ -433,6 +433,7 @@ This section is the locked spec of the second prestige layer, with the same auth
 | Renown spendable | `g.renown` (number) |
 | Renown lifetime | `g.renownTotal` (number) |
 | Brand perk ranks | `g.brand` (object map `perkId → rank`) |
+| Brand Endorsement level | `g.brandLevel` (number ≥ 0 — the repeatable sink, 0.11.12) |
 | Third club id | `'rooftop'` (unlock target, PR 7) |
 
 ### 10.2 Gate
@@ -476,6 +477,7 @@ On the confirmed sale — the confirm is **two-click armed** (`state.franchiseAr
 | `g.renownTotal` | += newly earned — never decreases |
 | `g.achievements` | permanent unlocks, unchanged |
 | `g.brand` | Brand perk ranks, unchanged — **the reason to sell again** (PR 7 sink) |
+| `g.brandLevel` | Brand Endorsement level, unchanged — the repeatable sink keeps every sale spendable (0.11.12) |
 
 **Order of operations (locked, mirrors §3):** snapshot the four permanent layers → build the post-sale candidate from `fresh()` → restore the snapshot → push the sale log line onto the candidate → `localStorage.setItem` must succeed → only then replace live `state.g`. On `setItem` throw: `saveState: 'franchise failed'` and the live state is untouched — no silent in-memory sale.
 
@@ -491,7 +493,7 @@ renownGain(g) {
 
 - Mirrors `legacyGain`'s shape (sqrt of lifetime + linear term) but reads the **account**, not the active club: `g.legacyTotal` (lifetime Legacy, achievement credits included) and `g.prestiges`.
 - ~105 lifetime Legacy + ~15 prestiges → ~15 Renown on the first sale.
-- No soft cap. Renown spends only on Brand perks (PR 7) in v1; no Renown → cash/Clout/Legacy conversion, no auto-sell (§8 rules carry over).
+- No soft cap. Renown spends on Brand perks (PR 7) and Brand Endorsements (0.11.12 — the repeatable sink, +2% all cash per level at `floor(15 × 1.35^level)`); no Renown → cash/Clout/Legacy conversion (the endorsement is a permanent multiplier, not an exchange), no auto-sell (§8 rules carry over).
 
 ### 10.5 Save format (SAVE_VER 10)
 
@@ -536,7 +538,7 @@ brand: {}         // { [brandPerkId]: rank } — PR 7 spends Renown here
 - **Log line (post-sale):** `Sold the franchise: +N Renown. The brand grows.` — cyan `#22d3ee`.
 - **Meta unlock:** the Perks-tab / Legacy-ledger `metaUnlocked` predicate now also unlocks on `g.renownTotal > 0`, so a save with lifetime Renown but zero prestiges still shows the meta UI.
 
-**Non-goals (v1, REPLAY_ROADMAP.md §8.9):** no third prestige layer; no Renown → cash/Clout/Legacy conversion; no auto-sell; no per-club Renown; Brand perks (PR 7) are the only Renown sink in v1.
+**Non-goals (v1, REPLAY_ROADMAP.md §8.9):** no third prestige layer; no Renown → cash/Clout/Legacy conversion; no auto-sell; no per-club Renown. The Renown sink is Brand perks (PR 7) **plus** the repeatable Brand Endorsement (0.11.12) — the §8.9 "Brand perks are the only Renown sink in v1" line is superseded by the endorsement, which keeps the sink alive past ~58 Renown.
 
 ---
 
