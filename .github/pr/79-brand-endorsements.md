@@ -51,8 +51,12 @@ repeatable sink: +2% all cash per level, forever, at an escalating cost.
 
 ## SAVE_VER
 
-**Unchanged (stays 10).** `g.brandLevel` is an additive field with a fail-closed
-default — existing saves load with level 0 (×1.0), no migration needed.
+**Bumped to 11** (repo convention — a new persisted field bumps even when
+additive; PR 6 bumped 9→10 for the same class). `g.brandLevel` is an additive
+integer ≥ 0 with a no-clobber `MIGRATIONS[10](g)`: v10 saves load by defaulting
+`brandLevel` to 0, valid values pass through untouched; `sanitizeG` /
+`completeImportedG` run the same fail-closed shape after the chain. Backward
+compat: v9/v10 saves migrate automatically (chain 9→10→11).
 
 ## Spine claim (per the roadmap's locked format)
 

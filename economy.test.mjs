@@ -2227,9 +2227,9 @@ test('non-numeric saveVer fails closed', () => {
 
 console.log('\nSave migration map (PLAN §2.2)');
 
-test('SAVE_VER is 10', () => {
+test('SAVE_VER is 11', () => {
   const game = newGame();
-  strictEqual(game.SAVE_VER, 10);
+  strictEqual(game.SAVE_VER, 11);
   ok(typeof game.MIGRATIONS[3] === 'function', 'MIGRATIONS[3] must exist');
   ok(typeof game.MIGRATIONS[4] === 'function', 'MIGRATIONS[4] must exist (Owner\'s List)');
   ok(typeof game.MIGRATIONS[5] === 'function', 'MIGRATIONS[5] must exist (prestige)');
@@ -2237,6 +2237,7 @@ test('SAVE_VER is 10', () => {
   ok(typeof game.MIGRATIONS[7] === 'function', 'MIGRATIONS[7] must exist (managers)');
   ok(typeof game.MIGRATIONS[8] === 'function', 'MIGRATIONS[8] must exist (clubs map)');
   ok(typeof game.MIGRATIONS[9] === 'function', 'MIGRATIONS[9] must exist (Renown)');
+  ok(typeof game.MIGRATIONS[10] === 'function', 'MIGRATIONS[10] must exist (Brand Endorsement)');
 });
 
 test('v8 save migrates to the current version: club fields land in clubs.main, account fields stay', () => {
@@ -2266,9 +2267,10 @@ test('v8 save migrates to the current version: club fields land in clubs.main, a
   strictEqual(g.clout, 2);
   strictEqual(g.crew, 1);
   strictEqual(g.r.loop, true);
-  // Persisted save is stamped v10 and carries the clubs shape, no flat leftovers.
+  // Persisted save is stamped with the current version and carries the clubs
+  // shape, no flat leftovers.
   const stored = JSON.parse(localStorage.getItem(game.KEY));
-  strictEqual(stored.saveVer, 10);
+  strictEqual(stored.saveVer, game.SAVE_VER);
   strictEqual(stored.g.clubs.main.cash, 555);
   ok(!('cash' in stored.g), 'no flat cash in persisted save');
   ok(!('b' in stored.g), 'no flat b in persisted save');
@@ -3066,7 +3068,7 @@ test('migration 4→5→6→7: v4 save with rail+flyers pre-completes those goal
   // Achievements legitimately reward clout for already-earned state.
   strictEqual(loaded.clout, 1, 'first_rail achievement clout credited on migrate');
   const stored = JSON.parse(localStorage.getItem(game.KEY));
-  strictEqual(stored.saveVer, 10);
+  strictEqual(stored.saveVer, game.SAVE_VER);
 });
 
 test('migration 4→5→6→7 mid-game: credits non-sequential goals without reward cascade', () => {
@@ -5199,26 +5201,28 @@ test('renownGain: floor(sqrt(lifetime Legacy) + prestiges/3)', () => {
   strictEqual(game.renownGain(g), 7, 'spendable renown does not inflate the gain (sqrt(49)=7 + 2/3=0)');
 });
 
-test('v9 → v10 migration defaults renown/renownTotal/brand without clobbering', () => {
+test('v9 → v11 migration defaults renown/renownTotal/brand/brandLevel without clobbering', () => {
   const game = newGame(20);
   const g = game.state.g;
-  // A v9 save: fresh shape minus the PR 6 fields.
-  delete g.renown; delete g.renownTotal; delete g.brand;
-  ok(game.migrateFrom(g, 9), 'v9 → v10 migration chain completes');
+  // A v9 save: fresh shape minus the PR 6 fields (and the v11 brandLevel).
+  delete g.renown; delete g.renownTotal; delete g.brand; delete g.brandLevel;
+  ok(game.migrateFrom(g, 9), 'v9 → v11 migration chain completes');
   strictEqual(g.renown, 0, 'renown defaults to 0');
   strictEqual(g.renownTotal, 0, 'renownTotal defaults to 0');
   ok(g.brand && typeof g.brand === 'object' && !Array.isArray(g.brand), 'brand defaults to a plain object');
+  strictEqual(g.brandLevel, 0, 'brandLevel defaults to 0 (MIGRATIONS[10])');
 
   // No-clobber: real values pass through untouched.
   const g2 = game.state.g;
-  g2.renown = 7; g2.renownTotal = 42; g2.brand = { national: 1 };
+  g2.renown = 7; g2.renownTotal = 42; g2.brand = { national: 1 }; g2.brandLevel = 5;
   ok(game.migrateFrom(g2, 9), 'migration runs again');
   strictEqual(g2.renown, 7, 'existing renown preserved (no-clobber)');
   strictEqual(g2.renownTotal, 42, 'existing renownTotal preserved');
   strictEqual(g2.brand.national, 1, 'existing brand preserved');
+  strictEqual(g2.brandLevel, 5, 'existing brandLevel preserved (no-clobber)');
 });
 
-test('v9 save import upgrades to v10 with the renown fields defaulted', () => {
+test('v9 save import upgrades to the current version with the renown fields defaulted', () => {
   const game = newGame(20);
   const f = game.fresh().clubs.main;
   const payload = JSON.stringify({
@@ -5234,6 +5238,7 @@ test('v9 save import upgrades to v10 with the renown fields defaulted', () => {
   strictEqual(game.state.g.renown, 0, 'imported v9 save gains renown 0');
   strictEqual(game.state.g.renownTotal, 0, 'imported v9 save gains renownTotal 0');
   ok(game.state.g.brand && typeof game.state.g.brand === 'object', 'imported v9 save gains a brand map');
+  strictEqual(game.state.g.brandLevel, 0, 'imported v9 save gains brandLevel 0 (v11 migration)');
   strictEqual(game.state.g.cash, 88, 'club state intact after upgrade');
 });
 
@@ -5319,7 +5324,7 @@ test('franchise sale resets the full §8.4 matrix and keeps permanent layers', (
   strictEqual(a.clubs.main.regulars, 0, 'main regulars fresh');
   // Disk persisted a v10 envelope with the post-sale shape.
   const saved = JSON.parse(localStorage.getItem(game.KEY));
-  strictEqual(saved.saveVer, 10, 'saved envelope is v10');
+  strictEqual(saved.saveVer, game.SAVE_VER, 'saved envelope is the current version');
   strictEqual(saved.g.renown, 3 + gain, 'disk matches memory renown');
   strictEqual(saved.g.achievements.includes('first_rail'), true, 'disk keeps achievements');
 });

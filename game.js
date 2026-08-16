@@ -37,7 +37,7 @@ function clubProxy(g) {
 
 class Game {
   VERSION = { num: '0.11.12', build: 225, channel: 'alpha', date: '2026-08-16', codename: 'Neon Zero' };
-  SAVE_VER = 10;
+  SAVE_VER = 11;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
   // A plain boolean is copied when the browser duplicates a tab, so a duplicate would
@@ -163,12 +163,20 @@ class Game {
       if (typeof g.renown !== 'number' || !Number.isFinite(g.renown)) g.renown = 0;
       if (typeof g.renownTotal !== 'number' || !Number.isFinite(g.renownTotal)) g.renownTotal = 0;
       if (!g.brand || typeof g.brand !== 'object' || Array.isArray(g.brand)) g.brand = {};
+    },
+    // v10 → v11: Brand Endorsement level (next-roadmap PR 1) — the repeatable
+    // Renown sink. No-clobber: a finite number passes through untouched; only
+    // a missing/malformed value defaults to 0. sanitizeG/completeImportedG
+    // run the same shape after the chain (floor + clamp ≥ 0).
+    10(g) {
+      if (typeof g.brandLevel !== 'number' || !Number.isFinite(g.brandLevel) || g.brandLevel < 0) g.brandLevel = 0;
+      g.brandLevel = Math.floor(g.brandLevel);
     }
   };
 
   CHANGELOG = [
     { v: '0.11.12', date: '2026-08-16', codename: 'Neon Zero', notes: [
-      'BRAND ENDORSEMENTS (next-roadmap PR 1): the Renown sink becomes repeatable. The Perks panel gains a Brand Endorsement card under the Brand perks — +2% all cash per level, forever, at an escalating cost (15 × 1.35^level Renown). The five Brand perks max out after ~5 sales, but the endorsement never does: every franchise sale has a permanent spend target, so the sell loop keeps its reason to reset. Folds into the single totalCashMult composition point (passive AND clicks/whale/golden). Additive g.brandLevel (fail-closed integer ≥ 0, SAVE_VER stays 10), preserved by every reset exactly like brand ranks — ordinary prestige, challenge starts, and the franchise sale all snapshot/restore it. The pacing bot never buys it (buyAllMeta untouched), so every main-run band is bit-identical.'
+      'BRAND ENDORSEMENTS (next-roadmap PR 1): the Renown sink becomes repeatable. The Perks panel gains a Brand Endorsement card under the Brand perks — +2% all cash per level, forever, at an escalating cost (15 × 1.35^level Renown). The five Brand perks max out after ~5 sales, but the endorsement never does: every franchise sale has a permanent spend target, so the sell loop keeps its reason to reset. Folds into the single totalCashMult composition point (passive AND clicks/whale/golden). Additive g.brandLevel (fail-closed integer ≥ 0) preserved by every reset exactly like brand ranks — ordinary prestige, challenge starts, and the franchise sale all snapshot/restore it. SAVE_VER bumped to 11 with a no-clobber MIGRATIONS[10] (v10 saves default brandLevel to 0). The pacing bot never buys it (buyAllMeta untouched), so every main-run band is bit-identical.'
     ] },
     { v: '0.11.11', date: '2026-08-16', codename: 'Neon Zero', notes: [
       'ENDGAME HORIZON (REPLAY_ROADMAP.md §10): the Owner\'s List gains a "Vision — the long game" readout — a visible goal line of 3 clubs and $1e12 franchise net worth, with a blended progress bar (clubs leg + net-worth leg) and a ★ reached state. Purely a target + progress readout computed from existing state (clubs map + per-club cash): no new mechanic, no save-shape change (SAVE_VER stays 10), no economy coupling, zero pacing impact (render-time only).'
@@ -722,6 +730,10 @@ class Game {
   // Cost of the NEXT Brand Endorsement level (next-roadmap PR 1): the
   // escalating price that keeps the Renown sink meaningful past the five Brand
   // perks. Level 0→1 costs 15, then 20, 27, 37, 50... (15 × 1.35^level).
+  // Precision note: the formula exceeds Number.MAX_SAFE_INTEGER (~9e15) around
+  // level 140 — unreachable in practice (~2e16 sales at ~14 Renown each), so
+  // the "never needs a cap" claim holds well past any plausible play; the
+  // integer floor stays exact for every reachable level.
   endorsementCost(g) {
     return Math.floor(15 * Math.pow(1.35, this.brandLevel(g)));
   }
