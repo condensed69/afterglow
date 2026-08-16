@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.13', build: 226, channel: 'alpha', date: '2026-08-16', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.14', build: 227, channel: 'alpha', date: '2026-08-16', codename: 'Neon Zero' };
   SAVE_VER = 12;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -191,6 +191,9 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.11.14', date: '2026-08-16', codename: 'Neon Zero', notes: [
+      'META ACHIEVEMENTS (next-roadmap PR 3): the achievement catalog grows 38 → 48 with ten new achievements covering the post-sale meta. Franchise sales (franchise_1/5/10 checking renownTotal), Brand perks (brand_1, brand_max), the Rooftop club (rooftop_1, heli_1), challenge tiers (challenge_1, challenge_all), and Brand Endorsements (endorse_5) all reward Legacy only (no Clout). The milk multiplier ceiling expands from +34% to +44% (44 non-burst of 48 total). None of the new checks fire on the pacing bot\'s standard path (it never sells, opens rooftop, starts challenges, or owns brand), so pacing.mjs bands remain bit-identical. SAVE_VER stays 12 (achievements reuse the existing g.achievements array).'
+    ] },
     { v: '0.11.13', date: '2026-08-16', codename: 'Neon Zero', notes: [
       'CHALLENGE TIERS (next-roadmap PR 2): the four replay modifiers become a 12-run ladder. Each challenge now has 3 tiers that tighten the modifier (Tight Till II: empty till + all income ×0.85; III: ×0.7 — Slim Margins 0.5 → 0.4 → 0.3 — No Street Team and Lean Night lock an extra building per tier) and scale the permanent reward ×tier (+5% → +10% → +15% all cash, +1 → +2 → +3 Door Staff cap, +5% → +10% → +15% crew output). Tiers unlock sequentially (tier N+1 needs tier N done); completion records the tier in an additive g.challengeTiers map and the active run carries g.challengeTier, so a mid-challenge reload keeps the difficulty. The active tier modifier routes through the same challengeMod composition point (incomeMult → totalCashMult, locked → buyBuilding/autoBuyManagers/card). Prestige and challenge starts preserve completed tiers; the franchise sale re-locks challenges and wipes them (consistent with challengesDone). SAVE_VER bumped to 12 with a no-clobber MIGRATIONS[11]. The pacing bot never starts a challenge, so every main-run band is bit-identical.'
     ] },
@@ -739,7 +742,21 @@ class Game {
     { id: 'whale_1', name: 'Big Catch', desc: 'A whale patron spends big', check: g => (g.whalesCount || 0) >= 1, reward: { legacy: 1 }, burst: true },
     { id: 'whale_10', name: 'Whale Watcher', desc: '10 whale patrons', check: g => (g.whalesCount || 0) >= 10, reward: { legacy: 3 }, burst: true },
     { id: 'special_1', name: 'Surprise Hit', desc: 'Ride your first special shift', check: g => (g.specialsCount || 0) >= 1, reward: { legacy: 1 }, burst: true },
-    { id: 'special_5', name: 'Event Planner', desc: 'Ride 5 special shifts', check: g => (g.specialsCount || 0) >= 5, reward: { legacy: 2 }, burst: true }
+    { id: 'special_5', name: 'Event Planner', desc: 'Ride 5 special shifts', check: g => (g.specialsCount || 0) >= 5, reward: { legacy: 2 }, burst: true },
+    // Next-roadmap PR 3: Meta achievements — brand/rooftop/challenge/sale coverage
+    // All rewards are Legacy only (Legacy-not-Clout rule: deterministic account
+    // actions, but Legacy is the safe currency and credits both g.legacy and
+    // g.legacyTotal per the 0.9.5 accounting rule).
+    { id: 'franchise_1', name: 'First Sale', desc: 'Complete 1 franchise sale', check: g => (g.renownTotal || 0) >= 1, reward: { legacy: 2 } },
+    { id: 'franchise_5', name: 'Serial Entrepreneur', desc: 'Complete 5 franchise sales', check: g => (g.renownTotal || 0) >= 30, reward: { legacy: 5 } },
+    { id: 'franchise_10', name: 'Titan', desc: 'Complete 10 franchise sales', check: g => (g.renownTotal || 0) >= 60, reward: { legacy: 8 } },
+    { id: 'brand_1', name: 'Brand New', desc: 'Unlock any Brand perk', check: g => Object.values(g.brand || {}).some(r => r >= 1), reward: { legacy: 2 } },
+    { id: 'brand_max', name: 'Brand Portfolio', desc: 'Max all 5 Brand perks', check: g => (g.brand && Object.keys(g.brand).length >= 5 && Object.values(g.brand).every(r => r >= 3)), reward: { legacy: 5 } },
+    { id: 'rooftop_1', name: 'Penthouse', desc: 'Unlock the Rooftop club', check: g => !!g.clubs?.rooftop, reward: { legacy: 3 } },
+    { id: 'heli_1', name: 'Sky Hook', desc: 'Build a Helipad at the Rooftop', check: g => (g.clubs?.rooftop?.b?.heli || 0) >= 1, reward: { legacy: 3 } },
+    { id: 'challenge_1', name: 'Trailblazer', desc: 'Complete any challenge tier', check: g => (g.challengesDone || []).length >= 1, reward: { legacy: 2 } },
+    { id: 'challenge_all', name: 'Completionist', desc: 'Complete all 4 challenge tiers', check: g => (g.challengesDone || []).length >= 4, reward: { legacy: 4 } },
+    { id: 'endorse_5', name: 'Endorsed', desc: 'Reach Brand Endorsement level 5', check: g => (g.brandLevel || 0) >= 5, reward: { legacy: 3 } }
   ];
 
   // Current rank of a prestige perk (0 if missing/invalid).
@@ -962,8 +979,8 @@ class Game {
   // each adds +1% to all cash income (passive + active clicks), so the collection is a
   // real progression path, not a checklist. Counts UNIQUE ids (Set-deduped) and EXCLUDES
   // the 4 burst achievements (whale_1/whale_10/special_1/special_5 — driven by live-only
-  // counters), so the deterministic pacing bot sees a stable ceiling of 1.34x (34
-  // non-burst of 38 total). Applied everywhere via totalCashMult(g).
+  // counters), so the deterministic pacing bot sees a stable ceiling of 1.44x (44
+  // non-burst of 48 total). Applied everywhere via totalCashMult(g).
   achievementMult(g) {
     const owned = new Set(Array.isArray(g.achievements) ? g.achievements : []);
     const count = this.ACHIEVEMENTS.filter(a => !a.burst && owned.has(a.id)).length;

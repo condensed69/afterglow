@@ -335,9 +335,9 @@ test('achievementMult counts unique non-burst achievements (milk multiplier)', (
   const g = game.state.g;
   strictEqual(game.achievementMult(g), 1, '1.00x at 0 achievements');
   g.achievements = game.ACHIEVEMENTS.map(a => a.id);
-  ok(Math.abs(game.achievementMult(g) - 1.34) < 1e-9, '1.34x at all 38 (34 non-burst)');
+  ok(Math.abs(game.achievementMult(g) - 1.44) < 1e-9, '1.44x at all 48 (44 non-burst)');
   g.achievements = game.ACHIEVEMENTS.map(a => a.id).concat(['first_rail', 'first_rail']);
-  ok(Math.abs(game.achievementMult(g) - 1.34) < 1e-9, 'duplicate ids ignored');
+  ok(Math.abs(game.achievementMult(g) - 1.44) < 1e-9, 'duplicate ids ignored');
   g.achievements = ['whale_1', 'whale_10', 'special_1', 'special_5'];
   strictEqual(game.achievementMult(g), 1, 'burst achievements excluded');
 });
@@ -1059,11 +1059,11 @@ test('round_10 unlocks after 10 rounds', () => {
   ok(g.achievements.includes('round_10'), 'round_10 (Toast)');
 });
 
-test('achievement catalog is 38 entries with unique ids', () => {
+test('achievement catalog is 48 entries with unique ids', () => {
   const game = newGame();
   const ids = game.ACHIEVEMENTS.map(a => a.id);
-  strictEqual(ids.length, 38, 'catalog grew 23 → 38');
-  strictEqual(new Set(ids).size, 38, 'ids unique');
+  strictEqual(ids.length, 48, 'catalog grew 38 → 48 (meta pass)');
+  strictEqual(new Set(ids).size, 48, 'ids unique');
 });
 
 // ── 0.10.2 burst events (critic + golden ticket) ─────────────────────────────
@@ -5307,7 +5307,12 @@ function gateMetGame(game) {
   if (!g.clubs.annex) g.clubs.annex = game.freshClubState();
   g.legacyTotal = 105;
   g.prestiges = 15;
-  g.achievements = ['first_rail', 'prestige_1', 'prestige_5', 'legacy_50'];
+  g.achievements = ['first_rail', 'prestige_1', 'prestige_5', 'legacy_50',
+    'franchise_1', 'franchise_5', 'franchise_10',
+    'brand_1', 'brand_max',
+    'rooftop_1', 'heli_1',
+    'challenge_1', 'challenge_all',
+    'endorse_5'];
   return g;
 }
 

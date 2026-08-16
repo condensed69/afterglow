@@ -24,3 +24,7 @@ Max **every prestige perk**, hire **every manager**, and own **both rooms** — 
 ## Vision — the long game (0.11.11)
 
 The Owner's List (left panel) shows a **Vision** line under the active goal: **3 clubs · $1e12 net worth** with a blended progress bar. It is a readout only — the goal line of the whole game. Net worth is the combined cash of every room you own; unlock the Rooftop (Rooftop Lease brand perk) and keep building to close it out, then sell the franchise and do it again.
+
+## Achievements (0.11.14)
+
+The **Settings** modal lists all 48 achievements — complete the collection for a permanent +44% cash income boost (each non-burst achievement adds +1%). New meta achievements track franchise sales, Brand perks, the Rooftop club, challenge tiers, and Brand Endorsements.
