@@ -2538,7 +2538,7 @@ test('hireCrew caps WORKING crew, not total (off-shift crew do not block hiring)
 test('golden ticket resolves against its source club after a switch', () => {
   const game = newGame(20);
   const g = game.state.g;
-  const annex = game.freshClubState();
+  const annex = game.freshClubState('annex');
   annex.b.bar = 3; // annex patron cap 10 + 15 = 25
   g.clubs.annex = annex;
   g.clubs.main.b.bar = 1; // main patron cap 10 + 5 = 15
@@ -5429,6 +5429,163 @@ test('franchise modal handlers are bound and invocable (surface sweep safety)', 
   v.toggleFranchise();
   strictEqual(game.state.showFranchise, false, 'modal closed');
   strictEqual(game.state.franchiseArmed, false, 'arm reset on close');
+});
+
+// ── PR 7 — Renown unlocks: Brand perks + third club + location identity ──────
+
+test('BRAND_PERKS table is well-formed; LOCATION_EXTRAS cover all three clubs', () => {
+  const game = newGame();
+  ok(game.BRAND_PERKS.length >= 4, 'at least 4 brand perks');
+  const ids = new Set(game.BRAND_PERKS.map(p => p.id));
+  strictEqual(ids.size, game.BRAND_PERKS.length, 'unique brand perk ids');
+  for (const p of game.BRAND_PERKS) {
+    ok(typeof p.name === 'string' && p.name.length > 0, `${p.id} has a name`);
+    ok(typeof p.cost === 'number' && p.cost > 0, `${p.id} has a Renown cost`);
+    ok(typeof p.max === 'number' && p.max >= 1, `${p.id} has a max rank`);
+    if (p.req) ok(ids.has(p.req), `${p.id} req is a real brand perk id`);
+  }
+  // Every known club id has an extras entry (main/annex/rooftop), each with a
+  // building or upgrade carrying the full price fields (no NaN pricing).
+  for (const loc of ['main', 'annex', 'rooftop']) {
+    const extras = game.locationExtras(loc);
+    ok(extras.length >= 1, `${loc} has location extras`);
+    for (const x of extras) {
+      ok(x.kind === 'b' || x.kind === 'u', `${loc}.${x.id} has a kind`);
+      ok(typeof x.cost === 'number' && x.cost > 0, `${loc}.${x.id} has a cost`);
+      if (x.kind === 'b') ok(typeof x.growth === 'number' && x.growth > 1, `${loc}.${x.id} has growth`);
+    }
+  }
+});
+
+test('buyBrandPerk spends Renown, caps at max, respects reqs and shortage', () => {
+  const game = newGame();
+  const g = game.state.g;
+  g.renown = 20;
+  const nat = game.BRAND_PERKS.find(p => p.id === 'nationwide');
+  game.buyBrandPerk(nat);
+  strictEqual(g.brand.nationwide, 1, 'rank 1 after purchase');
+  strictEqual(g.renown, 15, '5 Renown spent');
+  game.buyBrandPerk(nat);
+  game.buyBrandPerk(nat);
+  strictEqual(g.brand.nationwide, 3, 'capped at max 3');
+  strictEqual(g.renown, 5, '3 × 5 Renown spent total');
+  game.buyBrandPerk(nat);
+  strictEqual(g.brand.nationwide, 3, 'no purchase at max');
+  // Short on Renown → no-op.
+  g.renown = 3;
+  const loyalty = game.BRAND_PERKS.find(p => p.id === 'loyalty');
+  game.buyBrandPerk(loyalty);
+  strictEqual(g.brand.loyalty, undefined, 'unaffordable rejected');
+  strictEqual(g.renown, 3, 'no spend when short');
+});
+
+test('brand perk effects are wired (nationwide/loyalty/rnd/offline)', () => {
+  const game = newGame();
+  const g = game.state.g;
+  // nationwide: +10% all cash per rank via totalCashMult.
+  const multBase = game.totalCashMult(g);
+  g.brand.nationwide = 2;
+  ok(Math.abs(game.totalCashMult(g) - multBase * 1.20) < 1e-9, 'nationwide ×1.20 at rank 2');
+  // loyalty: runs started after prestige carry the account's brand regulars
+  // (brand is restored BEFORE start perks in the reset path).
+  const game2 = newGame();
+  const g2 = game2.state.g;
+  g2.regulars = 30; g2.night = 10; g2.legacy = 100;
+  g2.brand.loyalty = 2;
+  g2.achievements = ['first_rail', 'prestige_1'];
+  game2.confirmPrestige();
+  strictEqual(game2.state.g.clubs.main.regulars, 2, 'loyalty seeds 2 regulars on the post-prestige run');
+  strictEqual(game2.state.g.brand.loyalty, 2, 'brand ranks survive ordinary prestige');
+  // rnd: research costs −10% per rank.
+  const loop = game.RESEARCH.find(d => d.id === 'loop');
+  strictEqual(game.researchCost(g, loop), 12, 'no rnd → full cost');
+  g.brand.rnd = 2;
+  strictEqual(game.researchCost(g, loop), 9, 'rnd rank 2 → 12 × 0.8 = 9');
+  // offline: catchUp accrues faster (two independent, identically-seeded games).
+  const g3game = newGame();
+  const g4game = newGame();
+  const g3 = g3game.state.g, g4 = g4game.state.g;
+  g3.brand.offline = 0;
+  g4.brand.offline = 2;
+  const c3 = g3game.club(g3); c3.b.bar = 1; c3.cash = 100;
+  const c4 = g4game.club(g4); c4.b.bar = 1; c4.cash = 100;
+  const before3 = c3.cash, before4 = c4.cash;
+  g3game.catchUp(g3, 600);
+  g4game.catchUp(g4, 600);
+  const gain3 = c3.cash - before3, gain4 = c4.cash - before4;
+  ok(gain4 > gain3 * 1.15 && gain4 < gain3 * 1.25, `offline rank 2 ≈ ×1.2 (${(gain4 / gain3).toFixed(2)})`);
+});
+
+test('rooftop unlock: brand perk gates the third club with its extras', () => {
+  const game = newGame();
+  const g = game.state.g;
+  strictEqual(game.canOpenRooftop(), false, 'no rooftop without the perk');
+  game.confirmOpenRooftop();
+  ok(!g.clubs.rooftop, 'no club created without the perk');
+  g.brand.rooftop = 1;
+  strictEqual(game.canOpenRooftop(), true, 'perk unlocks the gate');
+  game.confirmOpenRooftop();
+  ok(g.clubs.rooftop, 'rooftop club created');
+  strictEqual(g.clubs.rooftop.b.heli, 0, 'rooftop extras initialized (heli)');
+  strictEqual(g.clubs.rooftop.u.vista, false, 'rooftop extras initialized (vista)');
+  strictEqual(game.canOpenRooftop(), false, 'gate closes once opened');
+  // Club switcher sees three clubs.
+  const switcher = game.renderVals().clubSwitcher.map(s => s.id);
+  ok(switcher.includes('rooftop'), 'rooftop in the switcher');
+});
+
+test('freshClubState(loc) initializes that location\'s extras; sanitize backfills missing ones', () => {
+  const game = newGame();
+  const main = game.freshClubState('main');
+  strictEqual(main.b.pool, 0, 'main has the Neon Pool');
+  strictEqual(main.b.roofbar, undefined, 'main lacks annex extras');
+  const annex = game.freshClubState('annex');
+  strictEqual(annex.b.roofbar, 0, 'annex has the Rooftop Bar');
+  strictEqual(annex.u.skyline, false, 'annex has the Skyline upgrade');
+  const rooftop = game.freshClubState('rooftop');
+  strictEqual(rooftop.b.heli, 0, 'rooftop has the Helipad Lounge');
+  strictEqual(rooftop.u.vista, false, 'rooftop has the Panorama Deck');
+  // sanitize backfills extras for an existing save that lacks them.
+  const raw = { crew: 0, clubs: { annex: { cash: 20, hype: 0, buzz: 0, patrons: 0, regulars: 0, b: { bar: 1 }, u: {}, elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0 } }, activeClub: 'annex' };
+  game.sanitizeG(raw);
+  strictEqual(raw.clubs.annex.b.roofbar, 0, 'roofbar backfilled to 0');
+  strictEqual(raw.clubs.annex.u.skyline, false, 'skyline backfilled to false');
+});
+
+test('location extra buildings and upgrades affect rates/caps', () => {
+  const game = newGame();
+  const g = game.state.g;
+  const c = game.club(g);
+  c.patrons = 10;
+  const rNo = game.rates(g);
+  const capBase = game.caps(g).patrons;
+  c.b.pool = 1; c.b.roofbar = 2; c.b.heli = 1;
+  const r = game.rates(g);
+  strictEqual(game.caps(g).patrons, capBase + 1 * 6 + 2 * 8 + 1 * 12, 'extra buildings raise the patron cap');
+  // Cash from extras: 0.60 + 2×0.90 + 1.50 = 3.90, scaled by the same mults.
+  const base = game.cashIncomeMult(g) * game.achievementMult(g);
+  const expectedExtra = 3.90 * rNo.sm * base; // cashMult = twodrink(1)·hypeMult(1)·sm
+  ok(Math.abs((r.cash - rNo.cash) - expectedExtra) < 1e-6, 'extra cash income present');
+  // skyline: ×1.25 all cash in the annex.
+  const g2 = newGame();
+  g2.state.g.clubs.annex = g2.freshClubState('annex');
+  g2.state.g.activeClub = 'annex';
+  const a = g2.club(g2.state.g);
+  a.patrons = 10;
+  const rNoSky = g2.rates(g2.state.g);
+  a.u.skyline = true;
+  const rSky = g2.rates(g2.state.g);
+  ok(rSky.cash > rNoSky.cash * 1.24 && rSky.cash < rNoSky.cash * 1.26, 'skyline ×1.25 cash');
+  // vista: ×1.40 hype generation on the rooftop.
+  const g3 = newGame();
+  g3.state.g.clubs.rooftop = g3.freshClubState('rooftop');
+  g3.state.g.activeClub = 'rooftop';
+  const rt = g3.club(g3.state.g);
+  rt.b.dj = 1;
+  const hNo = g3.rates(g3.state.g).hype;
+  rt.u.vista = true;
+  const hVista = g3.rates(g3.state.g).hype;
+  ok(hVista > hNo * 1.39 && hVista < hNo * 1.41, 'vista ×1.40 hype');
 });
 
 console.log(`Results: ${passed} passed, ${skipped} skipped, ${failed} failed`);

@@ -333,12 +333,12 @@ Add a `renownRun()` scenario to `pacing.mjs` (in PR 8, or a minimal version here
 ## 12. Implementation checklist (ticked as PRs land)
 
 - [x] PR 1 — achievement multipliers + pacing re-baseline.
-- [ ] PR 2 — flavor layer (news ticker + named regulars).
-- [ ] PR 3 — deep research tree (tiers + prereqs + mechanic unlocks) + pacing re-baseline.
-- [ ] PR 4 — challenge runs (modifiers + permanent rewards).
-- [ ] PR 5 — upgradeable managers (levels).
+- [x] PR 2 — flavor layer (news ticker + named regulars).
+- [x] PR 3 — deep research tree (tiers + prereqs + mechanic unlocks) + pacing re-baseline.
+- [x] PR 4 — challenge runs (modifiers + permanent rewards).
+- [x] PR 5 — upgradeable managers (levels).
 - [x] PR 6 — second prestige layer (SAVE_VER 10, Renown, reset scope, gate). `renownRun()` landed ahead of PR 8 — the pacing guard now ships with the layer.
-- [ ] PR 7 — Brand perks + third club + location identity.
+- [x] PR 7 — Brand perks + third club + location identity. (`renownRun()` gained the §9 rooftop scenario — lease → open → extras verified live → third club plays; the full same-achievements control stays on PR 8.)
 - [ ] PR 8 — endgame horizon + `renownRun()` pacing guard.
 
 ---
@@ -348,3 +348,4 @@ Add a `renownRun()` scenario to `pacing.mjs` (in PR 8, or a minimal version here
 | Date | Note |
 |------|------|
 | 2026-08-15 | Initial design lock. Diagnoses the single-prestige dead-end; specs the second prestige layer ("Franchise Empire" → Renown, SAVE_VER 10) as the core, with 7 supporting PRs. Supersedes SECOND_LOCATION.md §11 "no location-specific buildings" (PR 7). |
+| 2026-08-15 | PR 7 shipped (0.11.10): BRAND_PERKS (Renown sink, 5 perks), the Rooftop third club, and LOCATION_EXTRAS per-location buildings/upgrades. renownRun() gained the §9 rooftop scenario; the §10 full guard (same-achievements control) remains on PR 8. |
