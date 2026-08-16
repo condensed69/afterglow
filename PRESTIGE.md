@@ -567,6 +567,17 @@ UI lives at the bottom of the Perks panel.
 - **Ending:** `endChallenge()` lifts the modifier without reward (mercy rule).
   Prestige also clears the active challenge (fresh() resets `g.challenge`);
   `challengesDone` survives prestige.
+- **Tiers (0.11.13, next-roadmap PR 2):** each challenge is a 3-tier ladder
+  (`CHALLENGES.tiers`, tier 1 = the table `mod`). Tiers tighten the modifier
+  (e.g. Tight Till II adds income ×0.85, III ×0.7) and scale the permanent
+  reward ×tier (`challengeBonus` reads the completed-tier map — +5% → +10% →
+  +15% all cash for Tight Till). Sequential gating: `startChallenge` offers
+  `highestDone + 1`; a completed challenge is only re-runnable at a higher
+  tier. State: `g.challengeTier` (active run's tier) + `g.challengeTiers`
+  (id → highest done) — additive, SAVE_VER 12 (`MIGRATIONS[11]`, with a
+  `challengesDone` → tier-1 backfill so pre-tier saves keep their rewards).
+  Prestige and challenge starts preserve earned tiers; the franchise sale
+  wipes them (challenges re-lock).
 
 Challenges are opt-in — the pacing bot never starts one, so the existing bands
 are untouched (`pacing.mjs` unchanged).

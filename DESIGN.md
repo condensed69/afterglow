@@ -392,7 +392,7 @@ Full locked design: **`REPLAY_ROADMAP.md` §8**; implementation: `renownGain`, `
 | `clout`, `r` → 0 / `{}`; `managers`, `managerPaused`, `managerLevels` → `{}` ×3 | `g.brand` — the PR 7 sink, the reason to sell again |
 | `crew` / `jobs`, `challengesDone` / `challenge`, `goals` / `clicks` / `rounds`, `whalesCount` / `specialsCount` / `golden` → fresh / 0 | |
 
-- **Save format (SAVE_VER 11, §13):** `fresh()` adds `renown: 0, renownTotal: 0, brand: {}` (SAVE_VER 10, `MIGRATIONS[9]`) and `brandLevel: 0` (SAVE_VER 11, `MIGRATIONS[10]`); each migration defaults missing/malformed values only (**no-clobber** — valid values pass through); `sanitizeG` fail-closes (non-numeric → 0, clamped ≥ 0; non-object `brand` → `{}`; fractional `brandLevel` floored); `completeImportedG` adds `renown` / `renownTotal` to the numeric list and defaults `brand` to `{}`; `isValidSavePayload` does not require them (migration fills them).
+- **Save format (SAVE_VER 12, §13):** `fresh()` adds `renown: 0, renownTotal: 0, brand: {}` (SAVE_VER 10, `MIGRATIONS[9]`), `brandLevel: 0` (SAVE_VER 11, `MIGRATIONS[10]`), and `challengeTier: 1, challengeTiers: {}` (SAVE_VER 12, `MIGRATIONS[11]`); each migration defaults missing/malformed values only (**no-clobber** — valid values pass through); `sanitizeG` fail-closes (non-numeric → 0, clamped ≥ 0; non-object `brand` → `{}`; fractional `brandLevel`/`challengeTier` floored; unknown `challengeTiers` ids dropped — with a `challengesDone` → tier-1 backfill); `completeImportedG` adds `renown` / `renownTotal` to the numeric list and defaults `brand` to `{}`; `isValidSavePayload` does not require them (migration fills them).
 - **UI (Perks panel):** after the first sale (`g.renownTotal > 0`) a **Renown** readout card ("`N spare · M lifetime`", meta "spent on Brand unlocks (coming)"); at the gate a distinct cyan **"Sell the franchise"** card previewing "+N Renown · a bigger reset than the franchise deal". The `showFranchise` modal previews "You keep Renown (X spare · Y lifetime) · achievements · Brand ranks" and "You reset **EVERYTHING else** — both clubs, Legacy, perks, research, Clout, managers, crew, challenges". Confirm is **two-click armed** (`state.franchiseArmed` — first click arms, second sells) and **disabled while `tabStale`** ("Reload to adopt fresh save before selling").
 - **Persist-before-replace:** the sale candidate is persisted with `localStorage.setItem` **first**; on throw → `saveState: 'franchise failed'` and the live state stays untouched (same rule as prestige above and import, §13.3).
 
@@ -567,9 +567,9 @@ renown, renownTotal,        // 0.11.9 Renown meta (second prestige layer)
 brand: { perkId: rank }     // 0.11.9 Brand-perk ranks (PR 7 spends Renown)
 ```
 
-Club-level run fields live under `g.clubs[<id>]`; account/shared fields stay top-level. `club(g)` reads/writes the active club (SECOND_LOCATION.md §5), so club fields must never be treated as top-level. Flat `g.cash`-style access exists only through the `wrapState` compat proxy (same shape on disk: `JSON.stringify` emits the real v11 layout).
+Club-level run fields live under `g.clubs[<id>]`; account/shared fields stay top-level. `club(g)` reads/writes the active club (SECOND_LOCATION.md §5), so club fields must never be treated as top-level. Flat `g.cash`-style access exists only through the `wrapState` compat proxy (same shape on disk: `JSON.stringify` emits the real v12 layout).
 
-Additive fields (`managerPaused`, the 0.10.1 counters `whalesCount` / `specialsCount`, and the 0.10.2 `golden` offer) default to 0/false/null when absent — not required by `isValidSavePayload`, so they never force a SAVE_VER bump on their own. The 0.11.9 Renown fields (`renown`, `renownTotal`, `brand`) are part of SAVE_VER 10 itself — `MIGRATIONS[9]` defaults them, `sanitizeG` / `completeImportedG` fail close on malformed values, and `isValidSavePayload` still does not require them (migration fills them). The 0.11.12 Brand Endorsement level (`brandLevel`) is part of SAVE_VER 11 — `MIGRATIONS[10]` defaults it, same fail-closed shape (the repo convention: a new persisted field bumps, even when additive — PR 6/PR 1 review precedent).
+Additive fields (`managerPaused`, the 0.10.1 counters `whalesCount` / `specialsCount`, and the 0.10.2 `golden` offer) default to 0/false/null when absent — not required by `isValidSavePayload`, so they never force a SAVE_VER bump on their own. The 0.11.9 Renown fields (`renown`, `renownTotal`, `brand`) are part of SAVE_VER 10 itself — `MIGRATIONS[9]` defaults them, `sanitizeG` / `completeImportedG` fail close on malformed values, and `isValidSavePayload` still does not require them (migration fills them). The 0.11.12 Brand Endorsement level (`brandLevel`) is part of SAVE_VER 11 — `MIGRATIONS[10]` defaults it, same fail-closed shape. The 0.11.13 challenge tier fields (`challengeTier`, `challengeTiers`) are part of SAVE_VER 12 — `MIGRATIONS[11]` defaults them and backfills tier 1 from `challengesDone` (the repo convention: a new persisted field bumps, even when additive — PR 6/PR 1 review precedent).
 
 ### 13.2 Paths
 
@@ -872,6 +872,41 @@ UI lives at the bottom of the Perks panel.
   and re-locks the annex, preserving account meta; `checkChallenge` runs inside
   `checkAchievements` and records completion; `endChallenge` lifts the modifier
   without reward; prestige clears the active challenge but keeps `challengesDone`.
+
+### 20.1 Challenge tiers (next-roadmap PR 2, 0.11.13)
+
+Each challenge is now a **3-tier ladder** — the four modifiers become 12
+replay runs. Tiers tighten the modifier and scale the permanent reward ×tier.
+
+| Challenge | Tier 1 | Tier 2 | Tier 3 |
+|-----------|--------|--------|--------|
+| Tight Till | $0 start | + all income ×0.85 | + all income ×0.7 |
+| Slim Margins | income ×0.5 | ×0.4 | ×0.3 |
+| No Street Team | Flyer Crew locked | + Marquee locked | + Door Staff locked |
+| Lean Night | Back Bar locked | + VIP Booths locked | + Tip Rails locked |
+
+- **Data:** `CHALLENGES` entries gain `tiers: [{ mod, desc }]` — `tiers[0]` is
+  tier 2, `tiers[1]` tier 3; tier 1 stays the table's `mod`. Mods are
+  self-contained per tier (a tier 2 mod repeats tier 1's constraints plus the
+  tighter one). `challengeTierMod(def, tier)` resolves them.
+- **Rewards scale ×tier:** `challengeBonus(g)` reads the completed-tier map —
+  `reward × tier` per challenge — so Tight Till tier 3 grants +15% all cash
+  (0.05 × 3), Slim Margins tier 3 +3 Door Staff cap, crew tiers +15% output.
+- **State:** `g.challengeTier` (the ACTIVE run's tier, 1–3 — persists across a
+  mid-challenge reload) + `g.challengeTiers` (map `id → highest tier done`).
+  Both additive, fail-closed in `sanitizeG`/`completeImportedG`. **SAVE_VER
+  bumped to 12** (`MIGRATIONS[11]` no-clobber; **backfill**: a challenge in
+  `challengesDone` without a tier record counts as tier 1, so pre-tier saves
+  keep their rewards).
+- **Sequential gating:** `startChallenge` starts `highestDone + 1` (1 when
+  fresh, capped at 3); a completed challenge can only be re-run at a HIGHER
+  tier. `challengeNextTier(g, def)` = 0 when maxed (card reads "Maxed").
+- **Lifecycle:** completing tier N records N in `challengeTiers` (and keeps
+  `challengesDone` for compat); prestige and challenge starts preserve earned
+  tiers; **the franchise sale wipes them** (challenges re-lock, consistent
+  with `challengesDone` §8.4). The active tier's modifier routes through the
+  same `challengeMod` composition point (incomeMult → `totalCashMult`,
+  locked → `buyBuilding`/`autoBuyManagers`/card).
 
 **Non-goals:** no Clout/Legacy rewards; no timed real-world challenges (all
 in-game-clock); challenges are opt-in, so the pacing bands are untouched.

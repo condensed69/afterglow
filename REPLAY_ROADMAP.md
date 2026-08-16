@@ -127,7 +127,7 @@ Applied to **all** cash income — passive (`rates()`), active clicks (`workCrow
 **Goal:** add replay modifiers with permanent rewards (AD's #1 replay hook).
 
 **Mechanic:**
-- Add `g.challenge` (active challenge id or `null`) and `g.challengesDone` (array of completed ids) — **additive fields**, no SAVE_VER bump (same pattern as `goals`/`clicks`/`managerPaused`).
+- Add `g.challenge` (active challenge id or `null`) and `g.challengesDone` (array of completed ids) — **additive fields**, no SAVE_VER bump (same pattern as `goals`/`clicks`/`managerPaused`). **(Superseded 0.11.13:** next-roadmap PR 2 turns challenges into a 3-tier ladder — `g.challengeTier` + `g.challengeTiers`, SAVE_VER 12 with `MIGRATIONS[11]` backfilling tier 1 from `challengesDone`; the original two fields stay additive.)
 - `CHALLENGES` data table, each entry `{ id, name, desc, mod, reward, check }` — `check(g)` is the completion predicate (e.g. reach N regulars, buy X building), evaluated against the same merged club view as achievements:
   - `mod` is a modifier applied to the run (e.g. `{ flyers: 'locked' }`, `{ incomeMult: 0.5 }`, `{ startCash: 0 }`). An `incomeMult` modifier must apply to **both** passive (`rates()`) and active (`workCrowd()`) cash — routing it through `rates()` alone leaves active clicking a bypass.
   - `reward` is a permanent account bonus granted on completion (e.g. `{ cashMult: +0.05 }`, `{ doorMax: +1 }`).
