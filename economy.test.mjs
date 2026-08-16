@@ -4633,7 +4633,7 @@ const ACCOUNT_FIELDS = [
   'goals', 'clicks', 'rounds',
   'whalesCount', 'specialsCount', 'golden',
   'challenge', 'challengesDone',
-  'renown', 'renownTotal', 'brand',
+  'renown', 'renownTotal', 'brand', 'brandLevel',
   'ts', 'log',
   'crew', 'jobs',
   'clubs', 'activeClub',
@@ -5558,6 +5558,125 @@ test('rooftop unlock: brand perk gates the third club with its extras', () => {
   // Club switcher sees three clubs.
   const switcher = game.renderVals().clubSwitcher.map(s => s.id);
   ok(switcher.includes('rooftop'), 'rooftop in the switcher');
+});
+
+test('buyBrandEndorsement spends Renown, escalates cost, respects shortage', () => {
+  const game = newGame();
+  const g = game.state.g;
+  strictEqual(game.brandLevel(g), 0, 'fresh account starts at level 0');
+  strictEqual(game.endorsementCost(g), 15, 'level 0→1 costs 15 Renown');
+  // Short on Renown → no-op.
+  g.renown = 14;
+  game.buyBrandEndorsement();
+  strictEqual(game.brandLevel(g), 0, 'no purchase when short');
+  strictEqual(g.renown, 14, 'no spend when short');
+  // Buy the first level.
+  g.renown = 15;
+  game.buyBrandEndorsement();
+  strictEqual(g.brandLevel, 1, 'level 1 after purchase');
+  strictEqual(g.renown, 0, '15 Renown spent');
+  strictEqual(game.endorsementCost(g), Math.floor(15 * 1.35), 'level 1→2 escalates to 20');
+  // Second level: cost 20.
+  g.renown = 20;
+  game.buyBrandEndorsement();
+  strictEqual(g.brandLevel, 2, 'level 2 after second purchase');
+  strictEqual(game.endorsementCost(g), Math.floor(15 * 1.35 * 1.35), 'level 2→3 escalates to 27');
+  // Missing brandLevel reads as 0 via the helper (fail-closed shape).
+  delete g.brandLevel;
+  strictEqual(game.brandLevel(g), 0, 'missing brandLevel reads 0');
+  strictEqual(game.endorsementCost(g), 15, 'missing brandLevel → cost resets to 15');
+});
+
+test('brand endorsement folds into totalCashMult (+2% all cash per level)', () => {
+  const game = newGame();
+  const g = game.state.g;
+  const multBase = game.totalCashMult(g);
+  g.brandLevel = 5;
+  ok(Math.abs(game.totalCashMult(g) - multBase * 1.10) < 1e-9, 'level 5 → ×1.10 totalCashMult');
+  g.brandLevel = 1;
+  ok(Math.abs(game.totalCashMult(g) - multBase * 1.02) < 1e-9, 'level 1 → ×1.02 totalCashMult');
+  // Passive rates() carries it too (the composition point feeds rates()).
+  const c = game.club(g);
+  c.b.bar = 1; c.patrons = 8;
+  g.brandLevel = 1;
+  const rHi = game.rates(g);
+  g.brandLevel = 0;
+  const rLo = game.rates(g);
+  ok(Math.abs(rHi.cash - rLo.cash * 1.02) < 1e-6, 'rates cash scales ×1.02 with level 1');
+});
+
+test('brandLevel survives every reset (prestige, challenge start, franchise sale)', () => {
+  // Ordinary prestige.
+  const game = newGame();
+  const g = game.state.g;
+  g.regulars = 30; g.night = 10; g.legacy = 100;
+  g.brandLevel = 4;
+  game.confirmPrestige();
+  strictEqual(game.state.g.brandLevel, 4, 'brandLevel survives ordinary prestige');
+  // Challenge start — the reset path that used to wipe brand entirely.
+  const game2 = newGame();
+  const g2 = game2.state.g;
+  g2.renown = 30;
+  g2.brandLevel = 2;
+  const tight = game2.CHALLENGES.find(c => c.id === 'tight');
+  game2.startChallenge(tight); // first click arms only
+  game2.startChallenge(tight); // confirm
+  strictEqual(game2.state.g.brandLevel, 2, 'brandLevel survives challenge start');
+  // Franchise sale — brandLevel is permanent like brand ranks.
+  const game3 = newGame(5000);
+  const g3 = gateMetGame(game3);
+  g3.brandLevel = 6;
+  g3.renown = 3;
+  const gain = game3.renownGain(g3);
+  game3.openFranchise();
+  game3.confirmFranchiseSale(); // arms
+  game3.confirmFranchiseSale(); // confirms
+  strictEqual(game3.state.g.brandLevel, 6, 'brandLevel survives the franchise sale');
+  strictEqual(game3.state.g.renown, 3 + gain, 'sale still grants its Renown');
+});
+
+test('sanitizeG/import fail-close malformed brandLevel (parity)', () => {
+  const game = newGame();
+  const g = game.state.g;
+  g.brandLevel = NaN;
+  game.sanitizeG(g);
+  strictEqual(g.brandLevel, 0, 'NaN → 0');
+  g.brandLevel = -3;
+  game.sanitizeG(g);
+  strictEqual(g.brandLevel, 0, 'negative → 0');
+  g.brandLevel = 2.7;
+  game.sanitizeG(g);
+  strictEqual(g.brandLevel, 2, 'fractional floored');
+  g.brandLevel = 'five';
+  game.sanitizeG(g);
+  strictEqual(g.brandLevel, 0, 'string → 0');
+  // Import path: completeImportedG normalizes identically (PR #77 parity nit).
+  const g2 = game.state.g;
+  g2.brandLevel = 3.9;
+  const raw = JSON.parse(JSON.stringify(g2));
+  raw.brandLevel = 3.9;
+  game.importSaveFromText(JSON.stringify({ saveVer: 10, g: raw }));
+  strictEqual(game.state.g.brandLevel, 3, 'imported brandLevel floored');
+});
+
+test('renderVals shows the Brand Endorsement card with live cost/meta', () => {
+  const game = newGame();
+  const g = game.state.g;
+  g.prestiges = 1; // unlock the Perks tab (metaUnlocked)
+  game.state.tab = 'perks';
+  const find = () => game.renderVals().cards.find(c => c.name === 'Brand Endorsement');
+  const c0 = find();
+  ok(c0, 'endorsement card renders');
+  strictEqual(c0.btn, '15 Renown', 'level 0 shows the 15-Renown button');
+  strictEqual(c0.meta, '15.0 Renown short', 'no Renown → short meta (fmt style, same as brand perks)');
+  // Buying updates the card's cost/owned through the live state. 35 Renown so
+  // the till still covers the next cost (15 spent, 20 left → next is ready).
+  g.renown = 35;
+  game.buyBrandEndorsement();
+  const c1 = find();
+  strictEqual(c1.owned, '1 level', 'owned shows level 1');
+  strictEqual(c1.btn, '20 Renown', 'next cost escalates to 20');
+  strictEqual(c1.meta, 'ready', 'enough Renown → ready');
 });
 
 test('renderVals().horizon: worth sums club cash; done needs BOTH legs (3 clubs + $1e12)', () => {

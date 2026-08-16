@@ -961,8 +961,33 @@ missing an extra id prices it as 0 owned — the NaN-price infinite loop in
 `buildingMaxAffordable`/`buyBuilding` (NaN < cash is false, so the buy loop
 never broke) is fixed by this.
 
+### 22.4 Brand Endorsement — the repeatable Renown sink (0.11.12)
+
+The five Brand perks are a finite sink (~58 Renown maxes them in ~5 sales).
+**Brand Endorsement** is the repeatable one: +2% all cash per level, forever,
+at an escalating cost — `endorsementCost(g) = floor(15 × 1.35^level)` (15, 20,
+27, 37, 50, 67…). Each sale's Renown always has a spend target, so the sell
+loop keeps its reason to reset; the 1.35 cost growth outpaces the linear +2%,
+so the sink never needs a cap.
+
+- Level lives in the account-level `g.brandLevel` (additive integer ≥ 0,
+  fail-closed in `sanitizeG`/`completeImportedG`, default 0 in `fresh()`).
+- The multiplier folds into `totalCashMult(g)` — passive AND
+  clicks/whale/golden — via `(1 + 0.02 × brandLevel(g))`.
+- **Persists through every reset, like brand ranks** (the PR #77 lesson:
+  every reset-style action carries its own snapshot list — `confirmPrestige`,
+  `startChallenge`, and `confirmFranchiseSale` all snapshot and restore
+  `brandLevel` alongside `brand`).
+- UI: a Brand Endorsement card under the five Brand perks in the Perks panel,
+  always visible — "N Renown short" is itself a goal line before the first
+  sale. Renders `owned` as `N levels`, button shows the next cost.
+- The pacing bot never buys it (`buyAllMeta` untouched), so every main-run
+  band stays bit-identical; `renownRun()` is unchanged.
+
 **Non-goals:** still max 3 clubs; no cross-club cash transfer; no per-club
-research; brand perks are Renown-only (no conversion from/to Clout/Legacy).
+research; brand perks and the endorsement are Renown-only (no conversion
+from/to Clout/Legacy — the endorsement is a permanent multiplier, never a
+Renown → cash exchange).
 
 ## 23. Endgame horizon (REPLAY_ROADMAP.md §10) — 0.11.11
 

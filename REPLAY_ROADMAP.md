@@ -279,7 +279,7 @@ Add a `renownRun()` scenario to `pacing.mjs` (in PR 8, or a minimal version here
 - No Renown → cash/Clout/Legacy conversion.
 - No auto-sell (manual only).
 - No per-club Renown.
-- Brand perks (PR 7) are the only Renown sink in v1.
+- Brand perks (PR 7) are the only Renown sink in v1. **(Superseded 0.11.12:** the repeatable Brand Endorsement — +2% all cash per level at `floor(15 × 1.35^level)` Renown — extends the sink past ~58 Renown; still no Renown → resource conversion, the endorsement is a permanent multiplier like Nationwide Reach.)
 
 ---
 

@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.11', build: 224, channel: 'alpha', date: '2026-08-16', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.12', build: 225, channel: 'alpha', date: '2026-08-16', codename: 'Neon Zero' };
   SAVE_VER = 10;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -167,6 +167,9 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.11.12', date: '2026-08-16', codename: 'Neon Zero', notes: [
+      'BRAND ENDORSEMENTS (next-roadmap PR 1): the Renown sink becomes repeatable. The Perks panel gains a Brand Endorsement card under the Brand perks — +2% all cash per level, forever, at an escalating cost (15 × 1.35^level Renown). The five Brand perks max out after ~5 sales, but the endorsement never does: every franchise sale has a permanent spend target, so the sell loop keeps its reason to reset. Folds into the single totalCashMult composition point (passive AND clicks/whale/golden). Additive g.brandLevel (fail-closed integer ≥ 0, SAVE_VER stays 10), preserved by every reset exactly like brand ranks — ordinary prestige, challenge starts, and the franchise sale all snapshot/restore it. The pacing bot never buys it (buyAllMeta untouched), so every main-run band is bit-identical.'
+    ] },
     { v: '0.11.11', date: '2026-08-16', codename: 'Neon Zero', notes: [
       'ENDGAME HORIZON (REPLAY_ROADMAP.md §10): the Owner\'s List gains a "Vision — the long game" readout — a visible goal line of 3 clubs and $1e12 franchise net worth, with a blended progress bar (clubs leg + net-worth leg) and a ★ reached state. Purely a target + progress readout computed from existing state (clubs map + per-club cash): no new mechanic, no save-shape change (SAVE_VER stays 10), no economy coupling, zero pacing impact (render-time only).'
     ] },
@@ -707,6 +710,22 @@ class Game {
     return typeof b === 'number' && b > 0 ? b : 0;
   }
 
+  // Current Brand Endorsement level (0 if missing/invalid) — g.brandLevel, the
+  // repeatable Renown sink (next-roadmap PR 1). Unlike brandRank there is no
+  // max: the cost escalates 15 × 1.35^level, so the sink never exhausts — each
+  // level stays a flat +2% all cash while the price outgrows the income.
+  brandLevel(g) {
+    const n = g && g.brandLevel;
+    return typeof n === 'number' && Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  }
+
+  // Cost of the NEXT Brand Endorsement level (next-roadmap PR 1): the
+  // escalating price that keeps the Renown sink meaningful past the five Brand
+  // perks. Level 0→1 costs 15, then 20, 27, 37, 50... (15 × 1.35^level).
+  endorsementCost(g) {
+    return Math.floor(15 * Math.pow(1.35, this.brandLevel(g)));
+  }
+
   // Location-specific content for a club id (REPLAY_ROADMAP.md §9): the extras
   // array, its buildings, or its upgrades. Empty for unknown ids — the shared
   // catalog still applies everywhere.
@@ -882,8 +901,10 @@ class Game {
     const mod = this.challengeMod(g);
     const incomeMod = typeof mod.incomeMult === 'number' ? mod.incomeMult : 1;
     // Nationwide Reach brand perk (REPLAY_ROADMAP.md §9): +10% all cash per rank.
+    // Brand Endorsement (next-roadmap PR 1): +2% all cash per level, repeatable.
     return this.cashIncomeMult(g) * this.achievementMult(g) * (g.r.brand ? 1.10 : 1)
-      * (1 + this.challengeBonus(g).cashMult) * (1 + 0.10 * this.brandRank(g, 'nationwide')) * incomeMod;
+      * (1 + this.challengeBonus(g).cashMult) * (1 + 0.10 * this.brandRank(g, 'nationwide'))
+      * (1 + 0.02 * this.brandLevel(g)) * incomeMod;
   }
 
   // Featured regular name — derived from the active club's regulars count
@@ -1191,7 +1212,11 @@ class Game {
       // Second prestige layer (PR 6, SAVE_VER 10) — Renown meta-currency,
       // earned only by selling the franchise (REPLAY_ROADMAP.md §8). Never
       // wipes; brand is the Brand-perk rank map (PR 7 spends Renown there).
-      renown: 0, renownTotal: 0, brand: {}
+      renown: 0, renownTotal: 0, brand: {},
+      // Brand Endorsement level (next-roadmap PR 1) — the repeatable Renown
+      // sink: +2% all cash per level, cost escalates 15 × 1.35^level. Additive;
+      // persists through every reset like brand ranks.
+      brandLevel: 0
     };
     this.applyStartPerks(g);
     return g;
@@ -1390,6 +1415,11 @@ class Game {
       brandNext[def.id] = (typeof r === 'number' && Number.isFinite(r) && r >= 0) ? Math.min(def.max, Math.floor(r)) : 0;
     }
     g.brand = brandNext;
+    // Brand Endorsement level (next-roadmap PR 1) — additive repeatable sink:
+    // integer ≥ 0, fail-closed (a NaN/fractional level would poison the
+    // endorsementCost exponent and the renderVals readout).
+    if (typeof g.brandLevel !== 'number' || !Number.isFinite(g.brandLevel) || g.brandLevel < 0) g.brandLevel = 0;
+    g.brandLevel = Math.floor(g.brandLevel);
     return g;
   }
 
@@ -1630,6 +1660,11 @@ class Game {
       brandNext[def.id] = (typeof r === 'number' && Number.isFinite(r) && r >= 0) ? Math.min(def.max, Math.floor(r)) : 0;
     }
     g.brand = brandNext;
+
+    // Brand Endorsement level (next-roadmap PR 1) — parity with sanitizeG:
+    // integer ≥ 0, fail-closed.
+    if (typeof g.brandLevel !== 'number' || !Number.isFinite(g.brandLevel) || g.brandLevel < 0) g.brandLevel = 0;
+    g.brandLevel = Math.floor(g.brandLevel);
 
     if (!Array.isArray(g.log)) g.log = [];
     // Keep raw validated t/msg (length-capped) so export→import is idempotent.
@@ -2818,7 +2853,8 @@ class Game {
       managers: {},
       managerPaused: {},
       managerLevels: {},
-      brand: {}
+      brand: {},
+      brandLevel: this.brandLevel(g)
     };
     for (const def of this.PRESTIGE_PERKS) snapshot.perks[def.id] = this.perk(g, def.id);
     for (const def of this.MANAGERS) snapshot.managers[def.id] = g.managers && g.managers[def.id] === true;
@@ -2868,6 +2904,9 @@ class Game {
     // Brand ranks (PR 7) survive ordinary prestige — restore BEFORE start perks
     // so loyalty (fresh-regulars) applies to the new run.
     next.brand = snapshot.brand;
+    // Brand Endorsement level (next-roadmap PR 1) survives too — the repeatable
+    // Renown sink is account meta, same class as the ranks.
+    next.brandLevel = snapshot.brandLevel;
     this.applyStartPerks(next);
     // Start-perk state can satisfy building achievements.
     this.checkAchievements(next);
@@ -2922,7 +2961,8 @@ class Game {
       renown: (g.renown || 0),
       renownTotal: (g.renownTotal || 0),
       achievements: Array.isArray(g.achievements) ? g.achievements.slice() : [],
-      brand: (g.brand && typeof g.brand === 'object' && !Array.isArray(g.brand)) ? { ...g.brand } : {}
+      brand: (g.brand && typeof g.brand === 'object' && !Array.isArray(g.brand)) ? { ...g.brand } : {},
+      brandLevel: this.brandLevel(g)
     };
 
     // Build the post-sale candidate from fresh() defaults — wipes both clubs
@@ -2933,6 +2973,9 @@ class Game {
     next.renownTotal = snapshot.renownTotal + gain;
     next.achievements = snapshot.achievements;
     next.brand = snapshot.brand;
+    // Brand Endorsement level (next-roadmap PR 1) — permanent like brand ranks:
+    // the repeatable Renown sink is the reason the NEXT sale has a spend.
+    next.brandLevel = snapshot.brandLevel;
     this.applyStartPerks(next);
     // Start-perk state can satisfy building achievements (parity with prestige).
     this.checkAchievements(next);
@@ -2968,6 +3011,22 @@ class Game {
     if (!g.brand || typeof g.brand !== 'object' || Array.isArray(g.brand)) g.brand = {};
     g.brand[def.id] = rank + 1;
     this.push(g, 'Brand perk: ' + def.name + ' rank ' + (rank + 1) + '/' + def.max + '.', '#d4af37');
+    this.checkAchievements(g);
+    this.forceUpdate();
+  }
+  // Buy a Brand Endorsement (next-roadmap PR 1) with Renown — the repeatable
+  // sink that keeps the sell loop meaningful after the five Brand perks max
+  // out. +2% all cash per level; the cost escalates 15 × 1.35^level so the
+  // sink is never exhausted, only steeper. Persists through every reset
+  // (prestige, challenge start, franchise sale) like brand ranks.
+  buyBrandEndorsement() {
+    if (this.state.tabStale) return;
+    const g = this.state.g;
+    const cost = this.endorsementCost(g);
+    if ((g.renown || 0) < cost) return;
+    g.renown -= cost;
+    g.brandLevel = this.brandLevel(g) + 1;
+    this.push(g, 'Brand endorsement #' + g.brandLevel + ': +2% all cash. The name travels.', '#d4af37');
     this.checkAchievements(g);
     this.forceUpdate();
   }
@@ -3021,7 +3080,7 @@ class Game {
     const snapshot = {
       legacy: (g.legacy || 0), legacyTotal: (g.legacyTotal || 0),
       perks: {}, prestiges: (g.prestiges || 0), managers: {}, managerPaused: {}, managerLevels: {},
-      brand: {}
+      brand: {}, brandLevel: this.brandLevel(g)
     };
     for (const p of this.PRESTIGE_PERKS) snapshot.perks[p.id] = this.perk(g, p.id);
     for (const m of this.MANAGERS) {
@@ -3049,6 +3108,9 @@ class Game {
     // Brand ranks (PR 7) survive challenge starts too — restore BEFORE start
     // perks so loyalty (fresh-regulars) seeds the challenge run.
     next.brand = snapshot.brand;
+    // Brand Endorsement level (next-roadmap PR 1) — same class as the ranks:
+    // the repeatable Renown sink must not wipe on a challenge start either.
+    next.brandLevel = snapshot.brandLevel;
     // Modifier startCash overrides the default starting till.
     const mod = def.mod || {};
     if (typeof mod.startCash === 'number') next.clubs.main.cash = mod.startCash;
@@ -3465,6 +3527,21 @@ class Game {
           reqLocked: !reqMet,
           reqName: reqDef ? reqDef.name : (d.req || ''),
           locked: !ok, wrapStyle: cardWrap(!maxed && reqMet), btnStyle: btn(ok, '#d4af37'), act: () => this.buyBrandPerk(d) };
+      });
+      // Brand Endorsement (next-roadmap PR 1) — the repeatable Renown sink:
+      // +2% all cash per level, cost escalates 15 × 1.35^level. Renders under
+      // the five Brand perks; always visible, so the next endorsement is a
+      // goal line even before the first sale ("15 Renown short").
+      const bl = this.brandLevel(g);
+      const ec = this.endorsementCost(g);
+      const eok = (g.renown || 0) >= ec;
+      brandCards.push({
+        name: 'Brand Endorsement', desc: 'All cash income +2% per level, forever.',
+        owned: bl > 0 ? bl + ' level' + (bl === 1 ? '' : 's') : '—',
+        btn: ec + ' Renown',
+        meta: eok ? 'ready' : this.fmt(ec - (g.renown || 0)) + ' Renown short',
+        locked: !eok, wrapStyle: cardWrap(true), btnStyle: btn(eok, '#d4af37'),
+        act: () => this.buyBrandEndorsement()
       });
       // Rooftop Lease bought → the third location can be opened.
       if (this.canOpenRooftop()) {
