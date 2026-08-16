@@ -5342,6 +5342,23 @@ test('franchise sale no-ops below the gate (gate is an action invariant)', () =>
   strictEqual(g.clubs.annex, undefined, 'no club created by a failed sale');
 });
 
+test('franchise sale without the modal open is a no-op even at the gate', () => {
+  const game = newGame();
+  const g = game.state.g;
+  // Meet the gate (all perks max, all managers hired, both clubs owned).
+  game.PRESTIGE_PERKS.forEach(p => { g.perks[p.id] = p.max; });
+  game.MANAGERS.forEach(m => { g.managers[m.id] = true; });
+  g.clubs.annex = { ...g.clubs.main };
+  g.renown = 1;
+  g.legacyTotal = 121; g.prestiges = 6;
+  strictEqual(game.franchiseGate(g), true, 'gate met');
+  // No openFranchise() — the modal is closed, so the sale must not arm or run.
+  game.confirmFranchiseSale();
+  strictEqual(game.state.franchiseArmed, false, 'no arm without the modal');
+  strictEqual(game.state.g, g, 'live state untouched');
+  strictEqual(g.renown, 1, 'renown unchanged');
+});
+
 test('franchise sale is persist-before-replace: setItem throw leaves live state intact', () => {
   const game = newGame(5000);
   const g = gateMetGame(game);

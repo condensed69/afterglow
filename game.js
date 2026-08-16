@@ -2773,6 +2773,10 @@ class Game {
   }
   confirmFranchiseSale() {
     if (this.state.tabStale) return;
+    // Defensive: the sale is only reachable from the open modal (card button
+    // opens it; closing disarms). Guards against future call paths selling
+    // without the player ever seeing the reset-scope preview.
+    if (!this.state.showFranchise) return;
     const g = this.state.g;
     if (!this.franchiseGate(g)) return;
     if (!this.state.franchiseArmed) {
