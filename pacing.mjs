@@ -300,6 +300,36 @@ function botSecond(game) {
   buyRoundIfWanted(game);
 }
 
+/**
+ * Buy every affordable meta item in deterministic catalog order — perks by
+ * PRESTIGE_PERKS order (requirement-aware), then managers by MANAGERS order —
+ * looping until nothing more is affordable. Used by renownRun() after each
+ * prestige to drive the account toward the franchise gate (all perks maxed +
+ * all managers hired). Determinism: no random draws, fixed iteration order.
+ */
+function buyAllMeta(game) {
+  const g = game.state.g;
+  let bought = true;
+  while (bought) {
+    bought = false;
+    for (const d of game.PRESTIGE_PERKS) {
+      const rank = game.perk(g, d.id);
+      if (rank >= d.max) continue;
+      const reqMet = !d.req || game.perk(g, d.req) >= 1;
+      if (reqMet && g.legacy >= d.cost) {
+        game.buyPerk(d);
+        bought = true;
+      }
+    }
+    for (const m of game.MANAGERS) {
+      if (!g.managers[m.id] && g.legacy >= m.cost) {
+        game.buyManager(m);
+        bought = true;
+      }
+    }
+  }
+}
+
 function newGame() {
   const game = new Game(root);
   game.forceUpdate = () => {};
@@ -607,10 +637,129 @@ function secondRoomRun() {
   console.log('\n✅ Second-room scenario passed: annex first LED is faster.\n');
 }
 
+/**
+ * Renown scenario (REPLAY_ROADMAP.md §8). Honest end-to-end: the bot prestige-
+ * loops (each cycle: play main to the prestige gate, prestige, buy every
+ * affordable perk/manager in order, unlock the annex once a manager exists)
+ * until the franchise gate opens — all perks maxed, all managers hired, both
+ * clubs owned — then sells and verifies the post-sale state.
+ *
+ * Reference run: gate at ~336 min sim / 13 cycles, renownGain ≈ 15. Band is
+ * deliberately wide (2h–8h): it must catch a SLOWDOWN that pushes the gate past
+ * the 8h sim cap, not punish a future balance change that makes the journey
+ * shorter (a faster gate is a pacing improvement).
+ */
+function renownRun() {
+  const totalSec = SIM_HOURS * 3600;
+
+  console.log(`
+=== Renown scenario (REPLAY_ROADMAP.md §8) ===
+`);
+
+  const game = newGame();
+  let cycles = 0;
+  const { g, wall: gateAt } = simulate(game, (cur) => {
+    // Unlock the annex as soon as a manager exists (second-room gate: prestiges
+    // >= 1 AND at least one manager). The franchise gate requires BOTH clubs.
+    if (cur.prestiges >= 1 && !cur.clubs.annex &&
+        Object.values(cur.managers || {}).some(Boolean)) {
+      game.confirmOpenRoom();
+    }
+    // Prestige at the standard gate, then buy all affordable meta.
+    if ((cur.regulars || 0) >= 25 && (cur.night || 0) >= 10) {
+      cycles++;
+      game.confirmPrestige();
+      buyAllMeta(game);
+    }
+    return game.franchiseGate(game.state.g);
+  }, totalSec, { stopOnMilestones: false });
+
+  console.log(`  gate at:      ${fmtMin(gateAt)} sim, ${cycles} prestige cycles (need < ${fmtMin(totalSec)} cap)`);
+  console.log(`  legacyTotal:  ${g.legacyTotal.toFixed(1)}`);
+  console.log(`  perks maxed:  ${game.PRESTIGE_PERKS.every((p) => game.perk(g, p.id) >= p.max)}`);
+  console.log(`  managers:     ${game.MANAGERS.filter((m) => g.managers[m.id]).length}/${game.MANAGERS.length} hired`);
+  console.log(`  renownGain:   +${game.renownGain(g).toFixed(0)} Renown on sale`);
+
+  if (!game.franchiseGate(g)) {
+    console.log(`
+❌ Renown scenario failed: franchise gate not reached within the ${fmtMin(totalSec)} cap.
+`);
+    process.exit(1);
+  }
+  if (gateAt < 2 * 3600 || gateAt >= 8 * 3600) {
+    console.log(`
+❌ Renown scenario failed: gate at ${fmtMin(gateAt)} is outside the 2h–8h band.
+`);
+    process.exit(1);
+  }
+  const gain = game.renownGain(g);
+  if (gain < 10) {
+    console.log(`
+❌ Renown scenario failed: sale yields only ${gain} Renown (< 10 — the layer is token).
+`);
+    process.exit(1);
+  }
+
+  // Sell: two-click armed, then verify the §8.4 reset matrix.
+  game.openFranchise();
+  game.confirmFranchiseSale(); // arms
+  if (!game.state.franchiseArmed) {
+    console.log(`
+❌ Renown scenario failed: sale did not arm on first click.
+`);
+    process.exit(1);
+  }
+  game.confirmFranchiseSale(); // sells
+  const a = game.state.g;
+  if (game.state.saveState !== 'franchise sold') {
+    console.log(`
+❌ Renown scenario failed: sale did not complete (saveState=${game.state.saveState}).
+`);
+    process.exit(1);
+  }
+  if (a.renown !== gain || a.renownTotal !== gain) {
+    console.log(`
+❌ Renown scenario failed: renown=${a.renown} renownTotal=${a.renownTotal}, expected ${gain} each.
+`);
+    process.exit(1);
+  }
+  if (Object.keys(a.clubs).join(',') !== 'main' || a.activeClub !== 'main') {
+    console.log(`
+❌ Renown scenario failed: clubs=${Object.keys(a.clubs).join(',')} activeClub=${a.activeClub} — annex must re-lock.
+`);
+    process.exit(1);
+  }
+  if (a.prestiges !== 0 || a.legacy !== 0 || a.legacyTotal !== 0) {
+    console.log(`
+❌ Renown scenario failed: prestige state not wiped (prestiges=${a.prestiges} legacy=${a.legacy} legacyTotal=${a.legacyTotal}).
+`);
+    process.exit(1);
+  }
+  if (!game.PRESTIGE_PERKS.every((p) => a.perks[p.id] === 0) ||
+      !game.MANAGERS.every((m) => !a.managers[m.id])) {
+    console.log(`
+❌ Renown scenario failed: perks/managers not wiped by the sale.
+`);
+    process.exit(1);
+  }
+  if (!Array.isArray(a.achievements) || !a.achievements.includes('prestige_1')) {
+    console.log(`
+❌ Renown scenario failed: achievements not preserved by the sale.
+`);
+    process.exit(1);
+  }
+
+  console.log(`
+✅ Renown scenario passed: franchise sold at ${fmtMin(gateAt)} for +${gain} Renown; ` +
+    `${a.achievements.length} achievements kept, annex re-locked.
+`);
+}
+
 run();
 prestigeRun();
 secondRoomRun();
-// Force exit on success: confirmPrestige() starts an autosave setInterval that
-// keeps the event loop alive. On the pre-existing failure path process.exit(1)
-// is called; on the success path node otherwise hangs indefinitely.
+renownRun();
+// Force exit on success: confirmPrestige()/the franchise sale start an autosave
+// setInterval that keeps the event loop alive. On the pre-existing failure path
+// process.exit(1) is called; on the success path node otherwise hangs.
 process.exit(0);

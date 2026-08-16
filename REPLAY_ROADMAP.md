@@ -332,12 +332,12 @@ Add a `renownRun()` scenario to `pacing.mjs` (in PR 8, or a minimal version here
 
 ## 12. Implementation checklist (ticked as PRs land)
 
-- [ ] PR 1 — achievement multipliers + pacing re-baseline.
+- [x] PR 1 — achievement multipliers + pacing re-baseline.
 - [ ] PR 2 — flavor layer (news ticker + named regulars).
 - [ ] PR 3 — deep research tree (tiers + prereqs + mechanic unlocks) + pacing re-baseline.
 - [ ] PR 4 — challenge runs (modifiers + permanent rewards).
 - [ ] PR 5 — upgradeable managers (levels).
-- [ ] PR 6 — second prestige layer (SAVE_VER 10, Renown, reset scope, gate).
+- [x] PR 6 — second prestige layer (SAVE_VER 10, Renown, reset scope, gate). `renownRun()` landed ahead of PR 8 — the pacing guard now ships with the layer.
 - [ ] PR 7 — Brand perks + third club + location identity.
 - [ ] PR 8 — endgame horizon + `renownRun()` pacing guard.
 

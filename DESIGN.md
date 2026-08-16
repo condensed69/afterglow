@@ -1,7 +1,7 @@
 # DESIGN.md — Afterglow Club Idle
 
 **Game:** Afterglow Club Idle (repo: stripper-dance)  
-**Spec target:** post-workstreams A–D and post-0.9.x systems — file save, Owner's List, balance + `pacing.mjs`, prestige, achievements, managers, special shifts, whales, multi-tab ownership, second-location save shape (`game.js` v0.11.0, SAVE_VER 9)  
+**Spec target:** post-workstreams A–D and post-0.9.x systems — file save, Owner's List, balance + `pacing.mjs`, prestige, achievements, managers, special shifts, whales, multi-tab ownership, second-location save shape (`game.js` v0.11.0, SAVE_VER 9) and the second prestige layer (Renown — 0.11.9, SAVE_VER 10)  
 **Source of truth for numbers:** `game.js` (`caps()`, `rates()`, constant tables) — re-diff this file when those change  
 **Related:** `PRESTIGE.md` (prestige deep design, shipped 0.8.0), `PLAN.md` (logic-fix predecessor, shipped), `AGENTS.md` (repo gates). Workstream sequencing lived in a local orchestrator plan (not published in the repo tree).  
 **Ancestry:** this branch stacks A (file save) → B (Owner's List) → C (`pacing.mjs` + balance) → D (`PRESTIGE.md`) → 0.7.x stage work → 0.8.x prestige/achievements/whale → 0.9.x managers/special shifts/perk tree → 0.9.5 legacyTotal fix, so every claim below is present in-tree.
@@ -376,6 +376,26 @@ Legacy cost, max rank. `req: perkId` gates purchase on the prerequisite perk's r
 | doorPlus | Extra bouncer slot | 5 | 1 | startCrew | +1 max Door Staff |
 | clout25 | Name recognition | 6 | 1 | offline65 | +25% Clout gain |
 
+### 9.2 Second prestige layer — Franchise → Renown (shipped 0.11.9)
+
+Full locked design: **`REPLAY_ROADMAP.md` §8**; implementation: `renownGain`, `franchiseGate`, `openFranchise` / `confirmFranchiseSale`.
+
+- **Fantasy:** once every prestige perk is maxed and both clubs are built out, a national conglomerate buys your whole operation — **sell the franchise**, reset *everything*, and keep **Renown**, a permanent meta-currency measuring the brand's national footprint (spent on Brand perks, PR 7).
+- **Gate (account-level — `franchiseGate(g)`):** every `PRESTIGE_PERKS` perk at max rank (`perk(g, p.id) >= p.max`) **and** every `MANAGERS` entry hired **and** `g.clubs` has own keys `'main'` **and** `'annex'` (own-property lookup). Evaluated on the account, not the active club — the second prestige is "you've exhausted the first layer and proven the multi-club model."
+- **Renown formula:** `renownGain(g) = Math.floor(Math.sqrt(g.legacyTotal || 0) + (g.prestiges || 0) / 3)` — mirrors `legacyGain` (sqrt of **lifetime** Legacy + linear prestige term). ~105 lifetime Legacy + ~15 prestiges → ~15 Renown on the first sale.
+- **Reset scope (`confirmFranchiseSale`):** wipes vs persists —
+
+| Wipes | Persists |
+|-------|----------|
+| `g.clubs` → `{ main: freshClubState() }`; `activeClub` → `'main'` (annex re-locks) | `g.renown` / `g.renownTotal` (+= gain) |
+| `legacy`, `legacyTotal`, `perks`, `prestiges` → 0 / 0 / `{}` / 0 | `g.achievements` |
+| `clout`, `r` → 0 / `{}`; `managers`, `managerPaused`, `managerLevels` → `{}` ×3 | `g.brand` — the PR 7 sink, the reason to sell again |
+| `crew` / `jobs`, `challengesDone` / `challenge`, `goals` / `clicks` / `rounds`, `whalesCount` / `specialsCount` / `golden` → fresh / 0 | |
+
+- **Save format (SAVE_VER 10, §13):** `fresh()` adds `renown: 0, renownTotal: 0, brand: {}`; `MIGRATIONS[9]` defaults missing/malformed values only (**no-clobber** — valid values pass through); `sanitizeG` fail-closes (non-numeric → 0, clamped ≥ 0; non-object `brand` → `{}`); `completeImportedG` adds `renown` / `renownTotal` to the numeric list and defaults `brand` to `{}`; `isValidSavePayload` does not require them (migration fills them).
+- **UI (Perks panel):** after the first sale (`g.renownTotal > 0`) a **Renown** readout card ("`N spare · M lifetime`", meta "spent on Brand unlocks (coming)"); at the gate a distinct cyan **"Sell the franchise"** card previewing "+N Renown · a bigger reset than the franchise deal". The `showFranchise` modal previews "You keep Renown (X spare · Y lifetime) · achievements · Brand ranks" and "You reset **EVERYTHING else** — both clubs, Legacy, perks, research, Clout, managers, crew, challenges". Confirm is **two-click armed** (`state.franchiseArmed` — first click arms, second sells) and **disabled while `tabStale`** ("Reload to adopt fresh save before selling").
+- **Persist-before-replace:** the sale candidate is persisted with `localStorage.setItem` **first**; on throw → `saveState: 'franchise failed'` and the live state stays untouched (same rule as prestige above and import, §13.3).
+
 ---
 
 ## 10. Managers (`MANAGERS`) — shipped 0.9.0
@@ -517,12 +537,12 @@ Achievements live in the Settings modal. Backfill on load credits already-earned
 | Field | Value |
 |-------|--------|
 | localStorage key | `afterglow.save` |
-| SAVE_VER | **9** |
+| SAVE_VER | **10** |
 | Envelope | `{ saveVer, ver, build, g }` |
 | Autosave | every 10 s (`save('auto')`) |
 | Manual | Settings → Save now |
 
-### 13.1 `g` shape (v9)
+### 13.1 `g` shape (v10 — renown layer 0.11.9)
 
 ```
 clubs: {
@@ -542,12 +562,14 @@ legacy, legacyTotal, perks: { id: rank }, prestiges,
 achievements[],
 whalesCount, specialsCount,  // 0.10.1 burst-event counters (additive)
 golden,                      // 0.10.2 golden-ticket offer (additive UI state: { at } | null)
-managers: { id: bool }, managerPaused: { id: bool }
+managers: { id: bool }, managerPaused: { id: bool },
+renown, renownTotal,        // 0.11.9 Renown meta (second prestige layer)
+brand: { perkId: rank }     // 0.11.9 Brand-perk ranks (PR 7 spends Renown)
 ```
 
-Club-level run fields live under `g.clubs[<id>]`; account/shared fields stay top-level. `club(g)` reads/writes the active club (SECOND_LOCATION.md §5), so club fields must never be treated as top-level. Flat `g.cash`-style access exists only through the `wrapState` compat proxy (same shape on disk: `JSON.stringify` emits the real v9 layout).
+Club-level run fields live under `g.clubs[<id>]`; account/shared fields stay top-level. `club(g)` reads/writes the active club (SECOND_LOCATION.md §5), so club fields must never be treated as top-level. Flat `g.cash`-style access exists only through the `wrapState` compat proxy (same shape on disk: `JSON.stringify` emits the real v10 layout).
 
-Additive fields (`managerPaused`, the 0.10.1 counters `whalesCount` / `specialsCount`, and the 0.10.2 `golden` offer) default to 0/false/null when absent — not required by `isValidSavePayload`, so they never force a SAVE_VER bump on their own.
+Additive fields (`managerPaused`, the 0.10.1 counters `whalesCount` / `specialsCount`, and the 0.10.2 `golden` offer) default to 0/false/null when absent — not required by `isValidSavePayload`, so they never force a SAVE_VER bump on their own. The 0.11.9 Renown fields (`renown`, `renownTotal`, `brand`) are part of SAVE_VER 10 itself — `MIGRATIONS[9]` defaults them, `sanitizeG` / `completeImportedG` fail close on malformed values, and `isValidSavePayload` still does not require them (migration fills them).
 
 ### 13.2 Paths
 
@@ -565,7 +587,7 @@ Files and clipboard are interchangeable by design.
 Safety-critical order is **log → persist → replace** (not replace-first). A quota/storage failure must not leave the player on an imported club that never hit disk.
 
 1. `JSON.parse`  
-2. `isValidSavePayload` (saveVer finite; club resources cash/hype/buzz/patrons/regulars numeric — read from the active club (own-property lookup; fallback main → any own club → top-level) for v9 payloads, top-level for pre-v9; clout/crew numbers; jobs object)  
+2. `isValidSavePayload` (saveVer finite; club resources cash/hype/buzz/patrons/regulars numeric — read from the active club (own-property lookup; fallback main → any own club → top-level) for clubs-map payloads (v9+), top-level for pre-v9; clout/crew numbers; jobs object)  
 3. If `saveVer !== SAVE_VER`: `migrateFrom` chain; missing step → fail  
 4. `completeImportedG` (fill defaults, reject unsafe values)  
 5. Stamp `ts = now` on the **candidate** `g` (not yet live)  
@@ -585,6 +607,7 @@ If `setItem` throws (or any earlier step fails) → `saveState: 'import failed'`
 | 6 → 7 | Achievements: `achievements[]`, backfill already-earned via `checkAchievements` |
 | 7 → 8 | Managers: `managers` map, default all false |
 | 8 → 9 | Club fields into `g.clubs.main` (run state under the clubs map; `activeClub` added; `MIGRATIONS[8]` never clobbers a map sanitizeG already built on older chains) |
+| 9 → 10 | Renown layer: `renown` / `renownTotal` / `brand` defaulted when missing or malformed — **no-clobber** (valid values pass through); `sanitizeG` re-checks the same shape after the chain |
 
 Future saveVer or missing step → wipe on load (localStorage path) or import failed (clipboard/file).
 
@@ -750,7 +773,7 @@ Prestige **is shipped** (0.8.0): franchise sale at 25 regulars → Legacy → pe
 
 The full design lives in **`SECOND_LOCATION.md`** (fantasy, gate, club shape, simulation, UI, non-goals). This section is the as-shipped summary.
 
-- **Save shape (SAVE_VER 9, §13).** `g.clubs` maps club id → run state; `g.activeClub` names the club being played. Club-level fields (`cash/hype/buzz/patrons/regulars/b/u/elapsed/night/shift*/_special/_whale`) live per club; account fields stay top-level. The namespace is plain strings — new rooms never bump `SAVE_VER`.
+- **Save shape (SAVE_VER 9+, §13).** `g.clubs` maps club id → run state; `g.activeClub` names the club being played. Club-level fields (`cash/hype/buzz/patrons/regulars/b/u/elapsed/night/shift*/_special/_whale`) live per club; account fields stay top-level. The namespace is plain strings — new rooms never bump `SAVE_VER`.
 - **Gate (locked, SECOND_LOCATION.md §2):** `g.prestiges >= 1` **and** at least one manager hired (`Object.values(g.managers).some(Boolean)`), evaluated on the account. Below the gate the header shows no second-room chrome; above it, an **Open second room** control appears.
 - **Unlock (`confirmOpenRoom`):** one-time, **not** a prestige — the first club is untouched. Creates `g.clubs.annex` from a fresh club state (starting cash, empty build stack, shift clock baseline). `tabStale` blocks open and confirm.
 - **Switcher (`setActiveClub`):** instant, re-renders; the inactive club pauses (no inactive offline window, no cross-club cash). Crew is shared — switching to a room with a smaller Dressing Room cap **evicts excess working crew to `off`** (floor → stage → VIP; no auto-restore); `moveJob` assignment (and the rendered lock state) enforces the same working-crew cap, so evicted crew cannot be reassigned straight back. If the destination room doesn't unlock the current tab (e.g. Upgrades on a fresh annex), the tab falls back to Club.

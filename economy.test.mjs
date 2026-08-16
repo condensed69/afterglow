@@ -2227,17 +2227,19 @@ test('non-numeric saveVer fails closed', () => {
 
 console.log('\nSave migration map (PLAN §2.2)');
 
-test('SAVE_VER is 9', () => {
+test('SAVE_VER is 10', () => {
   const game = newGame();
-  strictEqual(game.SAVE_VER, 9);
+  strictEqual(game.SAVE_VER, 10);
   ok(typeof game.MIGRATIONS[3] === 'function', 'MIGRATIONS[3] must exist');
   ok(typeof game.MIGRATIONS[4] === 'function', 'MIGRATIONS[4] must exist (Owner\'s List)');
   ok(typeof game.MIGRATIONS[5] === 'function', 'MIGRATIONS[5] must exist (prestige)');
   ok(typeof game.MIGRATIONS[6] === 'function', 'MIGRATIONS[6] must exist (achievements)');
   ok(typeof game.MIGRATIONS[7] === 'function', 'MIGRATIONS[7] must exist (managers)');
+  ok(typeof game.MIGRATIONS[8] === 'function', 'MIGRATIONS[8] must exist (clubs map)');
+  ok(typeof game.MIGRATIONS[9] === 'function', 'MIGRATIONS[9] must exist (Renown)');
 });
 
-test('v8 save migrates to v9: club fields land in clubs.main, account fields stay', () => {
+test('v8 save migrates to the current version: club fields land in clubs.main, account fields stay', () => {
   const game = newGame(20);
   const v8 = {
     cash: 555, hype: 12, buzz: 4, patrons: 3, regulars: 1.5, clout: 2, crew: 1,
@@ -2264,12 +2266,16 @@ test('v8 save migrates to v9: club fields land in clubs.main, account fields sta
   strictEqual(g.clout, 2);
   strictEqual(g.crew, 1);
   strictEqual(g.r.loop, true);
-  // Persisted save is stamped v9 and carries the clubs shape, no flat leftovers.
+  // Persisted save is stamped v10 and carries the clubs shape, no flat leftovers.
   const stored = JSON.parse(localStorage.getItem(game.KEY));
-  strictEqual(stored.saveVer, 9);
+  strictEqual(stored.saveVer, 10);
   strictEqual(stored.g.clubs.main.cash, 555);
-  ok(!('cash' in stored.g), 'no flat cash in persisted v9');
-  ok(!('b' in stored.g), 'no flat b in persisted v9');
+  ok(!('cash' in stored.g), 'no flat cash in persisted save');
+  ok(!('b' in stored.g), 'no flat b in persisted save');
+  // The v9 → v10 step ran: Renown fields exist on the upgraded state.
+  strictEqual(stored.g.renown, 0, 'renown defaulted by migration');
+  strictEqual(stored.g.renownTotal, 0, 'renownTotal defaulted by migration');
+  ok(stored.g.brand && typeof stored.g.brand === 'object', 'brand defaulted by migration');
 });
 
 test('club(g) resolves active club with main fallback; flat reads follow activeClub', () => {
@@ -3060,7 +3066,7 @@ test('migration 4→5→6→7: v4 save with rail+flyers pre-completes those goal
   // Achievements legitimately reward clout for already-earned state.
   strictEqual(loaded.clout, 1, 'first_rail achievement clout credited on migrate');
   const stored = JSON.parse(localStorage.getItem(game.KEY));
-  strictEqual(stored.saveVer, 9);
+  strictEqual(stored.saveVer, 10);
 });
 
 test('migration 4→5→6→7 mid-game: credits non-sequential goals without reward cascade', () => {
@@ -4627,6 +4633,7 @@ const ACCOUNT_FIELDS = [
   'goals', 'clicks', 'rounds',
   'whalesCount', 'specialsCount', 'golden',
   'challenge', 'challengesDone',
+  'renown', 'renownTotal', 'brand',
   'ts', 'log',
   'crew', 'jobs',
   'clubs', 'activeClub',
@@ -5139,6 +5146,289 @@ test('startChallenge preserves manager levels (Legacy-purchased account meta)', 
   const next = game.state.g;
   strictEqual(next.managers.rail, true, 'hired state survives challenge start');
   strictEqual(next.managerLevels.rail, 2, 'manager level survives challenge start');
+});
+
+// ── PR 6 — Second prestige layer / Franchise → Renown (REPLAY_ROADMAP.md §8) ─
+
+// Helper: drive g to the franchise-sale gate — every perk maxed, every manager
+// hired, both clubs unlocked. Achievements pre-recorded (prestiges 15 satisfies
+// prestige_1/prestige_5; checkAchievements catch-up would otherwise credit
+// Legacy mid-test and break exact-value asserts).
+function gateMetGame(game) {
+  const g = game.state.g;
+  for (const p of game.PRESTIGE_PERKS) g.perks[p.id] = p.max;
+  for (const m of game.MANAGERS) g.managers[m.id] = true;
+  if (!g.clubs.annex) g.clubs.annex = game.freshClubState();
+  g.legacyTotal = 105;
+  g.prestiges = 15;
+  g.achievements = ['first_rail', 'prestige_1', 'prestige_5', 'legacy_50'];
+  return g;
+}
+
+test('franchiseGate: every perk maxed AND every manager hired AND both clubs', () => {
+  const game = newGame(5000);
+  const g = gateMetGame(game);
+  ok(game.franchiseGate(g), 'full account meets the gate');
+
+  // Each condition independently closes the gate.
+  for (const p of game.PRESTIGE_PERKS) g.perks[p.id] = 0;
+  strictEqual(game.franchiseGate(g), false, 'un-maxed perks close the gate');
+  for (const p of game.PRESTIGE_PERKS) g.perks[p.id] = p.max;
+
+  g.managers.rail = false;
+  strictEqual(game.franchiseGate(g), false, 'a missing manager closes the gate');
+  g.managers.rail = true;
+
+  delete g.clubs.annex;
+  strictEqual(game.franchiseGate(g), false, 'a missing club closes the gate');
+  strictEqual(game.franchiseGate(null), false, 'null state never meets the gate');
+});
+
+test('renownGain: floor(sqrt(lifetime Legacy) + prestiges/3)', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g.legacyTotal = 121; g.prestiges = 6;
+  strictEqual(game.renownGain(g), 13, 'sqrt(121)=11 + 6/3=2 → 13');
+  g.legacyTotal = 105; g.prestiges = 15;
+  strictEqual(game.renownGain(g), 15, 'spec sanity: ~105 lifetime + 15 prestiges → ~15 Renown');
+  g.legacyTotal = 0; g.prestiges = 0;
+  strictEqual(game.renownGain(g), 0, 'fresh account earns 0');
+  // Transactional: renownGain reads ONLY lifetime + count (spendable renown
+  // neither boosts nor gates the formula).
+  g.legacyTotal = 49; g.prestiges = 2; g.renown = 500;
+  strictEqual(game.renownGain(g), 7, 'spendable renown does not inflate the gain (sqrt(49)=7 + 2/3=0)');
+});
+
+test('v9 → v10 migration defaults renown/renownTotal/brand without clobbering', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  // A v9 save: fresh shape minus the PR 6 fields.
+  delete g.renown; delete g.renownTotal; delete g.brand;
+  ok(game.migrateFrom(g, 9), 'v9 → v10 migration chain completes');
+  strictEqual(g.renown, 0, 'renown defaults to 0');
+  strictEqual(g.renownTotal, 0, 'renownTotal defaults to 0');
+  ok(g.brand && typeof g.brand === 'object' && !Array.isArray(g.brand), 'brand defaults to a plain object');
+
+  // No-clobber: real values pass through untouched.
+  const g2 = game.state.g;
+  g2.renown = 7; g2.renownTotal = 42; g2.brand = { national: 1 };
+  ok(game.migrateFrom(g2, 9), 'migration runs again');
+  strictEqual(g2.renown, 7, 'existing renown preserved (no-clobber)');
+  strictEqual(g2.renownTotal, 42, 'existing renownTotal preserved');
+  strictEqual(g2.brand.national, 1, 'existing brand preserved');
+});
+
+test('v9 save import upgrades to v10 with the renown fields defaulted', () => {
+  const game = newGame(20);
+  const f = game.fresh().clubs.main;
+  const payload = JSON.stringify({
+    saveVer: 9,
+    g: {
+      clubs: { main: { ...f, cash: 88 } },
+      clout: 0, crew: 0,
+      jobs: { stage: 0, vipjob: 0, floor: 0, host: 0, off: 0 },
+      goals: [], clicks: 0, rounds: 0
+    }
+  });
+  strictEqual(game.importSaveFromText(payload), true, 'v9 payload imports');
+  strictEqual(game.state.g.renown, 0, 'imported v9 save gains renown 0');
+  strictEqual(game.state.g.renownTotal, 0, 'imported v9 save gains renownTotal 0');
+  ok(game.state.g.brand && typeof game.state.g.brand === 'object', 'imported v9 save gains a brand map');
+  strictEqual(game.state.g.cash, 88, 'club state intact after upgrade');
+});
+
+test('sanitizeG fail-closes malformed renown/renownTotal/brand', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g.renown = 'lots';
+  g.renownTotal = NaN;
+  g.brand = [];
+  game.sanitizeG(g);
+  strictEqual(g.renown, 0, 'string renown → 0');
+  strictEqual(g.renownTotal, 0, 'NaN renownTotal → 0');
+  ok(g.brand && typeof g.brand === 'object' && !Array.isArray(g.brand), 'array brand → {}');
+  // Negative renown clamps to 0 (spendable can never go below 0).
+  g.renown = -5; g.renownTotal = -5;
+  game.sanitizeG(g);
+  strictEqual(g.renown, 0, 'negative renown clamps to 0');
+  strictEqual(g.renownTotal, 0, 'negative renownTotal clamps to 0');
+});
+
+test('franchise sale resets the full §8.4 matrix and keeps permanent layers', () => {
+  const game = newGame(5000);
+  const g = gateMetGame(game);
+  // Load every reset-sensitive account field with non-default values.
+  g.legacy = 42;
+  g.clout = 20;
+  for (const r of game.RESEARCH) g.r[r.id] = true;
+  g.crew = 5;
+  g.jobs.stage = 2; g.jobs.vipjob = 2; g.jobs.off = 1;
+  g.goals = ['work', 'rail'];
+  g.clicks = 9; g.rounds = 7;
+  g.challenge = 'slim';
+  g.challengesDone = ['tight', 'dry'];
+  g.whalesCount = 3; g.specialsCount = 2; g.golden = { at: 1 };
+  g.managerPaused.rail = true;
+  g.managerLevels.dj = 2;
+  g.renown = 3; g.renownTotal = 30;
+  g.brand = { national: 1 };
+  g.clubs.main.cash = 999; g.clubs.main.regulars = 60;
+  g.clubs.annex.cash = 500; g.clubs.annex.b.rail = 4;
+  g.activeClub = 'annex';
+  const gain = game.renownGain(g); // sqrt(105)+15/3 = 10+5 = 15
+  strictEqual(gain, 15, 'expected gain for the fixture');
+
+  game.openFranchise();
+  ok(game.state.showFranchise, 'modal opens at gate');
+  game.confirmFranchiseSale(); // arms
+  ok(game.state.franchiseArmed, 'first click arms the sale');
+  strictEqual(game.state.g, g, 'armed click leaves live state untouched');
+  game.confirmFranchiseSale(); // confirms
+
+  const a = game.state.g;
+  // Permanent layers persist.
+  strictEqual(a.renown, 3 + gain, 'renown = old spare + gain');
+  strictEqual(a.renownTotal, 30 + gain, 'renownTotal = old lifetime + gain');
+  strictEqual(a.achievements.includes('first_rail'), true, 'achievements preserved');
+  strictEqual(a.achievements.includes('prestige_5'), true, 'all achievements preserved');
+  strictEqual(a.brand.national, 1, 'brand ranks preserved');
+  // Everything else wipes to fresh().
+  strictEqual(a.prestiges, 0, 'prestiges wiped');
+  strictEqual(a.legacy, 0, 'legacy wiped');
+  strictEqual(a.legacyTotal, 0, 'legacyTotal wiped');
+  strictEqual(a.clout, 0, 'clout wiped');
+  ok(game.PRESTIGE_PERKS.every(p => a.perks[p.id] === 0), 'perks wiped');
+  ok(game.RESEARCH.every(r => a.r[r.id] === false), 'research wiped');
+  ok(game.MANAGERS.every(m => a.managers[m.id] === false), 'managers wiped');
+  ok(game.MANAGERS.every(m => a.managerPaused[m.id] === false), 'manager pause wiped');
+  ok(game.MANAGERS.every(m => a.managerLevels[m.id] === 0), 'manager levels wiped');
+  strictEqual(a.crew, 0, 'crew wiped');
+  strictEqual(a.jobs.stage + a.jobs.vipjob + a.jobs.floor + a.jobs.off, 0, 'job assignments wiped');
+  strictEqual(a.goals.length, 0, 'goals wiped');
+  strictEqual(a.clicks, 0, 'clicks wiped');
+  strictEqual(a.rounds, 0, 'rounds wiped');
+  strictEqual(a.challenge, null, 'active challenge cleared');
+  strictEqual(a.challengesDone.length, 0, 'challenges re-lock');
+  strictEqual(a.whalesCount, 0, 'whale counter wiped');
+  strictEqual(a.specialsCount, 0, 'special counter wiped');
+  strictEqual(a.golden, null, 'golden offer wiped');
+  // Clubs: fresh { main } only — the annex re-locks.
+  strictEqual(Object.keys(a.clubs).join(','), 'main', 'only main remains');
+  strictEqual(a.activeClub, 'main', 'activeClub back to main');
+  strictEqual(a.clubs.main.cash, 5000, 'main till back to startingCash');
+  strictEqual(a.clubs.main.regulars, 0, 'main regulars fresh');
+  // Disk persisted a v10 envelope with the post-sale shape.
+  const saved = JSON.parse(localStorage.getItem(game.KEY));
+  strictEqual(saved.saveVer, 10, 'saved envelope is v10');
+  strictEqual(saved.g.renown, 3 + gain, 'disk matches memory renown');
+  strictEqual(saved.g.achievements.includes('first_rail'), true, 'disk keeps achievements');
+});
+
+test('franchise sale no-ops below the gate (gate is an action invariant)', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  for (const p of game.PRESTIGE_PERKS) g.perks[p.id] = p.max;
+  for (const m of game.MANAGERS) g.managers[m.id] = true;
+  g.legacyTotal = 105; g.prestiges = 15;
+  g.renown = 1;
+  // Annex missing — the last gate condition.
+  delete g.clubs.annex;
+  game.openFranchise();
+  strictEqual(game.state.showFranchise, false, 'modal does not open below gate');
+  game.confirmFranchiseSale();
+  game.confirmFranchiseSale();
+  strictEqual(game.state.g, g, 'live state untouched');
+  strictEqual(g.renown, 1, 'renown unchanged');
+  strictEqual(g.clubs.annex, undefined, 'no club created by a failed sale');
+});
+
+test('franchise sale without the modal open is a no-op even at the gate', () => {
+  const game = newGame();
+  const g = game.state.g;
+  // Meet the gate (all perks max, all managers hired, both clubs owned).
+  game.PRESTIGE_PERKS.forEach(p => { g.perks[p.id] = p.max; });
+  game.MANAGERS.forEach(m => { g.managers[m.id] = true; });
+  g.clubs.annex = { ...g.clubs.main };
+  g.renown = 1;
+  g.legacyTotal = 121; g.prestiges = 6;
+  strictEqual(game.franchiseGate(g), true, 'gate met');
+  // No openFranchise() — the modal is closed, so the sale must not arm or run.
+  game.confirmFranchiseSale();
+  strictEqual(game.state.franchiseArmed, false, 'no arm without the modal');
+  strictEqual(game.state.g, g, 'live state untouched');
+  strictEqual(g.renown, 1, 'renown unchanged');
+});
+
+test('franchise sale is persist-before-replace: setItem throw leaves live state intact', () => {
+  const game = newGame(5000);
+  const g = gateMetGame(game);
+  g.renown = 3; g.renownTotal = 30;
+  g.clubs.main.cash = 999;
+  const origSet = localStorage.setItem;
+  localStorage.setItem = () => { throw new Error('quota exceeded'); };
+  try {
+    game.openFranchise();
+    game.confirmFranchiseSale(); // arms
+    game.confirmFranchiseSale(); // confirm → setItem throws
+  } finally {
+    localStorage.setItem = origSet;
+  }
+  strictEqual(game.state.saveState, 'franchise failed', 'failure surfaced in saveState');
+  strictEqual(game.state.g, g, 'live state object unchanged (never replaced)');
+  strictEqual(g.renown, 3, 'renown untouched');
+  strictEqual(g.renownTotal, 30, 'renownTotal untouched');
+  strictEqual(g.clubs.main.cash, 999, 'club run state untouched');
+  strictEqual(g.achievements.includes('first_rail'), true, 'achievements untouched');
+  // No success-side effects: no sale log line on the LIVE state, no autosave.
+  strictEqual(g.log.some(l => l.msg.includes('Sold the franchise')), false, 'no sale log on live state');
+  strictEqual(game.saver, null, 'autosave not started');
+});
+
+test('Perks panel: sell card appears only at gate; Renown readout after first sale', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  game.state.tab = 'perks';
+  // Below the gate: no sell card, no readout.
+  g.legacy = 100; g.prestiges = 1;
+  let cards = game.renderVals().cards;
+  strictEqual(cards.some(c => c.name === 'Sell the franchise'), false, 'no sell card below gate');
+  strictEqual(cards.some(c => c.name === 'Renown'), false, 'no readout before first sale');
+
+  // Renown earned (first sale done): readout appears.
+  g.renownTotal = 12; g.renown = 4;
+  g.perks.cash10 = 5;
+  cards = game.renderVals().cards;
+  const ro = cards.find(c => c.name === 'Renown');
+  ok(ro, 'readout card present after first sale');
+  ok(ro.owned.includes('4 spare') && ro.owned.includes('12 lifetime'), 'readout shows spare + lifetime');
+
+  // At the gate: sell card appears alongside.
+  gateMetGame(game);
+  g.renown = 4; g.renownTotal = 12;
+  cards = game.renderVals().cards;
+  const sell = cards.find(c => c.name === 'Sell the franchise');
+  ok(sell, 'sell card appears at gate');
+  ok(sell.meta.includes('+ 15 Renown'), 'sell card previews the gain');
+  ok(sell.locked === false, 'sell card actionable');
+  const v = game.renderVals();
+  strictEqual(v.franchiseGate, true, 'view model exposes the gate');
+  strictEqual(v.franchiseGain, 15, 'view model previews the gain');
+  strictEqual(v.renownTotal, 12, 'view model exposes lifetime renown');
+});
+
+test('franchise modal handlers are bound and invocable (surface sweep safety)', () => {
+  const game = newGame(5000);
+  gateMetGame(game);
+  game.openFranchise();
+  const v = game.renderVals();
+  strictEqual(v.showFranchise, true, 'modal open flag exposed');
+  ok(typeof v.confirmFranchiseSale === 'function', 'confirm handler bound');
+  ok(typeof v.toggleFranchise === 'function', 'close handler bound');
+  // Close resets the arm so a stale armed state cannot leak into the next open.
+  game.confirmFranchiseSale(); // arms
+  v.toggleFranchise();
+  strictEqual(game.state.showFranchise, false, 'modal closed');
+  strictEqual(game.state.franchiseArmed, false, 'arm reset on close');
 });
 
 console.log(`Results: ${passed} passed, ${skipped} skipped, ${failed} failed`);
