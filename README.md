@@ -20,3 +20,7 @@ Max **every prestige perk**, hire **every manager**, and own **both rooms** — 
 - **Renown** (shown as `N spare · M lifetime` on the Perks panel) buys **Brand perks**: Nationwide Reach (+10% all cash per rank), Loyalty Program (start each run with +1 Regular per rank), R&D Lab (−10% research cost per rank), Night Owl Network (+10% offline per rank), and **Rooftop Lease** — which unlocks the **Rooftop**, a third room with its own till, crowd, and build stack (open it from the Perks panel after buying the lease).
 - Each room has its own **location extras**: the Neon Pool in the Main Room, the Rooftop Bar + Skyline View in the Annex, and the Helipad Lounge + Panorama Deck on the Rooftop — bought from the same Structures/Upgrades tabs, alongside the shared catalog.
 - Switch rooms with the header buttons; Brand ranks survive selling the franchise — they are the reason to build and sell again.
+
+## Vision — the long game (0.11.11)
+
+The Owner's List (left panel) shows a **Vision** line under the active goal: **3 clubs · $1e12 net worth** with a blended progress bar. It is a readout only — the goal line of the whole game. Net worth is the combined cash of every room you own; unlock the Rooftop (Rooftop Lease brand perk) and keep building to close it out, then sell the franchise and do it again.

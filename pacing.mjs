@@ -838,25 +838,53 @@ function renownRun() {
     console.log('\n❌ Rooftop scenario failed: Panorama Deck has no hype effect — the extra is cosmetic.\n');
     process.exit(1);
   }
-  // Third club plays: the same bot reaches its first LED on the rooftop within
-  // the wall cap. (The bot buys no brand perks or location extras, so the main
-  // milestone bands above stay bit-identical — extras are identity, not a
-  // bot-path economy shift.)
-  let t3 = null;
+  // ── §10 guard: the third club plays faster than a same-achievements control ──
+  // Snapshot the post-sale account BEFORE either run so both measurements start
+  // from byte-identical state (same achievements — a no-achievement fresh
+  // control would pass on achievement carryover alone, REPLAY_ROADMAP.md §10).
+  const prePlay = JSON.parse(JSON.stringify(a));
+  // Control: the rooftop played by the standard bot — location extras are NOT
+  // in the shared catalog (extraBuildings/extraUpgrades concat at render/init
+  // only), so this run never buys them. Faster than a fresh baseline, but only
+  // via the preserved achievements.
+  let t3Control = null;
   simulate(game, (g, wall) => {
-    if (t3 == null && ledMilestone.check(g)) { t3 = wall; return true; }
+    if (t3Control == null && ledMilestone.check(g)) { t3Control = wall; return true; }
     return false;
   }, totalSec, { stopOnMilestones: false });
-  if (t3 == null) {
-    console.log('\n❌ Rooftop scenario failed: first LED not reached within the wall cap.\n');
+  if (t3Control == null) {
+    console.log('\n❌ Rooftop scenario failed: control first LED not reached within the wall cap.\n');
     process.exit(1);
   }
-  console.log(`  rooftop first LED (post-sale account, extras available): ${fmtMin(t3)}`);
+  // Extras run: the SAME account (identical achievements), rooftop seeded with
+  // its location content (Helipad Lounge + Panorama Deck — the player bought
+  // them). Direct toggle of the §9 effect on a fixed state, mirroring
+  // secondRoomRun()'s research/perk toggles.
+  const gx = newGame();
+  gx.state.g = gx.wrapState(prePlay);
+  gx.state.g.clubs.rooftop.b.heli = 1;
+  gx.state.g.clubs.rooftop.u.vista = true;
+  let t3Extras = null;
+  simulate(gx, (g, wall) => {
+    if (t3Extras == null && ledMilestone.check(g)) { t3Extras = wall; return true; }
+    return false;
+  }, totalSec, { stopOnMilestones: false });
+  if (t3Extras == null) {
+    console.log('\n❌ Rooftop scenario failed: extras first LED not reached within the wall cap.\n');
+    process.exit(1);
+  }
+  // Margin assert: the extras must win by at least 15%. The run is
+  // deterministic, so strict `<` alone would pass a regression that merely
+  // narrows the location content's advantage without inverting it.
+  if (!(t3Extras < t3Control * 0.85)) {
+    console.log(`\n❌ Rooftop scenario failed: extras run ${fmtMin(t3Extras)} is not ≥15% faster than the same-achievements control ${fmtMin(t3Control)} (needs < ${fmtMin(t3Control * 0.85)}) — the location content is dead weight.\n`);
+    process.exit(1);
+  }
+  console.log(`  rooftop first LED (control, extras unavailable):  ${fmtMin(t3Control)}`);
+  console.log(`  rooftop first LED (extras seeded: heli + vista):  ${fmtMin(t3Extras)} (same achievements, must be ≥15% faster)`);
 
-  console.log(`
-✅ Renown scenario passed: franchise sold at ${fmtMin(gateAt)} for +${gain} Renown; ` +
-    `${a.achievements.length} achievements kept, annex re-locked, rooftop opened and playing (first LED ${fmtMin(t3)}, extras verified live).
-`);
+  console.log(`\n✅ Renown scenario passed: franchise sold at ${fmtMin(gateAt)} for +${gain} Renown; ` +
+    `${a.achievements.length} achievements kept, annex re-locked, rooftop opened and playing (control ${fmtMin(t3Control)} → extras ${fmtMin(t3Extras)}, extras verified live).`);
 }
 
 run();

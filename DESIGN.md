@@ -964,6 +964,36 @@ never broke) is fixed by this.
 **Non-goals:** still max 3 clubs; no cross-club cash transfer; no per-club
 research; brand perks are Renown-only (no conversion from/to Clout/Legacy).
 
+## 23. Endgame horizon (REPLAY_ROADMAP.md §10) — 0.11.11
+
+A visible long-term goal line so the post-§9 game has a target to point at:
+**build the franchise to 3 clubs and reach $1e12 net worth.**
+
+- Surfaced as a **"Vision — the long game"** block under the active goal in the
+  Owner's List panel (renderVals `horizon`). Readout only: `Clubs n/3 · Net
+  worth $X / $1T` with a blended progress bar (clubs leg + net-worth leg,
+  averaged — 3/3 clubs alone reads 50%, so one leg can't hide the other), a ★
+  reached state, and a "sell it, and build again" line.
+- Net worth = sum of `cash` across every club in `g.clubs` (there is no
+  cross-club transfer, so total till is the franchise value). `TARGET = 1e12`
+  formats as `$1.00T` via `fmt`.
+- **No new mechanic, no save-shape change** (SAVE_VER stays 10): computed
+  entirely from existing state at render time. Zero pacing impact — the bot
+  never renders.
+
+**Pacing guard (same-achievements control, §10):** `renownRun()` in
+`pacing.mjs` now proves the third club's location content is not dead weight on
+an account with preserved achievements. After the §8/§9 assertions (sale →
+reset shape → lease → rooftop → extras verified live via `rates()` toggles),
+it snapshots the post-sale account and measures the rooftop's first LED twice:
+once played by the standard bot (extras are not in the shared catalog, so it
+never buys them — the control) and once with Helipad Lounge + Panorama Deck
+seeded (the player bought them). The extras run must win by **at least 15%**
+(`t3Extras < t3Control * 0.85` — the run is deterministic, so a plain strict
+`<` would pass a regression that merely narrows the advantage). A
+no-achievement fresh control would pass on achievement carryover alone, which
+is exactly the comparison §10 forbids.
+
 ## Doc maintenance
 
 - Rewrite claims against `game.js`, not against stale plans.  
