@@ -2227,9 +2227,9 @@ test('non-numeric saveVer fails closed', () => {
 
 console.log('\nSave migration map (PLAN §2.2)');
 
-test('SAVE_VER is 11', () => {
+test('SAVE_VER is 12', () => {
   const game = newGame();
-  strictEqual(game.SAVE_VER, 11);
+  strictEqual(game.SAVE_VER, 12);
   ok(typeof game.MIGRATIONS[3] === 'function', 'MIGRATIONS[3] must exist');
   ok(typeof game.MIGRATIONS[4] === 'function', 'MIGRATIONS[4] must exist (Owner\'s List)');
   ok(typeof game.MIGRATIONS[5] === 'function', 'MIGRATIONS[5] must exist (prestige)');
@@ -2238,6 +2238,7 @@ test('SAVE_VER is 11', () => {
   ok(typeof game.MIGRATIONS[8] === 'function', 'MIGRATIONS[8] must exist (clubs map)');
   ok(typeof game.MIGRATIONS[9] === 'function', 'MIGRATIONS[9] must exist (Renown)');
   ok(typeof game.MIGRATIONS[10] === 'function', 'MIGRATIONS[10] must exist (Brand Endorsement)');
+  ok(typeof game.MIGRATIONS[11] === 'function', 'MIGRATIONS[11] must exist (challenge tiers)');
 });
 
 test('v8 save migrates to the current version: club fields land in clubs.main, account fields stay', () => {
@@ -4634,7 +4635,7 @@ const ACCOUNT_FIELDS = [
   'r', 'managers', 'managerPaused', 'managerLevels', 'achievements',
   'goals', 'clicks', 'rounds',
   'whalesCount', 'specialsCount', 'golden',
-  'challenge', 'challengesDone',
+  'challenge', 'challengesDone', 'challengeTier', 'challengeTiers',
   'renown', 'renownTotal', 'brand', 'brandLevel',
   'ts', 'log',
   'crew', 'jobs',
@@ -4950,17 +4951,160 @@ test('challenge doorMax and crewOut rewards are wired', () => {
   const game = newGame();
   const g = game.state.g;
   const baseDoor = game.doorMax(g);
-  g.challengesDone = ['slim'];
-  strictEqual(game.doorMax(g), baseDoor + 1, 'doorMax +1 from Slim Margins');
-  g.challengesDone = ['slim', 'dry'];
+  // Tier 1 completions (the pre-tier shape) derive the same bonuses — the
+  // tier record backfills from challengesDone on load/migrate; direct-set
+  // tests set both.
+  g.challengesDone = ['slim']; g.challengeTiers = { slim: 1 };
+  strictEqual(game.doorMax(g), baseDoor + 1, 'doorMax +1 from Slim Margins tier 1');
+  g.challengesDone = ['slim', 'dry']; g.challengeTiers = { slim: 1, dry: 1 };
   strictEqual(game.doorMax(g), baseDoor + 1, 'dry adds no doorMax');
   // crewOut: stage crew output scales exactly ×1.05 with No Street Team done.
   const c = game.club(g);
   g.crew = 1; g.jobs.stage = 1; g.jobs.off = 0;
   const rBase = game.rates(g);
-  g.challengesDone = ['slim', 'dry'];
   const rDry = game.rates(g);
   ok(Math.abs(rDry.hype - rBase.hype * 1.05) < 1e-9, 'crewOut scales stage hype ×1.05');
+});
+
+test('challenge tiers: sequential ladder, tier modifiers, ×tier rewards', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.regulars = 30; g.night = 10; g.legacy = 8; g.prestiges = 2;
+  const tight = game.CHALLENGES.find(c => c.id === 'tight');
+  // Fresh: tier 1 is the next tier.
+  strictEqual(game.challengeNextTier(g, tight), 1, 'fresh challenge offers tier 1');
+  game.startChallenge(tight); game.startChallenge(tight); // arm + confirm
+  let g2 = game.state.g;
+  strictEqual(g2.challenge, 'tight', 'challenge active');
+  strictEqual(g2.challengeTier, 1, 'active tier 1');
+  const c = game.club(g2);
+  strictEqual(c.cash, 0, 'tier 1 starts with an empty till');
+  strictEqual(game.challengeMod(g2).incomeMult, undefined, 'tier 1 has no income cut');
+  // Complete tier 1 → tier 2 unlocks.
+  c.regulars = 25;
+  game.checkAchievements(g2);
+  strictEqual(game.state.g.challenge, null, 'tier 1 cleared');
+  strictEqual(game.challengeTier(game.state.g, 'tight'), 1, 'tier 1 recorded');
+  strictEqual(game.challengeNextTier(game.state.g, tight), 2, 'tier 2 now offered');
+  // Tier 2: tighter modifier (income ×0.85) + reward ×2.
+  game.startChallenge(tight); game.startChallenge(tight);
+  g2 = game.state.g;
+  strictEqual(g2.challengeTier, 2, 'active tier 2');
+  const c2 = game.club(g2);
+  strictEqual(c2.cash, 0, 'tier 2 still starts empty');
+  strictEqual(game.challengeMod(g2).incomeMult, 0.85, 'tier 2 cuts income to ×0.85');
+  c2.regulars = 25;
+  game.checkAchievements(g2);
+  strictEqual(game.challengeTier(game.state.g, 'tight'), 2, 'tier 2 recorded');
+  strictEqual(game.challengeBonus(game.state.g).cashMult, 0.10, 'tier 2 reward = 0.05 × 2');
+  strictEqual(game.challengeNextTier(game.state.g, tight), 3, 'tier 3 offered after tier 2');
+  // Tier 3: ×0.7 income; completing caps the ladder at +15%.
+  game.startChallenge(tight); game.startChallenge(tight);
+  g2 = game.state.g;
+  strictEqual(g2.challengeTier, 3, 'active tier 3');
+  strictEqual(game.challengeMod(g2).incomeMult, 0.7, 'tier 3 cuts income to ×0.7');
+  game.club(g2).regulars = 25;
+  game.checkAchievements(g2);
+  strictEqual(game.challengeTier(game.state.g, 'tight'), 3, 'tier 3 recorded');
+  ok(Math.abs(game.challengeBonus(game.state.g).cashMult - 0.15) < 1e-9, 'tier 3 reward = 0.05 × 3 (epsilon)');
+  strictEqual(game.challengeNextTier(game.state.g, tight), 0, 'ladder maxed — no next tier');
+  game.startChallenge(tight);
+  strictEqual(game.state.g.challenge, null, 'maxed challenge cannot restart');
+});
+
+test('challenge tiers survive prestige and challenge starts; the sale wipes them', () => {
+  // Prestige keeps earned tiers; the active challenge ends.
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.regulars = 30; g.night = 10; g.legacy = 100;
+  g.challengeTiers = { tight: 2, slim: 1 };
+  game.confirmPrestige();
+  strictEqual(game.state.g.challengeTiers.tight, 2, 'tier 2 survives prestige');
+  strictEqual(game.state.g.challengeTiers.slim, 1, 'tier 1 survives prestige');
+  // Challenge start keeps lower tiers while the next tier runs.
+  const game2 = newGame(5000);
+  const g2 = game2.state.g;
+  g2.renown = 30; g2.brandLevel = 2;
+  g2.challengeTiers = { dry: 1 };
+  const dry = game2.CHALLENGES.find(c => c.id === 'dry');
+  game2.startChallenge(dry); game2.startChallenge(dry);
+  strictEqual(game2.state.g.challengeTier, 2, 'dry tier 2 active');
+  strictEqual(game2.state.g.challengeTiers.dry, 1, 'earned tier 1 kept during tier 2');
+  // Franchise sale wipes tiers (challenges re-lock, consistent with challengesDone).
+  const game3 = newGame(5000);
+  const g3 = gateMetGame(game3);
+  g3.challengeTiers = { tight: 3, lean: 2 };
+  game3.openFranchise();
+  game3.confirmFranchiseSale(); game3.confirmFranchiseSale();
+  const a = game3.state.g;
+  strictEqual(a.challengesDone.length, 0, 'challenges re-lock on sale');
+  strictEqual(Object.keys(a.challengeTiers).length, 0, 'tiers wiped on sale');
+  strictEqual(a.challengeTier, 1, 'active tier resets on sale');
+});
+
+test('v11 → v12 migration defaults and backfills challenge tier fields', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  // A v11 save: fresh shape minus the v12 fields.
+  delete g.challengeTier; delete g.challengeTiers;
+  ok(game.migrateFrom(g, 11), 'v11 → v12 migration runs');
+  strictEqual(g.challengeTier, 1, 'challengeTier defaults to 1');
+  strictEqual(g.challengeTiers.tight, 0, 'empty map for uncompleted challenges');
+  // Backfill: a challenge completed before tiers existed counts as tier 1.
+  const g2 = game.state.g;
+  g2.challengesDone = ['slim', 'dry'];
+  delete g2.challengeTiers;
+  ok(game.migrateFrom(g2, 11), 'migration runs again');
+  strictEqual(g2.challengeTiers.slim, 1, 'challengesDone backfills tier 1 (slim)');
+  strictEqual(g2.challengeTiers.dry, 1, 'challengesDone backfills tier 1 (dry)');
+  strictEqual(g2.challengeTiers.tight, 0, 'uncompleted stays 0');
+  // No-clobber: real values pass through.
+  const g3 = game.state.g;
+  g3.challengeTier = 3; g3.challengeTiers = { tight: 2 };
+  ok(game.migrateFrom(g3, 11), 'migration runs a third time');
+  strictEqual(g3.challengeTier, 3, 'existing active tier preserved');
+  strictEqual(g3.challengeTiers.tight, 2, 'existing tier record preserved');
+});
+
+test('sanitize/import fail-close malformed challenge tier fields (parity)', () => {
+  const game = newGame();
+  const g = game.state.g;
+  g.challengeTier = 9;
+  g.challengeTiers = { tight: 'x', slim: 5, lean: -1 };
+  game.sanitizeG(g);
+  strictEqual(g.challengeTier, 3, 'active tier clamps to 3');
+  strictEqual(g.challengeTiers.tight, 0, 'string tier → 0');
+  strictEqual(g.challengeTiers.slim, 3, '5 clamps to 3');
+  strictEqual(g.challengeTiers.lean, 0, 'negative → 0');
+  // Import path normalizes identically.
+  const g2 = game.state.g;
+  g2.challengeTier = 2; g2.challengeTiers = { dry: 1 };
+  const raw = JSON.parse(JSON.stringify(g2));
+  raw.challengeTier = 4; raw.challengeTiers = { dry: 9 };
+  game.importSaveFromText(JSON.stringify({ saveVer: 12, g: raw }));
+  strictEqual(game.state.g.challengeTier, 3, 'imported active tier clamped');
+  strictEqual(game.state.g.challengeTiers.dry, 3, 'imported tier record clamped');
+});
+
+test('renderVals shows tier progress and next-tier buttons', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.prestiges = 1;
+  game.state.tab = 'perks';
+  const cards = () => game.renderVals().cards;
+  let c0 = cards().find(c => c.name.startsWith('Tight Till'));
+  ok(c0, 'challenge card renders');
+  strictEqual(c0.btn, 'Start', 'fresh challenge offers Start (tier 1)');
+  // Tier 1 done → the card offers tier 2 with the scaled reward.
+  g.challengeTiers = { tight: 1 };
+  const c1 = cards().find(c => c.name.startsWith('Tight Till'));
+  strictEqual(c1.owned, '1/3', 'owned shows 1/3');
+  strictEqual(c1.btn, 'Start tier 2', 'next tier button');
+  ok(c1.meta.includes('+ 10% all cash'), 'tier 2 reward shown (0.05 × 2)');
+  // Maxed → button reads Maxed.
+  g.challengeTiers = { tight: 3 };
+  const c3 = cards().find(c => c.name.startsWith('Tight Till'));
+  strictEqual(c3.btn, 'Maxed', 'maxed challenge shows Maxed');
 });
 
 test('endChallenge lifts the active modifier without reward', () => {

@@ -36,8 +36,8 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.12', build: 225, channel: 'alpha', date: '2026-08-16', codename: 'Neon Zero' };
-  SAVE_VER = 11;
+  VERSION = { num: '0.11.13', build: 226, channel: 'alpha', date: '2026-08-16', codename: 'Neon Zero' };
+  SAVE_VER = 12;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
   // A plain boolean is copied when the browser duplicates a tab, so a duplicate would
@@ -171,10 +171,29 @@ class Game {
     10(g) {
       if (typeof g.brandLevel !== 'number' || !Number.isFinite(g.brandLevel) || g.brandLevel < 0) g.brandLevel = 0;
       g.brandLevel = Math.floor(g.brandLevel);
+    },
+    // v11 → v12: challenge tiers (next-roadmap PR 2) — the ACTIVE run's tier
+    // (g.challengeTier, 1–3) and the completed-tier map (g.challengeTiers,
+    // id → highest tier done). No-clobber: valid values pass through; only
+    // missing/malformed values default (tier 1 / {}). Backfill: a challenge
+    // completed before tiers existed (in challengesDone without a tier record)
+    // counts as tier 1, so existing rewards survive. sanitizeG runs the same
+    // shape after the chain.
+    11(g) {
+      g.challengeTier = (typeof g.challengeTier === 'number' && Number.isFinite(g.challengeTier) && g.challengeTier >= 1) ? Math.min(3, Math.floor(g.challengeTier)) : 1;
+      if (!g.challengeTiers || typeof g.challengeTiers !== 'object' || Array.isArray(g.challengeTiers)) g.challengeTiers = {};
+      for (const ch of this.CHALLENGES) {
+        const t = g.challengeTiers[ch.id];
+        g.challengeTiers[ch.id] = (typeof t === 'number' && Number.isFinite(t) && t >= 1) ? Math.min(3, Math.floor(t))
+          : ((Array.isArray(g.challengesDone) && g.challengesDone.includes(ch.id)) ? 1 : 0);
+      }
     }
   };
 
   CHANGELOG = [
+    { v: '0.11.13', date: '2026-08-16', codename: 'Neon Zero', notes: [
+      'CHALLENGE TIERS (next-roadmap PR 2): the four replay modifiers become a 12-run ladder. Each challenge now has 3 tiers that tighten the modifier (Tight Till II: empty till + all income ×0.85; III: ×0.7 — Slim Margins 0.5 → 0.4 → 0.3 — No Street Team and Lean Night lock an extra building per tier) and scale the permanent reward ×tier (+5% → +10% → +15% all cash, +1 → +2 → +3 Door Staff cap, +5% → +10% → +15% crew output). Tiers unlock sequentially (tier N+1 needs tier N done); completion records the tier in an additive g.challengeTiers map and the active run carries g.challengeTier, so a mid-challenge reload keeps the difficulty. The active tier modifier routes through the same challengeMod composition point (incomeMult → totalCashMult, locked → buyBuilding/autoBuyManagers/card). Prestige and challenge starts preserve completed tiers; the franchise sale re-locks challenges and wipes them (consistent with challengesDone). SAVE_VER bumped to 12 with a no-clobber MIGRATIONS[11]. The pacing bot never starts a challenge, so every main-run band is bit-identical.'
+    ] },
     { v: '0.11.12', date: '2026-08-16', codename: 'Neon Zero', notes: [
       'BRAND ENDORSEMENTS (next-roadmap PR 1): the Renown sink becomes repeatable. The Perks panel gains a Brand Endorsement card under the Brand perks — +2% all cash per level, forever, at an escalating cost (15 × 1.35^level Renown). The five Brand perks max out after ~5 sales, but the endorsement never does: every franchise sale has a permanent spend target, so the sell loop keeps its reason to reset. Folds into the single totalCashMult composition point (passive AND clicks/whale/golden). Additive g.brandLevel (fail-closed integer ≥ 0) preserved by every reset exactly like brand ranks — ordinary prestige, challenge starts, and the franchise sale all snapshot/restore it. SAVE_VER bumped to 11 with a no-clobber MIGRATIONS[10] (v10 saves default brandLevel to 0). The pacing bot never buys it (buyAllMeta untouched), so every main-run band is bit-identical.'
     ] },
@@ -571,10 +590,26 @@ class Game {
   // feed the deterministic research currency). Challenges are opt-in; the
   // pacing bot never starts one, so the existing bands are untouched.
   CHALLENGES = [
-    { id: 'tight', name: 'Tight Till', desc: 'Start with an empty till — no starting cash.', mod: { startCash: 0 }, reward: { cashMult: 0.05 }, check: v => v.regulars >= 25 },
-    { id: 'slim', name: 'Slim Margins', desc: 'The house takes half — all income ×0.5.', mod: { incomeMult: 0.5 }, reward: { doorMax: 1 }, check: v => v.regulars >= 20 },
-    { id: 'dry', name: 'No Street Team', desc: 'Flyer Crew is locked — word of mouth only.', mod: { locked: ['flyers'] }, reward: { crewOut: 0.05 }, check: v => v.b.dj >= 2 },
-    { id: 'lean', name: 'Lean Night', desc: 'The Back Bar is locked — no bar revenue.', mod: { locked: ['bar'] }, reward: { cashMult: 0.05 }, check: v => v.b.vip >= 1 }
+    { id: 'tight', name: 'Tight Till', desc: 'Start with an empty till — no starting cash.', mod: { startCash: 0 }, reward: { cashMult: 0.05 }, check: v => v.regulars >= 25,
+      tiers: [
+        { mod: { startCash: 0, incomeMult: 0.85 }, desc: '…and the house takes 15% — all income ×0.85.' },
+        { mod: { startCash: 0, incomeMult: 0.7 }, desc: '…and the house takes 30% — all income ×0.7.' }
+      ] },
+    { id: 'slim', name: 'Slim Margins', desc: 'The house takes half — all income ×0.5.', mod: { incomeMult: 0.5 }, reward: { doorMax: 1 }, check: v => v.regulars >= 20,
+      tiers: [
+        { mod: { incomeMult: 0.4 }, desc: 'The house takes 60% — all income ×0.4.' },
+        { mod: { incomeMult: 0.3 }, desc: 'The house takes 70% — all income ×0.3.' }
+      ] },
+    { id: 'dry', name: 'No Street Team', desc: 'Flyer Crew is locked — word of mouth only.', mod: { locked: ['flyers'] }, reward: { crewOut: 0.05 }, check: v => v.b.dj >= 2,
+      tiers: [
+        { mod: { locked: ['flyers', 'marquee'] }, desc: 'Flyer Crew and Marquee are locked — no advertising at all.' },
+        { mod: { locked: ['flyers', 'marquee', 'door'] }, desc: 'Flyer Crew, Marquee, and Door Staff are locked — bare room.' }
+      ] },
+    { id: 'lean', name: 'Lean Night', desc: 'The Back Bar is locked — no bar revenue.', mod: { locked: ['bar'] }, reward: { cashMult: 0.05 }, check: v => v.b.vip >= 1,
+      tiers: [
+        { mod: { locked: ['bar', 'vip'] }, desc: 'Back Bar and VIP Booths are locked — no drinks, no bottles.' },
+        { mod: { locked: ['bar', 'vip', 'rail'] }, desc: 'Back Bar, VIP Booths, and Tip Rails are locked — cover only.' }
+      ] }
   ];
 
   // Brand perks (REPLAY_ROADMAP.md §9) — the Renown sink. Bought with Renown,
@@ -792,6 +827,31 @@ class Game {
     return 10 * ((level || 0) + 1);
   }
 
+  // Highest COMPLETED tier of a challenge (0 = not completed) — g.challengeTiers,
+  // the derived reward record (next-roadmap PR 2). Fail-closed: unknown ids
+  // and malformed values read 0.
+  challengeTier(g, id) {
+    const t = g && g.challengeTiers && g.challengeTiers[id];
+    return typeof t === 'number' && Number.isFinite(t) && t >= 1 ? Math.min(3, Math.floor(t)) : 0;
+  }
+
+  // The NEXT tier the player can start for a challenge (1 when fresh, N+1
+  // after completing tier N, 0 when tier 3 is done). Sequential gating: a
+  // tier N+1 run requires tier N completed first.
+  challengeNextTier(g, def) {
+    const done = this.challengeTier(g, def.id);
+    return done >= 3 ? 0 : done + 1;
+  }
+
+  // Modifier of a challenge at a given tier (1-based): tier 1 uses the table's
+  // `mod`; tiers 2–3 use `tiers[tier-2].mod`. Self-contained per tier — a
+  // tier 2 mod repeats tier 1's constraints plus the tighter one.
+  challengeTierMod(def, tier) {
+    const t = (typeof tier === 'number' && Number.isFinite(tier)) ? Math.max(1, Math.min(3, Math.floor(tier))) : 1;
+    if (t <= 1 || !Array.isArray(def.tiers) || !def.tiers[t - 2]) return def.mod || {};
+    return def.tiers[t - 2].mod || def.mod || {};
+  }
+
   // Active challenge def (null when none). Challenges are opt-in replay runs
   // (REPLAY_ROADMAP.md §6); the pacing bot never starts one, so these no-op
   // for the deterministic bands.
@@ -800,10 +860,13 @@ class Game {
     return this.CHALLENGES.find(c => c.id === g.challenge) || null;
   }
 
-  // Modifier of the active challenge ({} when none).
+  // Modifier of the active challenge at its ACTIVE tier ({} when none). Tier 2+
+  // runs tighten the base modifier via the table's `tiers` array; the active
+  // run's tier lives in g.challengeTier so a mid-challenge reload keeps it.
   challengeMod(g) {
     const ch = this.activeChallenge(g);
-    return (ch && ch.mod) || {};
+    if (!ch) return {};
+    return this.challengeTierMod(ch, (g && g.challengeTier) || 1);
   }
 
   // Is a building locked by the active challenge's modifier? Enforced in
@@ -814,24 +877,27 @@ class Game {
     return Array.isArray(mod.locked) && mod.locked.includes(id);
   }
 
-  // Permanent challenge rewards, DERIVED from g.challengesDone + the table
-  // (no separate reward field). Aggregates the additive bonuses: cashMult
-  // (all cash +%), doorMax (Door Staff cap +N), crewOut (crew output +%).
+  // Permanent challenge rewards, DERIVED from g.challengeTiers + the table
+  // (no separate reward field). Each completed tier N grants the table reward
+  // × N, so the replay ladder scales the bonus: Tight Till tier 3 → +15% all
+  // cash. Aggregates the additive bonuses: cashMult (all cash +%), doorMax
+  // (Door Staff cap +N), crewOut (crew output +%).
   challengeBonus(g) {
-    const done = new Set(Array.isArray(g.challengesDone) ? g.challengesDone : []);
     const bonus = { cashMult: 0, doorMax: 0, crewOut: 0 };
     for (const ch of this.CHALLENGES) {
-      if (!done.has(ch.id) || !ch.reward) continue;
-      bonus.cashMult += ch.reward.cashMult || 0;
-      bonus.doorMax += ch.reward.doorMax || 0;
-      bonus.crewOut += ch.reward.crewOut || 0;
+      const tier = this.challengeTier(g, ch.id);
+      if (!tier || !ch.reward) continue;
+      bonus.cashMult += (ch.reward.cashMult || 0) * tier;
+      bonus.doorMax += (ch.reward.doorMax || 0) * tier;
+      bonus.crewOut += (ch.reward.crewOut || 0) * tier;
     }
     return bonus;
   }
 
-  // Human-readable modifier summary for the challenge card.
-  challengeModDesc(d) {
-    const mod = d.mod || {};
+  // Human-readable modifier summary for a challenge card (tier-aware: shows
+  // the mod the run would apply at that tier).
+  challengeModDesc(d, tier = 1) {
+    const mod = this.challengeTierMod(d, tier);
     const parts = [];
     if (typeof mod.startCash === 'number') parts.push('$' + mod.startCash + ' start');
     if (typeof mod.incomeMult === 'number') parts.push('income ×' + mod.incomeMult);
@@ -841,13 +907,15 @@ class Game {
     return parts.length ? parts.join(' · ') : 'modified run';
   }
 
-  // Human-readable reward summary for the challenge card.
-  challengeRewardDesc(d) {
+  // Human-readable reward summary for a challenge card (tier-aware: the
+  // permanent bonus granted by completing that tier = reward × tier).
+  challengeRewardDesc(d, tier = 1) {
     const r = d.reward || {};
+    const m = (typeof tier === 'number' && Number.isFinite(tier)) ? Math.max(1, Math.min(3, Math.floor(tier))) : 1;
     const parts = [];
-    if (r.cashMult) parts.push('+ ' + Math.round(r.cashMult * 100) + '% all cash');
-    if (r.doorMax) parts.push('+ ' + r.doorMax + ' Door Staff cap');
-    if (r.crewOut) parts.push('+ ' + Math.round(r.crewOut * 100) + '% crew output');
+    if (r.cashMult) parts.push('+ ' + Math.round(r.cashMult * 100 * m) + '% all cash');
+    if (r.doorMax) parts.push('+ ' + r.doorMax * m + ' Door Staff cap');
+    if (r.crewOut) parts.push('+ ' + Math.round(r.crewOut * 100 * m) + '% crew output');
     return parts.length ? parts.join(' · ') : 'permanent bonus';
   }
 
@@ -1204,6 +1272,10 @@ class Game {
       goals: [], clicks: 0, rounds: 0,
       // Challenge runs (PR 4, additive) — active challenge id + completed ids.
       challenge: null, challengesDone: [],
+      // Challenge tiers (next-roadmap PR 2) — the ACTIVE run's tier (1–3) and
+      // the completed-tier map (id → highest tier done). Additive; preserved
+      // by prestige and challenge starts, wiped by the franchise sale.
+      challengeTier: 1, challengeTiers: {},
       // Burst-event counters (0.10.1, additive) — whalesCount/specialsCount drive
       // whale/special achievements. Not required by isValidSavePayload, so they
       // never force a SAVE_VER bump on their own.
@@ -1417,6 +1489,19 @@ class Game {
     g.challenge = (typeof g.challenge === 'string' && this.CHALLENGES.some(c => c.id === g.challenge)) ? g.challenge : null;
     if (!Array.isArray(g.challengesDone)) g.challengesDone = [];
     g.challengesDone = g.challengesDone.filter(id => typeof id === 'string' && this.CHALLENGES.some(c => c.id === id));
+    // Challenge tiers (next-roadmap PR 2): the active run's tier is 1–3,
+    // fail-closed to 1 (only meaningful while a challenge is active); the
+    // completed-tier map keeps known ids clamped 0–3, dropping unknown keys —
+    // parity with completeImportedG.
+    g.challengeTier = (typeof g.challengeTier === 'number' && Number.isFinite(g.challengeTier) && g.challengeTier >= 1) ? Math.min(3, Math.floor(g.challengeTier)) : 1;
+    if (!g.challengeTiers || typeof g.challengeTiers !== 'object' || Array.isArray(g.challengeTiers)) g.challengeTiers = {};
+    const ctNext = Object.create(null);
+    for (const ch of this.CHALLENGES) {
+      const t = g.challengeTiers[ch.id];
+      ctNext[ch.id] = (typeof t === 'number' && Number.isFinite(t) && t >= 1) ? Math.min(3, Math.floor(t))
+        : ((Array.isArray(g.challengesDone) && g.challengesDone.includes(ch.id)) ? 1 : 0);
+    }
+    g.challengeTiers = ctNext;
     // Brand perks (PR 7): known ids, integer 0–max, fail-closed. Rebuild so
     // unknown keys are dropped — parity with completeImportedG (an unknown
     // brand id is not a real perk and brandRank would fail closed on it).
@@ -1663,6 +1748,18 @@ class Game {
     g.challenge = (typeof g.challenge === 'string' && this.CHALLENGES.some(c => c.id === g.challenge)) ? g.challenge : null;
     if (!Array.isArray(g.challengesDone)) g.challengesDone = [];
     g.challengesDone = g.challengesDone.filter(id => typeof id === 'string' && this.CHALLENGES.some(c => c.id === id));
+
+    // Challenge tiers (next-roadmap PR 2) — parity with sanitizeG: active
+    // tier 1–3 (fail-closed 1), completed-tier map known ids clamped 0–3.
+    g.challengeTier = (typeof g.challengeTier === 'number' && Number.isFinite(g.challengeTier) && g.challengeTier >= 1) ? Math.min(3, Math.floor(g.challengeTier)) : 1;
+    if (!g.challengeTiers || typeof g.challengeTiers !== 'object' || Array.isArray(g.challengeTiers)) g.challengeTiers = {};
+    const ctNext = Object.create(null);
+    for (const ch of this.CHALLENGES) {
+      const t = g.challengeTiers[ch.id];
+      ctNext[ch.id] = (typeof t === 'number' && Number.isFinite(t) && t >= 1) ? Math.min(3, Math.floor(t))
+        : ((Array.isArray(g.challengesDone) && g.challengesDone.includes(ch.id)) ? 1 : 0);
+    }
+    g.challengeTiers = ctNext;
 
     // Brand perks (PR 7) — known ids, integer 0–max, fail-closed.
     if (!g.brand || typeof g.brand !== 'object' || Array.isArray(g.brand)) g.brand = {};
@@ -2545,18 +2642,23 @@ class Game {
     this.checkChallenge(g);
   }
 
-  // Challenge completion (REPLAY_ROADMAP.md §6): when the active challenge's
-  // check passes, record it in challengesDone (the permanent reward is DERIVED
-  // from the table — no separate grant step) and clear the active challenge.
+  // Challenge completion (REPLAY_ROADMAP.md §6, next-roadmap PR 2): when the
+  // active challenge's check passes, record its ACTIVE tier in challengeTiers
+  // (the permanent reward is DERIVED from the table × tier — no separate grant
+  // step) and clear the active challenge. Tier 3 is the top of the ladder.
   checkChallenge(g) {
     const ch = this.activeChallenge(g);
     if (!ch || !ch.check) return;
-    if ((g.challengesDone || []).includes(ch.id)) return;
+    if (this.challengeTier(g, ch.id) >= 3) return;
     if (!ch.check(this.clubView(g))) return;
+    const tier = Math.max(1, Math.min(3, Math.floor((g && g.challengeTier) || 1)));
+    if (!g.challengeTiers || typeof g.challengeTiers !== 'object' || Array.isArray(g.challengeTiers)) g.challengeTiers = {};
+    g.challengeTiers[ch.id] = Math.max(this.challengeTier(g, ch.id), tier);
     if (!Array.isArray(g.challengesDone)) g.challengesDone = [];
-    g.challengesDone.push(ch.id);
+    if (!g.challengesDone.includes(ch.id)) g.challengesDone.push(ch.id);
     g.challenge = null;
-    this.push(g, 'Challenge complete: ' + ch.name + ' — permanent bonus granted!', '#ffd700');
+    g.challengeTier = 1;
+    this.push(g, 'Challenge complete: ' + ch.name + ' tier ' + tier + ' — permanent bonus granted!', '#ffd700');
   }
 
   save(kind) {
@@ -2866,7 +2968,8 @@ class Game {
       managerPaused: {},
       managerLevels: {},
       brand: {},
-      brandLevel: this.brandLevel(g)
+      brandLevel: this.brandLevel(g),
+      challengeTiers: {}
     };
     for (const def of this.PRESTIGE_PERKS) snapshot.perks[def.id] = this.perk(g, def.id);
     for (const def of this.MANAGERS) snapshot.managers[def.id] = g.managers && g.managers[def.id] === true;
@@ -2919,6 +3022,10 @@ class Game {
     // Brand Endorsement level (next-roadmap PR 1) survives too — the repeatable
     // Renown sink is account meta, same class as the ranks.
     next.brandLevel = snapshot.brandLevel;
+    // Completed challenge tiers (next-roadmap PR 2) survive prestige — the
+    // active challenge ends (fresh() clears it), but earned tiers persist.
+    for (const ch of this.CHALLENGES) snapshot.challengeTiers[ch.id] = this.challengeTier(g, ch.id);
+    next.challengeTiers = snapshot.challengeTiers;
     this.applyStartPerks(next);
     // Start-perk state can satisfy building achievements.
     this.checkAchievements(next);
@@ -3083,7 +3190,12 @@ class Game {
   startChallenge(def) {
     if (this.state.tabStale) return;
     const g = this.state.g;
-    if (g.challenge || (g.challengesDone || []).includes(def.id)) return;
+    if (g.challenge) return;
+    // Sequential tier gating (next-roadmap PR 2): the next available tier is
+    // highestDone + 1 (1 when fresh, capped at 3). A completed challenge can
+    // only be re-run at a HIGHER tier, never replayed.
+    const nextTier = this.challengeNextTier(g, def);
+    if (!nextTier) return;
     // Two-click arm: starting a challenge resets the run — first click arms.
     if (this.state.challengeArmed !== def.id) {
       this.setState({ challengeArmed: def.id });
@@ -3092,7 +3204,8 @@ class Game {
     const snapshot = {
       legacy: (g.legacy || 0), legacyTotal: (g.legacyTotal || 0),
       perks: {}, prestiges: (g.prestiges || 0), managers: {}, managerPaused: {}, managerLevels: {},
-      brand: {}, brandLevel: this.brandLevel(g)
+      brand: {}, brandLevel: this.brandLevel(g),
+      challengeTiers: {}
     };
     for (const p of this.PRESTIGE_PERKS) snapshot.perks[p.id] = this.perk(g, p.id);
     for (const m of this.MANAGERS) {
@@ -3103,8 +3216,13 @@ class Game {
     // Brand ranks (PR 7) are Renown-sink account meta — a challenge start must
     // not wipe them (only the franchise sale does). Same class as managers.
     for (const def of this.BRAND_PERKS) snapshot.brand[def.id] = this.brandRank(g, def.id);
+    // Completed challenge tiers (next-roadmap PR 2) survive challenge starts —
+    // a tier N+1 run keeps the tiers already earned below it.
+    for (const ch of this.CHALLENGES) snapshot.challengeTiers[ch.id] = this.challengeTier(g, ch.id);
     const next = this.fresh(); // fresh() builds main only — the annex is re-locked
     next.challenge = def.id;
+    next.challengeTier = nextTier;
+    next.challengeTiers = snapshot.challengeTiers;
     next.challengesDone = Array.isArray(g.challengesDone) ? g.challengesDone.slice() : [];
     next.legacy = snapshot.legacy;
     next.legacyTotal = snapshot.legacyTotal;
@@ -3123,8 +3241,9 @@ class Game {
     // Brand Endorsement level (next-roadmap PR 1) — same class as the ranks:
     // the repeatable Renown sink must not wipe on a challenge start either.
     next.brandLevel = snapshot.brandLevel;
-    // Modifier startCash overrides the default starting till.
-    const mod = def.mod || {};
+    // Modifier startCash overrides the default starting till (tier-aware: the
+    // active tier's mod, not just the tier-1 table mod).
+    const mod = this.challengeTierMod(def, nextTier);
     if (typeof mod.startCash === 'number') next.clubs.main.cash = mod.startCash;
     this.applyStartPerks(next);
     // Challenge locks override start perks: a seeded structure (e.g. the
@@ -3135,7 +3254,7 @@ class Game {
       if (next.clubs.main.b[lid]) next.clubs.main.b[lid] = 0;
     }
     this.checkAchievements(next);
-    this.push(next, 'Challenge started: ' + def.name + ' — ' + def.desc, '#e879f9');
+    this.push(next, 'Challenge started: ' + def.name + ' tier ' + nextTier + ' — ' + def.desc, '#e879f9');
     try {
       localStorage.setItem(this.KEY, JSON.stringify({
         saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g: next
@@ -3160,6 +3279,7 @@ class Game {
     const g = this.state.g;
     if (!g.challenge) return;
     g.challenge = null;
+    g.challengeTier = 1;
     this.push(g, 'Challenge ended — no reward.', '#ff2d78');
     this.setState({ challengeArmed: null });
     this.forceUpdate();
@@ -3478,19 +3598,25 @@ class Game {
           subLocked: hired && !maxed && !lvOk,
           subStyle: btn(maxed || lvOk, '#d4af37') };
       });
-      // Challenge runs (REPLAY_ROADMAP.md §6): opt-in replay modifiers with
-      // permanent, derived rewards. Start is two-click armed (it resets the run).
+      // Challenge runs (REPLAY_ROADMAP.md §6, next-roadmap PR 2): opt-in replay
+      // modifiers with permanent, derived rewards, now a 3-tier ladder. Start
+      // is two-click armed (it resets the run); a completed challenge offers
+      // the NEXT tier (sequential gating), maxed at tier 3.
       const challengeCards = this.CHALLENGES.map(d => {
-        const done = (g.challengesDone || []).includes(d.id);
+        const done = this.challengeTier(g, d.id);
+        const nextTier = this.challengeNextTier(g, d);
         const active = g.challenge === d.id;
         const armed = this.state.challengeArmed === d.id;
+        const at = active ? ((g.challengeTier || 1)) : (nextTier || done || 1);
         return {
-          name: d.name, desc: d.desc, owned: done ? 'done' : (active ? 'ACTIVE' : '—'),
-          btn: done ? 'Completed' : (active ? 'Active' : (armed ? 'Confirm start?' : 'Start')),
-          meta: done ? 'reward: ' + this.challengeRewardDesc(d)
-            : (active ? this.challengeModDesc(d) + ' · ' + this.challengeRewardDesc(d)
-              : this.challengeModDesc(d) + ' → ' + this.challengeRewardDesc(d)),
-          locked: done || active, wrapStyle: cardWrap(!done && !active), btnStyle: btn(!done && !active, '#e879f9'),
+          name: d.name + (done ? ' — tier ' + done + '/3' : ''),
+          desc: d.desc,
+          owned: done ? done + '/3' : (active ? 'ACTIVE tier ' + (g.challengeTier || 1) : '—'),
+          btn: !nextTier ? 'Maxed' : (active ? 'Active' : (armed ? 'Confirm start?' : nextTier === 1 ? 'Start' : 'Start tier ' + nextTier)),
+          meta: done ? (nextTier ? 'next tier ' + nextTier + ': ' + this.challengeRewardDesc(d, nextTier) : 'maxed')
+            : (active ? this.challengeModDesc(d, g.challengeTier) + ' · ' + this.challengeRewardDesc(d, g.challengeTier)
+              : 'tier ' + at + ': ' + this.challengeModDesc(d, at) + ' → ' + this.challengeRewardDesc(d, at)),
+          locked: !nextTier || active, wrapStyle: cardWrap(!!nextTier && !active), btnStyle: btn(!!nextTier && !active, '#e879f9'),
           act: () => this.startChallenge(d)
         };
       });
