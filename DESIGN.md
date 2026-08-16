@@ -902,6 +902,68 @@ how many buildings each manager auto-buys per tick in `autoBuyManagers()`:
 
 **Non-goals:** no auto-prestige, no auto-assign-crew, no auto-buy-rounds.
 
+## 22. Renown unlocks (`BRAND_PERKS`, `LOCATION_EXTRAS`, rooftop) — shipped 0.11.10
+
+Renown from selling the franchise (§9.2) becomes a spendable sink
+(REPLAY_ROADMAP.md §9): brand perks bought with Renown, a third club, and
+per-location content.
+
+### 22.1 Brand perks (`BRAND_PERKS`)
+
+Data table mirroring `PRESTIGE_PERKS` — `{ id, name, cost, max, desc, req? }`.
+Each rank costs the table cost again (flat, not scaling). Ranks live in the
+account-level `g.brand` map (`brandRank(g, id)`, fail-closed to 0), bought via
+`buyBrandPerk`, and **persist through the franchise sale** — they are the
+reason to sell again. Ordinary prestige also preserves them (`confirmPrestige`
+snapshots brand and restores it BEFORE `applyStartPerks`, so Loyalty seeds the
+new run's regulars), and so does a challenge start (`startChallenge` snapshots
+the brand map like the managers — a challenge run must not wipe
+Renown-purchased perks; Loyalty seeds the challenge run's regulars the same
+way).
+
+| Perk | Cost (Renown) | Max | Effect per rank |
+|------|--------------:|----:|-----------------|
+| Nationwide Reach | 5 | 3 | All cash income +10% (folded into `totalCashMult`) |
+| Loyalty Program | 4 | 3 | Start each run with +1 Regular |
+| R&D Lab | 4 | 3 | Research costs −10% (via `researchCost`, floored at 1 Clout) |
+| Night Owl Network | 3 | 3 | Offline progress +10% (multiplies the catch-up rate) |
+| Rooftop Lease | 10 | 1 | Unlocks the Rooftop — a third location |
+
+Effects are account-wide. `researchCost(g, def)` is the single source for both
+the buy action and the card; `nationwide` routes through `totalCashMult(g)` so
+passive income AND clicks/whale/golden all scale.
+
+### 22.2 Third club — the Rooftop
+
+`Rooftop Lease` rank ≥ 1 opens `canOpenRooftop()`; `confirmOpenRooftop()` creates
+`g.clubs.rooftop` via `freshClubState('rooftop')` — the same account-level
+unlock pattern as the annex (§17). No new save shape beyond PR 6. The club
+switcher gains a third entry and the Ledger labels the active room.
+
+### 22.3 Location extras (`LOCATION_EXTRAS`)
+
+Each club id has a small set of **location-specific buildings/upgrades**
+appended to the shared catalog (supersedes SECOND_LOCATION.md §11's
+"no location-specific buildings" non-goal):
+
+| Location | Buildings | Upgrades |
+|----------|-----------|----------|
+| `main` | Neon Pool (+$0.60/s, +6 patron cap) | — |
+| `annex` | Rooftop Bar (+$0.90/s, +8 patron cap) | Skyline View (×1.25 all cash, req Rooftop Bar ×2) |
+| `rooftop` | Helipad Lounge (+$1.50/s, +12 patron cap) | Panorama Deck (×1.40 hype, req Helipad ×2) |
+
+Extras are additive: the shared `BUILDINGS`/`UPGRADES` catalogs still apply
+everywhere, and `locationExtras(loc)` / `extraBuildings(loc)` /
+`extraUpgrades(loc)` append per club. `freshClubState(loc)` initializes each
+location's extra ids; `sanitizeG` / `completeImportedG` backfill them for
+existing saves. Every extras read is `|| 0` / `=== true` fail-safe: a club
+missing an extra id prices it as 0 owned — the NaN-price infinite loop in
+`buildingMaxAffordable`/`buyBuilding` (NaN < cash is false, so the buy loop
+never broke) is fixed by this.
+
+**Non-goals:** still max 3 clubs; no cross-club cash transfer; no per-club
+research; brand perks are Renown-only (no conversion from/to Clout/Legacy).
+
 ## Doc maintenance
 
 - Rewrite claims against `game.js`, not against stale plans.  

@@ -638,11 +638,17 @@ function secondRoomRun() {
 }
 
 /**
- * Renown scenario (REPLAY_ROADMAP.md §8). Honest end-to-end: the bot prestige-
+ * Renown scenario (REPLAY_ROADMAP.md §8–9). Honest end-to-end: the bot prestige-
  * loops (each cycle: play main to the prestige gate, prestige, buy every
  * affordable perk/manager in order, unlock the annex once a manager exists)
  * until the franchise gate opens — all perks maxed, all managers hired, both
- * clubs owned — then sells and verifies the post-sale state.
+ * clubs owned — then sells, verifies the post-sale state, and plays the §9
+ * rooftop: buys the Rooftop Lease brand perk with the sale's Renown, opens the
+ * third club, and confirms the location extras move the rooftop economy via
+ * direct rates() toggles (per §10 — a fresh-baseline LED comparison would pass
+ * on achievement carryover alone) and that the third club plays to its first
+ * LED within the wall cap. The bot never buys brand perks or location extras,
+ * so the extras cannot move the measured main-run bands.
  *
  * Reference run: gate at ~336 min sim / 13 cycles, renownGain ≈ 15. Band is
  * deliberately wide (2h–8h): it must catch a SLOWDOWN that pushes the gate past
@@ -749,9 +755,107 @@ function renownRun() {
     process.exit(1);
   }
 
+  // ── Rooftop scenario (REPLAY_ROADMAP.md §9) ──────────────────────────────
+  // The sale leaves spendable Renown. Buying the Rooftop Lease brand perk
+  // spends it, unlocks the third club, and the third club plays with its own
+  // location extras. The bot never buys brand perks or location extras, so the
+  // rooftop's first LED must beat a fresh baseline ONLY via preserved account
+  // progress (achievements survive the sale) — the extras are identity, not a
+  // bot-path economy shift.
+  const lease = game.BRAND_PERKS.find((p) => p.id === 'rooftop');
+  const ledMilestone = MILESTONES.find((m) => m.id === 'upgrade');
+  if (!lease) {
+    console.log('\n❌ Rooftop scenario failed: BRAND_PERKS has no rooftop lease.\n');
+    process.exit(1);
+  }
+  if (a.renown < lease.cost) {
+    console.log(`\n❌ Rooftop scenario failed: only ${a.renown} Renown after the sale — cannot afford the ${lease.cost}-Renown lease.\n`);
+    process.exit(1);
+  }
+  const renownBefore = a.renown;
+  game.buyBrandPerk(lease);
+  if (a.brand.rooftop !== 1 || a.renown !== renownBefore - lease.cost) {
+    console.log(`\n❌ Rooftop scenario failed: lease purchase wrong (brand=${a.brand.rooftop} renown=${a.renown}, expected 1 / ${renownBefore - lease.cost}).\n`);
+    process.exit(1);
+  }
+  if (a.renownTotal !== gain) {
+    console.log(`\n❌ Rooftop scenario failed: spending Renown moved renownTotal (${a.renownTotal}, expected ${gain}).\n`);
+    process.exit(1);
+  }
+  game.buyBrandPerk(lease); // max rank 1 — must no-op
+  if (a.brand.rooftop !== 1 || a.renown !== renownBefore - lease.cost) {
+    console.log('\n❌ Rooftop scenario failed: lease bought past max rank.\n');
+    process.exit(1);
+  }
+  if (!game.canOpenRooftop()) {
+    console.log('\n❌ Rooftop scenario failed: rooftop gate did not open after the lease.\n');
+    process.exit(1);
+  }
+  game.confirmOpenRooftop();
+  if (!a.clubs.rooftop) {
+    console.log('\n❌ Rooftop scenario failed: confirmOpenRooftop did not create the rooftop.\n');
+    process.exit(1);
+  }
+  // Own-property read: `game.club(a)` would resolve the ACTIVE club (main)
+  // until the switch below — read the rooftop club from the map directly.
+  const rtc = a.clubs.rooftop;
+  if (rtc.b.heli !== 0 || rtc.u.vista !== false) {
+    console.log('\n❌ Rooftop scenario failed: rooftop extras not initialized (heli/vista).\n');
+    process.exit(1);
+  }
+  if (game.canOpenRooftop()) {
+    console.log('\n❌ Rooftop scenario failed: rooftop gate still open after creation.\n');
+    process.exit(1);
+  }
+  game.setActiveClub('rooftop');
+  if (a.activeClub !== 'rooftop') {
+    console.log(`\n❌ Rooftop scenario failed: setActiveClub('rooftop') did not switch (activeClub=${a.activeClub}).\n`);
+    process.exit(1);
+  }
+  // Direct effect assertion (REPLAY_ROADMAP.md §10 — mirrors secondRoomRun()'s
+  // research toggle). The extras must move the rooftop economy, not be
+  // cosmetic: a fresh-baseline comparison would pass on achievement carryover
+  // alone (the sale keeps 30 achievements → +30% cash), so toggle the extras
+  // on a fixed rooftop state and require rates() to respond.
+  const savedPatrons = rtc.patrons;
+  rtc.patrons = 10; // non-zero income so the extra cash building has something to scale
+  const rNoHeli = game.rates(a);
+  rtc.b.heli = 1;
+  const rHeli = game.rates(a);
+  rtc.b.heli = 0;
+  rtc.patrons = savedPatrons;
+  if (rHeli.cash <= rNoHeli.cash) {
+    console.log('\n❌ Rooftop scenario failed: Helipad Lounge has no cash effect — the extra is cosmetic.\n');
+    process.exit(1);
+  }
+  rtc.b.dj = 1;
+  const hNoVista = game.rates(a).hype;
+  rtc.u.vista = true;
+  const hVista = game.rates(a).hype;
+  rtc.u.vista = false;
+  rtc.b.dj = 0;
+  if (hVista <= hNoVista) {
+    console.log('\n❌ Rooftop scenario failed: Panorama Deck has no hype effect — the extra is cosmetic.\n');
+    process.exit(1);
+  }
+  // Third club plays: the same bot reaches its first LED on the rooftop within
+  // the wall cap. (The bot buys no brand perks or location extras, so the main
+  // milestone bands above stay bit-identical — extras are identity, not a
+  // bot-path economy shift.)
+  let t3 = null;
+  simulate(game, (g, wall) => {
+    if (t3 == null && ledMilestone.check(g)) { t3 = wall; return true; }
+    return false;
+  }, totalSec, { stopOnMilestones: false });
+  if (t3 == null) {
+    console.log('\n❌ Rooftop scenario failed: first LED not reached within the wall cap.\n');
+    process.exit(1);
+  }
+  console.log(`  rooftop first LED (post-sale account, extras available): ${fmtMin(t3)}`);
+
   console.log(`
 ✅ Renown scenario passed: franchise sold at ${fmtMin(gateAt)} for +${gain} Renown; ` +
-    `${a.achievements.length} achievements kept, annex re-locked.
+    `${a.achievements.length} achievements kept, annex re-locked, rooftop opened and playing (first LED ${fmtMin(t3)}, extras verified live).
 `);
 }
 

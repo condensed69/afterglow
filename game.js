@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.9', build: 222, channel: 'alpha', date: '2026-08-15', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.10', build: 223, channel: 'alpha', date: '2026-08-15', codename: 'Neon Zero' };
   SAVE_VER = 10;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -167,6 +167,9 @@ class Game {
   };
 
   CHANGELOG = [
+    { v: '0.11.10', date: '2026-08-15', codename: 'Neon Zero', notes: [
+      'RENOWN UNLOCKS (REPLAY_ROADMAP.md §9): Renown is now a spendable sink — the reason to sell the franchise again. The Perks panel gains 5 Brand perks bought with Renown: Nationwide Reach (+10% all cash per rank, through the single totalCashMult composition point), Loyalty Program (start each run with +1 Regular per rank, restored before start perks on prestige), R&D Lab (−10% research cost per rank via researchCost), Night Owl Network (+10% offline rate per rank), and Rooftop Lease (unlocks the Rooftop, a third location). Brand ranks persist through the franchise sale, ordinary prestige, and challenge starts (startChallenge snapshots the brand map like the managers — a challenge run must not wipe Renown-purchased perks). The third club reuses the g.clubs map and freshClubState(); each location now has its own additive buildings/upgrades (LOCATION_EXTRAS: Neon Pool in the Main Room; Rooftop Bar + Skyline View in the Annex; Helipad Lounge + Panorama Deck on the Rooftop) appended to the shared catalog — superseding SECOND_LOCATION.md §11\'s "no location-specific buildings" non-goal. Existing saves backfill the new ids on load, and a club missing an extra id prices it as 0 owned instead of NaN — fixing a real infinite loop in buy-max. Additive fields only, SAVE_VER stays 10. The pacing bot never buys brand perks or location extras, so every main-run band is bit-identical; renownRun() gains a rooftop scenario (lease → open → extras verified live via rates() toggles → third club plays to its first LED).'
+    ] },
     { v: '0.11.9', date: '2026-08-15', codename: 'Neon Zero', notes: [
       'SECOND PRESTIGE LAYER (REPLAY_ROADMAP.md §8): when every prestige perk is maxed, every manager is hired, and both clubs are unlocked, the Perks panel gains a distinct "Sell the franchise" control — a national conglomerate buys your whole operation. Selling resets EVERYTHING (both clubs, Legacy, perks, research, Clout, managers, crew, challenges, run counters) in exchange for Renown, a new permanent meta-currency (floor(√lifetime Legacy + prestiges/3)). Renown and lifetime Renown never wipe; achievements and Brand ranks (g.brand, spent in a later PR) persist — the reason to build and sell again. Two-click armed confirm with a reset-scope preview, persist-before-replace like prestige, and a Renown readout after the first sale. SAVE_VER bumped to 10; v9 saves migrate with the new fields defaulted.'
     ] },
@@ -559,6 +562,39 @@ class Game {
     { id: 'dry', name: 'No Street Team', desc: 'Flyer Crew is locked — word of mouth only.', mod: { locked: ['flyers'] }, reward: { crewOut: 0.05 }, check: v => v.b.dj >= 2 },
     { id: 'lean', name: 'Lean Night', desc: 'The Back Bar is locked — no bar revenue.', mod: { locked: ['bar'] }, reward: { cashMult: 0.05 }, check: v => v.b.vip >= 1 }
   ];
+
+  // Brand perks (REPLAY_ROADMAP.md §9) — the Renown sink. Bought with Renown,
+  // persist through the second prestige (they're the reason to sell again).
+  // Mirrors PRESTIGE_PERKS: { id, name, cost, max, desc, req? } (req = brand
+  // perk id, rank >= 1). Effects are account-wide; 'rooftop' unlocks the third
+  // club. brandRank(g, id) reads g.brand (fail-closed to 0).
+  BRAND_PERKS = [
+    { id: 'nationwide', name: 'Nationwide Reach', cost: 5, max: 3, desc: 'All cash income +10% per rank, everywhere.' },
+    { id: 'loyalty', name: 'Loyalty Program', cost: 4, max: 3, desc: 'Start each run with +1 Regular per rank.' },
+    { id: 'rnd', name: 'R&D Lab', cost: 4, max: 3, desc: 'Research costs −10% per rank.' },
+    { id: 'offline', name: 'Night Owl Network', cost: 3, max: 3, desc: 'Offline progress +10% per rank.' },
+    { id: 'rooftop', name: 'Rooftop Lease', cost: 10, max: 1, desc: 'Unlock the Rooftop — a third location.' }
+  ];
+
+  // Location-specific buildings/upgrades (REPLAY_ROADMAP.md §9) — additive
+  // identity per club, appended to the shared BUILDINGS/UPGRADES catalog.
+  // `kind`: 'b' = building (cost/growth/desc, optional max), 'u' = upgrade
+  // (cost/req/desc). Supersedes SECOND_LOCATION.md §11's "no location-specific
+  // buildings" non-goal. Extras must be initialized in freshClubState and
+  // backfilled by sanitize/import for existing saves.
+  LOCATION_EXTRAS = {
+    main: [
+      { kind: 'b', id: 'pool', name: 'Neon Pool', cost: 700, growth: 1.22, desc: '+$0.60/s and +6 patron cap.' }
+    ],
+    annex: [
+      { kind: 'b', id: 'roofbar', name: 'Rooftop Bar', cost: 900, growth: 1.25, desc: '+$0.90/s and +8 patron cap.' },
+      { kind: 'u', id: 'skyline', name: 'Skyline View', cost: 2600, req: { roofbar: 2 }, desc: 'All cash income ×1.25 (annex only).' }
+    ],
+    rooftop: [
+      { kind: 'b', id: 'heli', name: 'Helipad Lounge', cost: 1500, growth: 1.30, desc: '+$1.50/s and +12 patron cap.' },
+      { kind: 'u', id: 'vista', name: 'Panorama Deck', cost: 4200, req: { heli: 2 }, desc: 'Hype generation ×1.40 (rooftop only).' }
+    ]
+  };
   // Prestige perks (PRESTIGE.md). Legacy cost, max rank, effect applied in rates()/workCrowd()/catchUp()/fresh().
   // Optional `req: perkId` gates purchase on the prerequisite perk's rank >= 1 (perk tree, PLAN §4.3).
   // Note: unlike UPGRADES.req ({ buildingId: count }), a perk req is a bare perkId string (existence-based,
@@ -659,6 +695,26 @@ class Game {
   perk(g, id) {
     const p = g && g.perks && g.perks[id];
     return typeof p === 'number' && p > 0 ? p : 0;
+  }
+
+  // Current rank of a Brand perk (0 if missing/invalid) — g.brand, Renown sink
+  // (REPLAY_ROADMAP.md §9). Mirrors perk() but reads the brand map.
+  brandRank(g, id) {
+    const b = g && g.brand && g.brand[id];
+    return typeof b === 'number' && b > 0 ? b : 0;
+  }
+
+  // Location-specific content for a club id (REPLAY_ROADMAP.md §9): the extras
+  // array, its buildings, or its upgrades. Empty for unknown ids — the shared
+  // catalog still applies everywhere.
+  locationExtras(loc) {
+    return (this.LOCATION_EXTRAS && this.LOCATION_EXTRAS[loc]) || [];
+  }
+  extraBuildings(loc) {
+    return this.locationExtras(loc).filter(x => x.kind === 'b');
+  }
+  extraUpgrades(loc) {
+    return this.locationExtras(loc).filter(x => x.kind === 'u');
   }
 
   // Effective max Door Staff count (base 6 + doorPlus perk).
@@ -822,7 +878,9 @@ class Game {
     // rewards derive from challengesDone.
     const mod = this.challengeMod(g);
     const incomeMod = typeof mod.incomeMult === 'number' ? mod.incomeMult : 1;
-    return this.cashIncomeMult(g) * this.achievementMult(g) * (g.r.brand ? 1.10 : 1) * (1 + this.challengeBonus(g).cashMult) * incomeMod;
+    // Nationwide Reach brand perk (REPLAY_ROADMAP.md §9): +10% all cash per rank.
+    return this.cashIncomeMult(g) * this.achievementMult(g) * (g.r.brand ? 1.10 : 1)
+      * (1 + this.challengeBonus(g).cashMult) * (1 + 0.10 * this.brandRank(g, 'nationwide')) * incomeMod;
   }
 
   // Featured regular name — derived from the active club's regulars count
@@ -1137,12 +1195,17 @@ class Game {
   }
 
   // Fresh per-club run state (SECOND_LOCATION.md §4): local till, local crowd,
-  // local build stack, local shift clock. fresh() uses it for 'main';
-  // confirmOpenRoom() uses it for the 'annex' unlock.
-  freshClubState() {
+  // local build stack, local shift clock. `loc` selects the location's extra
+  // building/upgrade ids (REPLAY_ROADMAP.md §9) — shared catalog + extras.
+  // fresh() uses it for 'main'; confirmOpenRoom for 'annex'; rooftop later.
+  freshClubState(loc = 'main') {
     const b = {}, u = {};
     this.BUILDINGS.forEach(x => b[x.id] = 0);
     this.UPGRADES.forEach(x => u[x.id] = false);
+    for (const x of this.locationExtras(loc)) {
+      if (x.kind === 'b') b[x.id] = 0;
+      else u[x.id] = false;
+    }
     return {
       cash: (this.props && this.props.startingCash) ?? 20, hype: 0, buzz: 0, patrons: 0, regulars: 0,
       b, u, elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0,
@@ -1159,6 +1222,9 @@ class Game {
       g.crew = 1;
       g.jobs.stage = 1;
     }
+    // Loyalty Program brand perk (REPLAY_ROADMAP.md §9): start with regulars.
+    const loyal = this.brandRank(g, 'loyalty');
+    if (loyal > 0) c.regulars = (c.regulars || 0) + loyal;
   }
 
   setState(update, cb) {
@@ -1258,6 +1324,17 @@ class Game {
       }
       if (!c.u || typeof c.u !== 'object' || Array.isArray(c.u)) c.u = {};
       for (const def of this.UPGRADES) c.u[def.id] = c.u[def.id] === true;
+      // Location extras (REPLAY_ROADMAP.md §9): backfill missing ids for
+      // existing saves — an uninitialized extra reads undefined, prices as NaN.
+      for (const x of this.locationExtras(clubId)) {
+        if (x.kind === 'b') {
+          let n = c.b[x.id];
+          if (typeof n !== 'number' || !Number.isFinite(n)) n = 0;
+          c.b[x.id] = Math.max(0, Math.floor(n));
+        } else {
+          c.u[x.id] = c.u[x.id] === true;
+        }
+      }
       if (c._specialShift != null && (!Number.isInteger(c._specialShift) || !this.SPECIAL_SHIFTS[c._specialShift])) c._specialShift = null;
       if (typeof c._whaleCooldown !== 'number' || !Number.isFinite(c._whaleCooldown)) c._whaleCooldown = 0;
     }
@@ -1300,6 +1377,16 @@ class Game {
     g.challenge = (typeof g.challenge === 'string' && this.CHALLENGES.some(c => c.id === g.challenge)) ? g.challenge : null;
     if (!Array.isArray(g.challengesDone)) g.challengesDone = [];
     g.challengesDone = g.challengesDone.filter(id => typeof id === 'string' && this.CHALLENGES.some(c => c.id === id));
+    // Brand perks (PR 7): known ids, integer 0–max, fail-closed. Rebuild so
+    // unknown keys are dropped — parity with completeImportedG (an unknown
+    // brand id is not a real perk and brandRank would fail closed on it).
+    if (!g.brand || typeof g.brand !== 'object' || Array.isArray(g.brand)) g.brand = {};
+    const brandNext = Object.create(null);
+    for (const def of this.BRAND_PERKS) {
+      const r = g.brand[def.id];
+      brandNext[def.id] = (typeof r === 'number' && Number.isFinite(r) && r >= 0) ? Math.min(def.max, Math.floor(r)) : 0;
+    }
+    g.brand = brandNext;
     return g;
   }
 
@@ -1440,7 +1527,11 @@ class Game {
 
       // Rebuild from known IDs only — unknown keys (e.g. string-valued XSS bait under
       // c.b) must not survive into Object.values(c.b) / Structures or other paths.
-      for (const [key, defs, fallback] of [['b', this.BUILDINGS, 0], ['u', this.UPGRADES, false]]) {
+      // Location extras (REPLAY_ROADMAP.md §9) join the catalog per club id.
+      for (const [key, defs, fallback] of [
+        ['b', this.BUILDINGS.concat(this.extraBuildings(clubId)), 0],
+        ['u', this.UPGRADES.concat(this.extraUpgrades(clubId)), false]
+      ]) {
         if (c[key] === undefined) c[key] = {};
         if (!c[key] || typeof c[key] !== 'object' || Array.isArray(c[key])) return false;
         const next = Object.create(null);
@@ -1527,6 +1618,15 @@ class Game {
     g.challenge = (typeof g.challenge === 'string' && this.CHALLENGES.some(c => c.id === g.challenge)) ? g.challenge : null;
     if (!Array.isArray(g.challengesDone)) g.challengesDone = [];
     g.challengesDone = g.challengesDone.filter(id => typeof id === 'string' && this.CHALLENGES.some(c => c.id === id));
+
+    // Brand perks (PR 7) — known ids, integer 0–max, fail-closed.
+    if (!g.brand || typeof g.brand !== 'object' || Array.isArray(g.brand)) g.brand = {};
+    const brandNext = Object.create(null);
+    for (const def of this.BRAND_PERKS) {
+      const r = g.brand[def.id];
+      brandNext[def.id] = (typeof r === 'number' && Number.isFinite(r) && r >= 0) ? Math.min(def.max, Math.floor(r)) : 0;
+    }
+    g.brand = brandNext;
 
     if (!Array.isArray(g.log)) g.log = [];
     // Keep raw validated t/msg (length-capped) so export→import is idempotent.
@@ -2026,7 +2126,8 @@ class Game {
   caps(g, cl) {
     const c = cl || this.club(g);
     return {
-      patrons: 10 + c.b.bar * 5 + (c.u.coat ? 20 : 0) + c.b.vip * 4,
+      patrons: 10 + c.b.bar * 5 + (c.u.coat ? 20 : 0) + c.b.vip * 4
+        + (c.b.pool || 0) * 6 + (c.b.roofbar || 0) * 8 + (c.b.heli || 0) * 12,
       buzz: 50 + c.b.marquee * 35,
       hype: 100 + c.b.dj * 25,
       crew: 2 + c.b.dress * 2
@@ -2101,7 +2202,7 @@ class Game {
     // is folded into totalCashMult — the single all-cash composition point — so
     // it covers passive income AND clicks/whale/golden (see totalCashMult()).
     const crewMult = (c.u.residency ? 1.4 : 1) * (g.r.school ? 1.15 : 1) * (1 + this.challengeBonus(g).crewOut);
-    const cashMult = (c.u.twodrink ? 1.35 : 1) * hypeMult * sm;
+    const cashMult = (c.u.twodrink ? 1.35 : 1) * hypeMult * sm * (c.u.skyline ? 1.25 : 1);
     const bottle = c.u.bottle ? 2.2 : 1;
 
     const railCap = c.b.rail * 6;
@@ -2117,6 +2218,8 @@ class Game {
     const coverRate = g.r.cover ? 0.03 : 0.02;
     let nonCrewCash = (c.patrons * coverRate + Math.min(c.patrons, railCap) * 0.06 + c.b.bar * 0.45) * cashMult * houseCut;
     nonCrewCash += c.b.vip * 1.25 * (g.r.concierge ? 1.5 : 1) * bottle * cashMult * houseCut;
+    // Location extras (REPLAY_ROADMAP.md §9): per-location cash buildings.
+    nonCrewCash += ((c.b.pool || 0) * 0.60 + (c.b.roofbar || 0) * 0.90 + (c.b.heli || 0) * 1.50) * cashMult * houseCut;
     if (g.r.loop) nonCrewCash += c.regulars * 0.04 * cashMult * houseCut;
 
     let wage = (g.crew - g.jobs.off) * 0.20 * (g.r.payroll ? 0.6 : 1) * (g.r.scheduling ? 0.75 : 1);
@@ -2138,7 +2241,7 @@ class Game {
 
     const cash = nonCrewCash + vipCrewCash - wage;
 
-    const hypeGain = (c.b.dj * 0.10 + stageHype) * (c.u.led ? 1.3 : 1);
+    const hypeGain = (c.b.dj * 0.10 + stageHype) * (c.u.led ? 1.3 : 1) * (c.u.vista ? 1.4 : 1);
     const decay = c.hype * 0.014 * Math.max(0.25, 1 - c.b.door * 0.12);
     const hype = hypeGain - decay;
 
@@ -2202,7 +2305,8 @@ class Game {
       const cap = rates.cap;
       const left = rates.shift.len - c.shiftT;
       const wall = Math.min(remaining, left, this.OFFLINE_STEP);
-      const dt = wall * (this.perk(g, 'offline65') ? 0.65 : 0.5);
+      const dt = wall * (this.perk(g, 'offline65') ? 0.65 : 0.5)
+        * (1 + 0.10 * this.brandRank(g, 'offline'));
       // rates.cash is net of wage; reconstruct gross for reporting.
       earned += (rates.cash + rates.wage) * dt;
       wagesPaid += rates.wage * dt;
@@ -2441,7 +2545,9 @@ class Game {
     let bought = 0;
     let lastPrice = 0;
     for (let i = 0; i < count; i++) {
-      const n = c.b[def.id];
+      // `|| 0`: fail-safe for clubs missing this location's extra id (NaN price
+      // would make the cash check never break and spin).
+      const n = c.b[def.id] || 0;
       const max = def.id === 'door' ? this.doorMax(g) : def.max;
       if (max != null && n >= max) break;
       const price = Math.floor(def.cost * Math.pow(def.growth, n));
@@ -2464,7 +2570,9 @@ class Game {
     const g = this.state.g;
     const c = this.club(g);
     if (this.buildingLocked(g, def.id)) return 0;
-    let n = c.b[def.id];
+    // `|| 0`: a club whose map lacks this location's extra id (e.g. a test-built
+    // club) must price as 0 owned, not undefined → NaN price → infinite loop.
+    let n = c.b[def.id] || 0;
     const cap = def.id === 'door' ? this.doorMax(g) : def.max;
     let count = 0;
     while (true) {
@@ -2496,15 +2604,23 @@ class Game {
     this.checkAchievements(g);
     this.forceUpdate();
   }
+  // Effective research cost — R&D Lab brand perk discounts it (REPLAY_ROADMAP.md
+  // §9): −10% per rank, floored at 1 Clout. Single source for the action and card.
+  researchCost(g, def) {
+    const disc = 0.10 * this.brandRank(g, 'rnd');
+    return Math.max(1, Math.floor(def.cost * (1 - disc)));
+  }
+
   buyResearch(def) {
     if (this.state.tabStale) return;
     const g = this.state.g;
-    if (g.r[def.id] || g.clout < def.cost) return;
+    const cost = this.researchCost(g, def);
+    if (g.r[def.id] || g.clout < cost) return;
     // Prerequisite is an action invariant (REPLAY_ROADMAP.md §5): existence-based
     // (g.r[req] truthy), not rank-based. Reject a node whose req isn't owned —
     // do not trust the UI alone.
     if (def.req && !g.r[def.req]) return;
-    g.clout -= def.cost;
+    g.clout -= cost;
     g.r[def.id] = true;
     this.push(g, 'Researched ' + def.name + '.', '#a855f7');
     this.noteGoals(g);
@@ -2636,7 +2752,7 @@ class Game {
     if (!this.canOpenRoom()) return;
     const g = this.state.g;
     // One-time account unlock: NOT a prestige — the first club is untouched.
-    g.clubs.annex = this.freshClubState();
+    g.clubs.annex = this.freshClubState('annex');
     this.push(g, 'Opened the annex — second location unlocked.', '#22d3ee');
     this.setState({ showOpenRoom: false });
   }
@@ -2698,12 +2814,16 @@ class Game {
       prestiges: (g.prestiges || 0),
       managers: {},
       managerPaused: {},
-      managerLevels: {}
+      managerLevels: {},
+      brand: {}
     };
     for (const def of this.PRESTIGE_PERKS) snapshot.perks[def.id] = this.perk(g, def.id);
     for (const def of this.MANAGERS) snapshot.managers[def.id] = g.managers && g.managers[def.id] === true;
     for (const def of this.MANAGERS) snapshot.managerPaused[def.id] = g.managerPaused && g.managerPaused[def.id] === true;
     for (const def of this.MANAGERS) snapshot.managerLevels[def.id] = g.managerLevels && g.managerLevels[def.id] || 0;
+    // Brand ranks (PR 7) are permanent Renown-sink meta — ordinary prestige does
+    // not wipe them (only the franchise sale keeps them as its own sink).
+    for (const def of this.BRAND_PERKS) snapshot.brand[def.id] = this.brandRank(g, def.id);
 
     // Build post-prestige candidate from fresh() defaults.
     const next = this.fresh();
@@ -2715,6 +2835,11 @@ class Game {
       const b2 = {}, u2 = {};
       this.BUILDINGS.forEach(x => b2[x.id] = 0);
       this.UPGRADES.forEach(x => u2[x.id] = false);
+      // Location extras (REPLAY_ROADMAP.md §9) survive prestige reset, zeroed.
+      for (const x of this.locationExtras(id)) {
+        if (x.kind === 'b') b2[x.id] = 0;
+        else u2[x.id] = false;
+      }
       next.clubs[id] = {
         cash: (this.props && this.props.startingCash) ?? 20, hype: 0, buzz: 0, patrons: 0, regulars: 0,
         b: b2, u: u2, elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0,
@@ -2737,6 +2862,9 @@ class Game {
     // Manager levels survive ordinary prestige (PR 5) — only the PR 6
     // franchise sale wipes them.
     next.managerLevels = snapshot.managerLevels;
+    // Brand ranks (PR 7) survive ordinary prestige — restore BEFORE start perks
+    // so loyalty (fresh-regulars) applies to the new run.
+    next.brand = snapshot.brand;
     this.applyStartPerks(next);
     // Start-perk state can satisfy building achievements.
     this.checkAchievements(next);
@@ -2824,6 +2952,37 @@ class Game {
     this.startAutosave();
     this.setState({ tab: 'club', saveState: 'franchise sold', showFranchise: false, franchiseArmed: false });
   }
+  // Buy a Brand perk (REPLAY_ROADMAP.md §9) with Renown — the reason to sell
+  // the franchise again. Ranks persist through the sale (they're the sink).
+  buyBrandPerk(def) {
+    if (this.state.tabStale) return;
+    const g = this.state.g;
+    const rank = this.brandRank(g, def.id);
+    if (rank >= def.max || (g.renown || 0) < def.cost) return;
+    // Prerequisite brand perk (rank >= 1), mirroring the prestige perk tree.
+    if (def.req && this.brandRank(g, def.req) < 1) return;
+    g.renown -= def.cost;
+    if (!g.brand || typeof g.brand !== 'object' || Array.isArray(g.brand)) g.brand = {};
+    g.brand[def.id] = rank + 1;
+    this.push(g, 'Brand perk: ' + def.name + ' rank ' + (rank + 1) + '/' + def.max + '.', '#d4af37');
+    this.checkAchievements(g);
+    this.forceUpdate();
+  }
+  // Rooftop (REPLAY_ROADMAP.md §9): a third club unlocked by the Rooftop Lease
+  // brand perk. Same account-level unlock pattern as the annex — creates the
+  // club via freshClubState('rooftop') with its location extras.
+  canOpenRooftop() {
+    const g = this.state.g;
+    return !!g && !g.clubs.rooftop && this.brandRank(g, 'rooftop') >= 1;
+  }
+  confirmOpenRooftop() {
+    if (this.state.tabStale) return;
+    if (!this.canOpenRooftop()) return;
+    const g = this.state.g;
+    g.clubs.rooftop = this.freshClubState('rooftop');
+    this.push(g, 'Opened the rooftop — third location unlocked.', '#22d3ee');
+    this.forceUpdate();
+  }
   hireCrew() {
     if (this.state.tabStale) return;
     const g = this.state.g;
@@ -2844,7 +3003,7 @@ class Game {
   // Start a challenge (REPLAY_ROADMAP.md §6): a fresh run under the challenge's
   // modifier. Resets EVERY club to freshClubState() — a developed annex must not
   // satisfy the completion condition instantly — and re-locks the annex (fresh()
-  // builds main only). Account meta (legacy/perks/achievements/managers/
+  // builds main only). Account meta (legacy/perks/brand/achievements/managers/
   // challengesDone) persists; run state (research/clout/crew/jobs) resets like
   // prestige. Persist-before-replace, matching confirmPrestige.
   startChallenge(def) {
@@ -2858,7 +3017,8 @@ class Game {
     }
     const snapshot = {
       legacy: (g.legacy || 0), legacyTotal: (g.legacyTotal || 0),
-      perks: {}, prestiges: (g.prestiges || 0), managers: {}, managerPaused: {}, managerLevels: {}
+      perks: {}, prestiges: (g.prestiges || 0), managers: {}, managerPaused: {}, managerLevels: {},
+      brand: {}
     };
     for (const p of this.PRESTIGE_PERKS) snapshot.perks[p.id] = this.perk(g, p.id);
     for (const m of this.MANAGERS) {
@@ -2866,6 +3026,9 @@ class Game {
       snapshot.managerPaused[m.id] = !!(g.managerPaused && g.managerPaused[m.id]);
       snapshot.managerLevels[m.id] = (g.managerLevels && g.managerLevels[m.id]) || 0;
     }
+    // Brand ranks (PR 7) are Renown-sink account meta — a challenge start must
+    // not wipe them (only the franchise sale does). Same class as managers.
+    for (const def of this.BRAND_PERKS) snapshot.brand[def.id] = this.brandRank(g, def.id);
     const next = this.fresh(); // fresh() builds main only — the annex is re-locked
     next.challenge = def.id;
     next.challengesDone = Array.isArray(g.challengesDone) ? g.challengesDone.slice() : [];
@@ -2880,6 +3043,9 @@ class Game {
     // Legacy-purchased account meta as the hire itself; only the PR 6
     // franchise sale wipes them.
     next.managerLevels = snapshot.managerLevels;
+    // Brand ranks (PR 7) survive challenge starts too — restore BEFORE start
+    // perks so loyalty (fresh-regulars) seeds the challenge run.
+    next.brand = snapshot.brand;
     // Modifier startCash overrides the default starting till.
     const mod = def.mod || {};
     if (typeof mod.startCash === 'number') next.clubs.main.cash = mod.startCash;
@@ -3140,8 +3306,9 @@ class Game {
     let cards = [], tabHint = '';
     if (this.state.tab === 'club') {
       tabHint = 'Structures are permanent and scale in price. Everything on this tab is bought with cash. A few regulars wander in on their own; Buzz fills the floor faster. Use the ×1 / ×5 / ×10 / ×Max buttons (or Shift-click a Build button on desktop) to buy multiple at once.';
-      cards = this.BUILDINGS.map(d => {
-        const n = c.b[d.id], price = Math.floor(d.cost * Math.pow(d.growth, n));
+      // Location extras (REPLAY_ROADMAP.md §9) join the shared catalog per club.
+      cards = this.BUILDINGS.concat(this.extraBuildings(g.activeClub)).map(d => {
+        const n = c.b[d.id] || 0, price = Math.floor(d.cost * Math.pow(d.growth, n));
         const chLocked = this.buildingLocked(g, d.id);
         const max = d.id === 'door' ? this.doorMax(g) : d.max;
         const maxed = max != null && n >= max;
@@ -3180,10 +3347,11 @@ class Game {
         btnTooltip: !ok && room ? 'Need $' + this.fmt(price - c.cash) + ' cash to hire' : '' }];
     } else if (this.state.tab === 'up') {
       tabHint = 'One-time purchases. Each unlocks once you own enough of the required structure.';
-      cards = this.UPGRADES.map(d => {
+      // Location extras (REPLAY_ROADMAP.md §9) join the shared catalog per club.
+      cards = this.UPGRADES.concat(this.extraUpgrades(g.activeClub)).map(d => {
         const reqId = Object.keys(d.req)[0], need = d.req[reqId];
         const have = c.b[reqId] >= need, bought = c.u[d.id], ok = !bought && have && c.cash >= d.cost;
-        const rn = this.BUILDINGS.find(b => b.id === reqId).name;
+        const rn = (this.BUILDINGS.concat(this.extraBuildings(g.activeClub)).find(b => b.id === reqId) || {}).name || reqId;
         return { name: d.name, desc: d.desc, owned: bought ? 'owned' : '',
           btn: bought ? 'Installed' : 'Buy $' + this.fmt(d.cost),
           meta: bought ? '' : (have ? (ok ? 'affordable' : 'need $' + this.fmt(d.cost - c.cash)) : 'requires ' + rn + ' ×' + need),
@@ -3265,7 +3433,7 @@ class Game {
         franchiseCards.push({
           name: 'Renown', desc: "Your brand's national footprint. Earned by selling the franchise — it never wipes.",
           owned: Math.floor(g.renown || 0) + ' spare · ' + Math.floor(g.renownTotal || 0) + ' lifetime',
-          btn: '—', meta: 'spent on Brand unlocks (coming)', locked: true,
+          btn: '—', meta: 'spent on Brand perks below', locked: true,
           wrapStyle: cardWrap(true), btnStyle: btn(false), act: () => {}
         });
       }
@@ -3279,18 +3447,44 @@ class Game {
         });
       }
       cards = perkCards.concat(managerCards, challengeCards, franchiseCards);
+      // Brand perks (REPLAY_ROADMAP.md §9): the Renown sink, bought from the
+      // Perks panel. Only meaningful after the first franchise sale, but always
+      // visible — "N Renown short" is itself a goal line.
+      const brandCards = this.BRAND_PERKS.map(d => {
+        const rank = this.brandRank(g, d.id);
+        const maxed = rank >= d.max;
+        const reqMet = !d.req || this.brandRank(g, d.req) >= 1;
+        const ok = !maxed && reqMet && (g.renown || 0) >= d.cost;
+        const reqDef = d.req ? this.BRAND_PERKS.find(p => p.id === d.req) : null;
+        return { name: d.name, desc: d.desc, owned: rank > 0 ? rank + '/' + d.max : '—',
+          btn: maxed ? 'Maxed' : d.cost + ' Renown',
+          meta: maxed ? 'maxed' : (!reqMet ? '' : (ok ? 'ready' : this.fmt(d.cost - (g.renown || 0)) + ' Renown short')),
+          reqLocked: !reqMet,
+          reqName: reqDef ? reqDef.name : (d.req || ''),
+          locked: !ok, wrapStyle: cardWrap(!maxed && reqMet), btnStyle: btn(ok, '#d4af37'), act: () => this.buyBrandPerk(d) };
+      });
+      // Rooftop Lease bought → the third location can be opened.
+      if (this.canOpenRooftop()) {
+        brandCards.push({
+          name: 'Open the rooftop', desc: 'A third location — fresh till, its own Helipad Lounge and Panorama Deck.', owned: '',
+          btn: 'Open', meta: 'third location', locked: false, wrapStyle: cardWrap(true), btnStyle: btn(true, '#22d3ee'),
+          act: () => this.confirmOpenRooftop()
+        });
+      }
+      cards = cards.concat(brandCards);
     } else {
       tabHint = 'Research is paid in Clout, which accrues slowly from Regulars. Permanent, global effects.';
       cards = this.RESEARCH.map(d => {
         const bought = g.r[d.id];
+        const cost = this.researchCost(g, d);
         // Prerequisite gate (REPLAY_ROADMAP.md §5): existence-based, mirrors the
         // perk tree's reqLocked/reqName presentation.
         const reqMet = !d.req || !!g.r[d.req];
         const reqDef = d.req ? this.RESEARCH.find(x => x.id === d.req) : null;
-        const ok = !bought && reqMet && g.clout >= d.cost;
+        const ok = !bought && reqMet && g.clout >= cost;
         return { name: d.name, desc: d.desc, owned: bought ? 'done' : '',
-          btn: bought ? 'Researched' : d.cost + ' Clout',
-          meta: bought ? '' : (!reqMet ? '' : (ok ? 'ready' : this.fmt(d.cost - g.clout) + ' Clout short')),
+          btn: bought ? 'Researched' : cost + ' Clout',
+          meta: bought ? '' : (!reqMet ? '' : (ok ? 'ready' : this.fmt(cost - g.clout) + ' Clout short')),
           reqLocked: !reqMet,
           reqName: reqDef ? reqDef.name : (d.req || ''),
           locked: !ok, wrapStyle: cardWrap(!bought && reqMet), btnStyle: btn(ok, '#a855f7'), act: () => this.buyResearch(d) };

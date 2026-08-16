@@ -526,7 +526,7 @@ brand: {}         // { [brandPerkId]: rank } — PR 7 spends Renown here
 
 ### 10.6 UI
 
-- **Renown readout** — after the first sale (`g.renownTotal > 0`) the Perks panel gains a **Renown** card: `N spare · M lifetime`, meta "spent on Brand unlocks (coming)". Same pattern as the Legacy ledger row (§9.4): appears only once the meta is real.
+- **Renown readout** — after the first sale (`g.renownTotal > 0`) the Perks panel gains a **Renown** card: `N spare · M lifetime`, meta "spent on Brand perks below" (the brand perk cards render directly under it — PR 7, DESIGN.md §22.1). Same pattern as the Legacy ledger row (§9.4): appears only once the meta is real.
 - **"Sell the franchise" card** — gate-aware (absent below the gate), cyan border/button, previewing `+N Renown · a bigger reset than the franchise deal`.
 - **Confirmation modal (`showFranchise`)** — title "Sell the franchise"; preview block:
   - **You will earn:** `+N Renown`

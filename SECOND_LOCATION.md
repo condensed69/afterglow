@@ -350,7 +350,7 @@ Explicitly **out of scope** for the first second-club ship:
 | Auto-prestige per club | Manual prestige modal only; prestige resets all clubs. |
 | Cross-club scheduling / shift coordination | Each club has its own shift clock. |
 | Crew restore on switch-back | Excess crew pushed to `off` when switching to a smaller-capacity club stay in `off` until manually reassigned; no auto-restore on returning to a larger-capacity club. |
-| New buildings/upgrades unique to the annex | Annex uses the same catalog; future design may add location-specific content. |
+| New buildings/upgrades unique to the annex | Annex uses the same catalog; future design may add location-specific content. **SUPERSEDED by REPLAY_ROADMAP.md §9 (shipped 0.11.10, PR 7):** each location now has its own additive buildings/upgrades (`LOCATION_EXTRAS` — see DESIGN.md §22.3). The shared catalog still applies everywhere; extras are appended per location. |
 
 If a later plan wants world maps, inactive earnings, or per-club crew, it supersedes this section deliberately — not by creeping into v1.
 
