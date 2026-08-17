@@ -533,7 +533,7 @@ Permanent unlocks with small Clout/Legacy rewards. `checkAchievements(g)` iterat
 | franchise_5 | Serial Entrepreneur | renownTotal ≥ 30 | 5 Legacy |
 | franchise_10 | Titan | renownTotal ≥ 60 | 8 Legacy |
 | brand_1 | Brand New | any brand perk rank ≥ 1 | 2 Legacy |
-| brand_max | Brand Portfolio | all 5 brand perks at max rank (3) | 5 Legacy |
+| brand_max | Brand Portfolio | all 5 brand perks at their individual max ranks | 5 Legacy |
 | rooftop_1 | Penthouse | rooftop club unlocked | 3 Legacy |
 | heli_1 | Sky Hook | rooftop heli ≥ 1 | 3 Legacy |
 | challenge_1 | Trailblazer | challengesDone ≥ 1 | 2 Legacy |
