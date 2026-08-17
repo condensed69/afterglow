@@ -1066,6 +1066,35 @@ test('achievement catalog is 48 entries with unique ids', () => {
   strictEqual(new Set(ids).size, 48, 'ids unique');
 });
 
+test('every new meta achievement is reachable (reachability sweep)', () => {
+  const game = newGame();
+  const g = game.state.g;
+  // Set up a state where all new meta achievements should fire.
+  g.renownTotal = 60; // franchise_1, franchise_5, franchise_10
+  g.brand = { nationwide: 3, loyalty: 3, rnd: 3, offline: 3, rooftop: 1 }; // brand_1, brand_max (all at their individual max)
+  g.clubs.rooftop = game.freshClubState('rooftop');
+  g.clubs.rooftop.b.heli = 1; // rooftop_1, heli_1
+  g.challengesDone = ['tight', 'slim', 'dry', 'lean']; // challenge_1, challenge_all
+  g.brandLevel = 5; // endorse_5
+  game.checkAchievements(g);
+  const newIds = ['franchise_1', 'franchise_5', 'franchise_10', 'brand_1', 'brand_max', 'rooftop_1', 'heli_1', 'challenge_1', 'challenge_all', 'endorse_5'];
+  for (const id of newIds) {
+    ok(g.achievements.includes(id), `${id} should unlock in reachability fixture`);
+  }
+  // Also verify the Legacy credits (dual-credit rule: legacy AND legacyTotal)
+  ok(g.legacy >= 37, 'spendable legacy from new achievements');
+  ok(g.legacyTotal >= 37, 'lifetime legacy from new achievements');
+});
+
+test('brand_max respects per-perk max (rooftop lease max:1)', () => {
+  const game = newGame();
+  const g = game.state.g;
+  // Only 4 perks at max:3, rooftop at max:1 (the correct maxed state)
+  g.brand = { nationwide: 3, loyalty: 3, rnd: 3, offline: 3, rooftop: 1 };
+  game.checkAchievements(g);
+  ok(g.achievements.includes('brand_max'), 'brand_max unlocks when each perk at its own max');
+});
+
 // ── 0.10.2 burst events (critic + golden ticket) ─────────────────────────────
 // Both events are LIVE-ONLY: the pacing bot and offline catchUp drive step()
 // directly with _live = false, so their random rolls can never flake pacing.mjs.
