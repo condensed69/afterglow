@@ -685,6 +685,13 @@ function renownRun() {
   console.log(`  perks maxed:  ${game.PRESTIGE_PERKS.every((p) => game.perk(g, p.id) >= p.max)}`);
   console.log(`  managers:     ${game.MANAGERS.filter((m) => g.managers[m.id]).length}/${game.MANAGERS.length} hired`);
   console.log(`  renownGain:   +${game.renownGain(g).toFixed(0)} Renown on sale`);
+  console.log(`  lifetime:     $${game.fmt(game.lifetimeEarned(g))} earned at gate (below ★1 $${game.fmt(game.VISION_TIERS[0].worth)} — no cash bonus fired on the sale loop)`);
+  if (game.lifetimeEarned(g) >= game.VISION_TIERS[0].worth) {
+    console.log(`
+❌ Renown scenario failed: prestige-loop lifetime $${game.lifetimeEarned(g).toFixed(0)} crossed ★1 ($${game.fmt(game.VISION_TIERS[0].worth)}) — the vision cash bonus fired mid-loop and the bands are no longer the 0.11.14 reference. Re-pin VISION_TIERS[0].worth above the loop's total.
+`);
+    process.exit(1);
+  }
 
   if (!game.franchiseGate(g)) {
     console.log(`
@@ -887,10 +894,63 @@ function renownRun() {
     `${a.achievements.length} achievements kept, annex re-locked, rooftop opened and playing (control ${fmtMin(t3Control)} → extras ${fmtMin(t3Extras)}, extras verified live).`);
 }
 
+/**
+ * Endgame probe (next-roadmap PR 4). The Vision ladder's ★1 tier must sit
+ * above everything the deterministic bot can earn, or the +1% all-cash bonus
+ * would fire mid-run and silently shift every band away from the 0.11.14
+ * reference. This probe pins the sizing claim from the safe side: the plain
+ * reference bot (no prestige, no meta purchases — same botSecond policy as
+ * run()) plays the FULL 8h wall cap, and its lifetime gross must stay
+ * strictly below VISION_TIERS[0].worth.
+ *
+ * Why the full cap: run() stops when the last milestone hits (~105 min), but
+ * the accumulator is monotonic — the honest bound is the most the bot could
+ * ever earn inside the sim window, not what it has earned at the milestone
+ * checkpoint. If the full-window bound holds, visionBonus(g) === 0 at every
+ * instant of every scenario (run/prestige/second-room share this policy or
+ * subsets of it; the prestige-loop bound is asserted separately in
+ * renownRun), so the totalCashMult factor is exactly ×1.0 on all bot paths
+ * and every band is bit-identical to 0.11.14.
+ */
+function endgameProbe() {
+  const totalSec = SIM_HOURS * 3600;
+
+  console.log(`
+=== Endgame probe (next-roadmap PR 4 — Vision tier sizing) ===
+`);
+
+  const game = newGame();
+  const { wall, g } = simulate(game, null, totalSec, { stopOnMilestones: false });
+
+  const earned = game.lifetimeEarned(g);
+  const star1 = game.VISION_TIERS[0].worth;
+  const pct = (earned / star1 * 100).toFixed(1);
+  console.log(`  plain bot, full ${SIM_HOURS}h cap @ ${fmtMin(wall)}: lifetime earned $${game.fmt(earned)}`);
+  console.log(`  ★1 tier worth: $${game.fmt(star1)} — bot reached ${pct}% of it`);
+  console.log(`  visionBonus at end: +${(game.visionBonus(g) * 100).toFixed(0)}% (must be exactly 0)`);
+
+  if (!(earned < star1)) {
+    console.log(`
+❌ Endgame probe failed: the bot's 8h lifetime ($${game.fmt(earned)}) is not strictly below ★1 ($${game.fmt(star1)}) — the vision cash bonus fired on the deterministic path, so the milestone bands measured by this file are no longer the 0.11.14 reference. Re-pin VISION_TIERS[0].worth above the full-cap bound.
+`);
+    process.exit(1);
+  }
+  if (game.visionBonus(g) !== 0) {
+    console.log(`
+❌ Endgame probe failed: visionBonus is nonzero (${game.visionBonus(g)}) below ★1 — the tier boundary or the derived read is broken.
+`);
+    process.exit(1);
+  }
+  console.log(`
+✅ Endgame probe passed: ★1 sits above the bot's full-cap lifetime — bonus ×1.0 on every bot path, bands bit-identical to 0.11.14.
+`);
+}
+
 run();
 prestigeRun();
 secondRoomRun();
 renownRun();
+endgameProbe();
 // Force exit on success: confirmPrestige()/the franchise sale start an autosave
 // setInterval that keeps the event loop alive. On the pre-existing failure path
 // process.exit(1) is called; on the success path node otherwise hangs.

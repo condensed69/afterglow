@@ -339,7 +339,7 @@ Add a `renownRun()` scenario to `pacing.mjs` (in PR 8, or a minimal version here
 - [x] PR 5 — upgradeable managers (levels).
 - [x] PR 6 — second prestige layer (SAVE_VER 10, Renown, reset scope, gate). `renownRun()` landed ahead of PR 8 — the pacing guard now ships with the layer.
 - [x] PR 7 — Brand perks + third club + location identity. (`renownRun()` gained the §9 rooftop scenario — lease → open → extras verified live → third club plays; the full same-achievements control stays on PR 8.)
-- [x] PR 8 — endgame horizon + `renownRun()` pacing guard. (0.11.11: "Vision — the long game" readout in the Owner's List — 3 clubs + $1e12 net worth, readout only. `renownRun()` gained the §10 guard: rooftop with location extras seeded beats a same-achievements control run on the identical post-sale account.)
+- [x] PR 8 — endgame horizon + `renownRun()` pacing guard. (0.11.11: "Vision — the long game" readout in the Owner's List — 3 clubs + $1e12 net worth, readout only. `renownRun()` gained the §10 guard: rooftop with location extras seeded beats a same-achievements control run on the identical post-sale account.) **(Superseded 0.11.15:** next-roadmap PR 4 retargets the Vision to a cumulative lifetime-value ladder — `g.lifetimeEarned`, $10M/$100M/$1B tiers with a +4% total all-cash bonus, SAVE_VER 13 with `MIGRATIONS[12]`; the §10 pacing guard stays. See DESIGN.md §23.)
 
 ---
 
@@ -350,3 +350,4 @@ Add a `renownRun()` scenario to `pacing.mjs` (in PR 8, or a minimal version here
 | 2026-08-15 | Initial design lock. Diagnoses the single-prestige dead-end; specs the second prestige layer ("Franchise Empire" → Renown, SAVE_VER 10) as the core, with 7 supporting PRs. Supersedes SECOND_LOCATION.md §11 "no location-specific buildings" (PR 7). |
 | 2026-08-15 | PR 7 shipped (0.11.10): BRAND_PERKS (Renown sink, 5 perks), the Rooftop third club, and LOCATION_EXTRAS per-location buildings/upgrades. renownRun() gained the §9 rooftop scenario; the §10 full guard (same-achievements control) remains on PR 8. |
 | 2026-08-16 | PR 8 shipped (0.11.11): the endgame horizon (Owner's List "Vision — the long game" readout: 3 clubs + $1e12 net worth, readout only) and the §10 pacing guard (renownRun() rooftop-with-extras beats a same-achievements control). Roadmap complete — all 8 PRs merged. |
+| 2026-08-17 | Next-roadmap PR 4 shipped (0.11.15): the Vision retarget — the $1e12 net-worth target (probe-measured ~3.6 sim-years past a decked account) is replaced by a cumulative lifetime-value ladder (`g.lifetimeEarned`; $10M/$100M/$1B tiers, +1%/+1%/+2% all-cash bonuses, +4% total; SAVE_VER 13, MIGRATIONS[12]). pacing.mjs gains `endgameProbe()` pinning ★1 above the deterministic bot's full-8h lifetime. |

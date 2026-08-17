@@ -576,12 +576,15 @@ whalesCount, specialsCount,  // 0.10.1 burst-event counters (additive)
 golden,                      // 0.10.2 golden-ticket offer (additive UI state: { at } | null)
 managers: { id: bool }, managerPaused: { id: bool },
 renown, renownTotal,        // 0.11.9 Renown meta (second prestige layer)
-brand: { perkId: rank }     // 0.11.9 Brand-perk ranks (PR 7 spends Renown)
+brand: { perkId: rank },    // 0.11.9 Brand-perk ranks (PR 7 spends Renown)
+brandLevel,                 // 0.11.12 Brand Endorsement level (repeatable Renown sink)
+challengeTier, challengeTiers, // 0.11.13 challenge tier ladder (SAVE_VER 12)
+lifetimeEarned              // 0.11.15 Vision ladder accumulator (SAVE_VER 13)
 ```
 
 Club-level run fields live under `g.clubs[<id>]`; account/shared fields stay top-level. `club(g)` reads/writes the active club (SECOND_LOCATION.md §5), so club fields must never be treated as top-level. Flat `g.cash`-style access exists only through the `wrapState` compat proxy (same shape on disk: `JSON.stringify` emits the real v12 layout).
 
-Additive fields (`managerPaused`, the 0.10.1 counters `whalesCount` / `specialsCount`, and the 0.10.2 `golden` offer) default to 0/false/null when absent — not required by `isValidSavePayload`, so they never force a SAVE_VER bump on their own. The 0.11.9 Renown fields (`renown`, `renownTotal`, `brand`) are part of SAVE_VER 10 itself — `MIGRATIONS[9]` defaults them, `sanitizeG` / `completeImportedG` fail close on malformed values, and `isValidSavePayload` still does not require them (migration fills them). The 0.11.12 Brand Endorsement level (`brandLevel`) is part of SAVE_VER 11 — `MIGRATIONS[10]` defaults it, same fail-closed shape. The 0.11.13 challenge tier fields (`challengeTier`, `challengeTiers`) are part of SAVE_VER 12 — `MIGRATIONS[11]` defaults them and backfills tier 1 from `challengesDone` (the repo convention: a new persisted field bumps, even when additive — PR 6/PR 1 review precedent).
+Additive fields (`managerPaused`, the 0.10.1 counters `whalesCount` / `specialsCount`, and the 0.10.2 `golden` offer) default to 0/false/null when absent — not required by `isValidSavePayload`, so they never force a SAVE_VER bump on their own. The 0.11.9 Renown fields (`renown`, `renownTotal`, `brand`) are part of SAVE_VER 10 itself — `MIGRATIONS[9]` defaults them, `sanitizeG` / `completeImportedG` fail close on malformed values, and `isValidSavePayload` still does not require them (migration fills them). The 0.11.12 Brand Endorsement level (`brandLevel`) is part of SAVE_VER 11 — `MIGRATIONS[10]` defaults it, same fail-closed shape. The 0.11.13 challenge tier fields (`challengeTier`, `challengeTiers`) are part of SAVE_VER 12 — `MIGRATIONS[11]` defaults them and backfills tier 1 from `challengesDone` (the repo convention: a new persisted field bumps, even when additive — PR 6/PR 1 review precedent). The 0.11.15 Vision accumulator (`lifetimeEarned`) is part of SAVE_VER 13 — `MIGRATIONS[12]` defaults it to 0 (no-clobber) and the ladder starts measuring from the migration (history cannot be reconstructed).
 
 ### 13.2 Paths
 
@@ -620,6 +623,9 @@ If `setItem` throws (or any earlier step fails) → `saveState: 'import failed'`
 | 7 → 8 | Managers: `managers` map, default all false |
 | 8 → 9 | Club fields into `g.clubs.main` (run state under the clubs map; `activeClub` added; `MIGRATIONS[8]` never clobbers a map sanitizeG already built on older chains) |
 | 9 → 10 | Renown layer: `renown` / `renownTotal` / `brand` defaulted when missing or malformed — **no-clobber** (valid values pass through); `sanitizeG` re-checks the same shape after the chain |
+| 10 → 11 | Brand Endorsement: `brandLevel` defaulted to 0 when missing/malformed — no-clobber |
+| 11 → 12 | Challenge tiers: `challengeTier` / `challengeTiers` defaulted; tier 1 backfilled from `challengesDone` |
+| 12 → 13 | Vision ladder: `lifetimeEarned` defaulted to 0 when missing/malformed — no-clobber (history cannot be reconstructed; the ladder starts measuring from migration) |
 
 Future saveVer or missing step → wipe on load (localStorage path) or import failed (clipboard/file).
 
@@ -1039,22 +1045,43 @@ research; brand perks and the endorsement are Renown-only (no conversion
 from/to Clout/Legacy — the endorsement is a permanent multiplier, never a
 Renown → cash exchange).
 
-## 23. Endgame horizon (REPLAY_ROADMAP.md §10) — 0.11.11
+## 23. Endgame horizon — Vision lifetime-value ladder (next-roadmap PR 4, 0.11.15)
 
-A visible long-term goal line so the post-§9 game has a target to point at:
-**build the franchise to 3 clubs and reach $1e12 net worth.**
+The old goal line — **3 clubs + $1e12 net worth** (0.11.11) — was probe-measured
+~3.6 sim-years of play past a decked account, i.e. unreachable as a design
+target. **PR 4 retargets the Vision to a cumulative lifetime-value ladder** that
+the post-§9 loop can actually reach, with a real payoff per rung:
 
-- Surfaced as a **"Vision — the long game"** block under the active goal in the
-  Owner's List panel (renderVals `horizon`). Readout only: `Clubs n/3 · Net
-  worth $X / $1T` with a blended progress bar (clubs leg + net-worth leg,
-  averaged — 3/3 clubs alone reads 50%, so one leg can't hide the other), a ★
-  reached state, and a "sell it, and build again" line.
-- Net worth = sum of `cash` across every club in `g.clubs` (there is no
-  cross-club transfer, so total till is the franchise value). `TARGET = 1e12`
-  formats as `$1.00T` via `fmt`.
-- **No new mechanic, no save-shape change** (SAVE_VER stays 10): computed
-  entirely from existing state at render time. Zero pacing impact — the bot
-  never renders.
+- **`g.lifetimeEarned`** — a monotonic account-level accumulator of **gross
+  cash earned across all time** (net cash + wages per sim slice — the
+  away-report semantics, so a wage drain can't hide behind net). Credited
+  exactly once per slice in `step()` and once per slice in `catchUp()`
+  (offline accrues at its scaled rate — offline is first-class). Survives
+  every reset: prestige, challenge starts, and the franchise sale — lifetime
+  is the brand's cumulative footprint, not run state. **SAVE_VER bumped to
+  13** — `MIGRATIONS[12]` defaults it to 0 (no-clobber) for v12 saves; history
+  cannot be reconstructed, so the ladder starts measuring from the migration.
+  Fail-closed everywhere: missing/malformed reads as 0 (tiers stay locked,
+  never NaN).
+- **`VISION_TIERS`** — `$10M / $100M / $1B` gross earned. Each tier crossed
+  grants a permanent all-cash bonus (`+1% / +1% / +2%`, **+4% total** at the
+  top), folded into `totalCashMult(g)` at the single composition point. The
+  bonus is **derived** from `lifetimeEarned` on every read (`visionBonus(g)`) —
+  no per-tier state to save, migrate, or restore, so a tier can never re-fire,
+  and the accumulator is monotonic so a bonus can never un-grant.
+- **Surfaced as the "Vision — the long game" block** under the active goal in
+  the Owner's List (renderVals `horizon`): `Lifetime value $X / $1B`, three
+  star markers (crossed = gold), `next ★ at $Y (+N% all cash)`, and a progress
+  bar against the top target. Readout only — every value is derived at render
+  time.
+- **Bonus is cash%, not Renown** — a Renown grant on crossing would cannibalize
+  the sale loop (the spine). Documented rejection.
+- **Pacing-neutral by construction, probe-pinned**: `pacing.mjs` gains
+  `endgameProbe()`, which plays the plain reference bot for the FULL 8h wall
+  cap and asserts its lifetime earned stays **strictly below ★1 ($10M)** — so
+  `visionBonus(g)` is exactly 0 on every bot path (the prestige-loop bound is
+  asserted separately inside `renownRun()`) and every band is bit-identical to
+  the 0.11.14 reference.
 
 **Pacing guard (same-achievements control, §10):** `renownRun()` in
 `pacing.mjs` now proves the third club's location content is not dead weight on
