@@ -735,9 +735,9 @@ function renownRun() {
 `);
     process.exit(1);
   }
-  if (a.prestiges !== 0 || a.legacy !== 0 || a.legacyTotal !== 0) {
+  if (a.prestiges !== 0 || a.legacy !== 2 || a.legacyTotal !== 2) {
     console.log(`
-❌ Renown scenario failed: prestige state not wiped (prestiges=${a.prestiges} legacy=${a.legacy} legacyTotal=${a.legacyTotal}).
+❌ Renown scenario failed: prestige state not wiped (prestiges=${a.prestiges} legacy=${a.legacy} legacyTotal=${a.legacyTotal}). Expected legacy=2 legacyTotal=2 from franchise_1 achievement on first sale.
 `);
     process.exit(1);
   }

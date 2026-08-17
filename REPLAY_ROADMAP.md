@@ -71,7 +71,7 @@ achievementMult(g) {
 }
 ```
 
-Applied to **all** cash income — passive (`rates()`), active clicks (`workCrowd()`), **and** burst-event cash (`spawnWhale`/`takeGolden`) — alongside the existing `cashIncomeMult` (House cut). Excludes the 4 live-only burst achievements (`whale_1`, `whale_10`, `special_1`, `special_5`) and dedupes ids, so the max is +34% (34 unique non-burst achievements), not +38% — meaningful, not broken.
+Applied to **all** cash income — passive (`rates()`), active clicks (`workCrowd()`), **and** burst-event cash (`spawnWhale`/`takeGolden`) — alongside the existing `cashIncomeMult` (House cut). Excludes the 4 live-only burst achievements (`whale_1`, `whale_10`, `special_1`, `special_5`) and dedupes ids, so the max is +34% (34 unique non-burst achievements), not +38% — meaningful, not broken. **0.11.14 meta pass (next-roadmap PR 3):** catalog grew 38 → 48 — ten new non-burst achievements added covering the post-sale meta (franchise sales, Brand perks, Rooftop club, challenge tiers, Brand Endorsements), expanding the ceiling to +44% (44 non-burst of 48 total). The pacing bot's standard path never triggers these (it never sells, opens rooftop, starts challenges, or owns brand), so pacing bands remain bit-identical.
 
 **No save-shape change** — derived from the unique non-burst achievement count (the `burst: true` flag is data-table-only, no new persisted fields).
 

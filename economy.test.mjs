@@ -335,9 +335,9 @@ test('achievementMult counts unique non-burst achievements (milk multiplier)', (
   const g = game.state.g;
   strictEqual(game.achievementMult(g), 1, '1.00x at 0 achievements');
   g.achievements = game.ACHIEVEMENTS.map(a => a.id);
-  ok(Math.abs(game.achievementMult(g) - 1.34) < 1e-9, '1.34x at all 38 (34 non-burst)');
+  ok(Math.abs(game.achievementMult(g) - 1.44) < 1e-9, '1.44x at all 48 (44 non-burst)');
   g.achievements = game.ACHIEVEMENTS.map(a => a.id).concat(['first_rail', 'first_rail']);
-  ok(Math.abs(game.achievementMult(g) - 1.34) < 1e-9, 'duplicate ids ignored');
+  ok(Math.abs(game.achievementMult(g) - 1.44) < 1e-9, 'duplicate ids ignored');
   g.achievements = ['whale_1', 'whale_10', 'special_1', 'special_5'];
   strictEqual(game.achievementMult(g), 1, 'burst achievements excluded');
 });
@@ -1059,11 +1059,40 @@ test('round_10 unlocks after 10 rounds', () => {
   ok(g.achievements.includes('round_10'), 'round_10 (Toast)');
 });
 
-test('achievement catalog is 38 entries with unique ids', () => {
+test('achievement catalog is 48 entries with unique ids', () => {
   const game = newGame();
   const ids = game.ACHIEVEMENTS.map(a => a.id);
-  strictEqual(ids.length, 38, 'catalog grew 23 → 38');
-  strictEqual(new Set(ids).size, 38, 'ids unique');
+  strictEqual(ids.length, 48, 'catalog grew 38 → 48 (meta pass)');
+  strictEqual(new Set(ids).size, 48, 'ids unique');
+});
+
+test('every new meta achievement is reachable (reachability sweep)', () => {
+  const game = newGame();
+  const g = game.state.g;
+  // Set up a state where all new meta achievements should fire.
+  g.renownTotal = 60; // franchise_1, franchise_5, franchise_10
+  g.brand = { nationwide: 3, loyalty: 3, rnd: 3, offline: 3, rooftop: 1 }; // brand_1, brand_max (all at their individual max)
+  g.clubs.rooftop = game.freshClubState('rooftop');
+  g.clubs.rooftop.b.heli = 1; // rooftop_1, heli_1
+  g.challengesDone = ['tight', 'slim', 'dry', 'lean']; // challenge_1, challenge_all
+  g.brandLevel = 5; // endorse_5
+  game.checkAchievements(g);
+  const newIds = ['franchise_1', 'franchise_5', 'franchise_10', 'brand_1', 'brand_max', 'rooftop_1', 'heli_1', 'challenge_1', 'challenge_all', 'endorse_5'];
+  for (const id of newIds) {
+    ok(g.achievements.includes(id), `${id} should unlock in reachability fixture`);
+  }
+  // Also verify the Legacy credits (dual-credit rule: legacy AND legacyTotal)
+  ok(g.legacy >= 37, 'spendable legacy from new achievements');
+  ok(g.legacyTotal >= 37, 'lifetime legacy from new achievements');
+});
+
+test('brand_max respects per-perk max (rooftop lease max:1)', () => {
+  const game = newGame();
+  const g = game.state.g;
+  // Only 4 perks at max:3, rooftop at max:1 (the correct maxed state)
+  g.brand = { nationwide: 3, loyalty: 3, rnd: 3, offline: 3, rooftop: 1 };
+  game.checkAchievements(g);
+  ok(g.achievements.includes('brand_max'), 'brand_max unlocks when each perk at its own max');
 });
 
 // ── 0.10.2 burst events (critic + golden ticket) ─────────────────────────────
@@ -5307,7 +5336,12 @@ function gateMetGame(game) {
   if (!g.clubs.annex) g.clubs.annex = game.freshClubState();
   g.legacyTotal = 105;
   g.prestiges = 15;
-  g.achievements = ['first_rail', 'prestige_1', 'prestige_5', 'legacy_50'];
+  g.achievements = ['first_rail', 'prestige_1', 'prestige_5', 'legacy_50',
+    'franchise_1', 'franchise_5', 'franchise_10',
+    'brand_1', 'brand_max',
+    'rooftop_1', 'heli_1',
+    'challenge_1', 'challenge_all',
+    'endorse_5'];
   return g;
 }
 
