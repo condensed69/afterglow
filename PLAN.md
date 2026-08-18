@@ -178,7 +178,7 @@ Currently a flat list of 6 perks, all purchasable in any order once unlocked (PR
 ## Deferred / out of scope
 
 - **Second location** — **shipped** (design: `SECOND_LOCATION.md`): save-shape groundwork 0.11.0 (SAVE_VER 9, `g.clubs` map, `club()` accessor), second-room gameplay 0.11.1 (gate + unlock modal, header switcher, cap-aware crew rebalance, ledger room label), pacing scenario 0.11.2 (`pacing.mjs` proves account progress carries into the fresh room). `franchise` removal in 1.9 keeps the door open.
-- **DESIGN.md full rewrite** — after Phase 3, as a writing task. (Phase 3 shipped; rewrite itself remains undone as of this audit.)
+- **DESIGN.md full rewrite** — **shipped** (PR #83, 0.11.15): the doc was already incrementally current through §23, so this landed as a stale-claims correction pass rather than a from-scratch rewrite — Spec target/Ancestry updated to 0.11.15/SAVE_VER 13, §9.2 persist/wipe rows + save format, Renown card copy, §13 SAVE_VER table/headings, §14.1/§14.5 Rooftop switcher + Ledger label. External anchors (§14.4 / §22.1 / §22.3 / §23) preserved; no section renumbering.
 - **Render throttle** (10fps full-innerHTML is wasteful but functional) — only if profiling shows a problem; the performer-node preservation already handles the animation-sensitive part.
 - **Balance tuning** — numbers stay placeholders per AGENTS.md until the mechanics above are stable.
 
