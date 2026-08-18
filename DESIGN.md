@@ -1,10 +1,10 @@
 # DESIGN.md — Afterglow Club Idle
 
 **Game:** Afterglow Club Idle (repo: stripper-dance)  
-**Spec target:** post-workstreams A–D and post-0.9.x systems — file save, Owner's List, balance + `pacing.mjs`, prestige, achievements, managers, special shifts, whales, multi-tab ownership, second-location save shape (`game.js` v0.11.0, SAVE_VER 9) and the second prestige layer (Renown — 0.11.9, SAVE_VER 10)  
+**Spec target:** all shipped systems through 0.11.15 — file save, Owner's List, balance + `pacing.mjs`, prestige, achievements, managers, special shifts, whales, multi-tab ownership, second room + rooftop, research tree, challenge tiers, manager levels, Renown/Brand perks/Endorsement, Vision ladder, location extras (`game.js` v0.11.15, SAVE_VER 13)  
 **Source of truth for numbers:** `game.js` (`caps()`, `rates()`, constant tables) — re-diff this file when those change  
 **Related:** `PRESTIGE.md` (prestige deep design, shipped 0.8.0), `PLAN.md` (logic-fix predecessor, shipped), `AGENTS.md` (repo gates). Workstream sequencing lived in a local orchestrator plan (not published in the repo tree).  
-**Ancestry:** this branch stacks A (file save) → B (Owner's List) → C (`pacing.mjs` + balance) → D (`PRESTIGE.md`) → 0.7.x stage work → 0.8.x prestige/achievements/whale → 0.9.x managers/special shifts/perk tree → 0.9.5 legacyTotal fix, so every claim below is present in-tree.
+**Ancestry:** this branch stacks A (file save) → B (Owner's List) → C (`pacing.mjs` + balance) → D (`PRESTIGE.md`) → 0.7.x stage work → 0.8.x prestige/achievements/whale → 0.9.x managers/special shifts/perk tree → 0.9.5 legacyTotal fix → 0.10.x second room / burst events / golden ticket → 0.11.x research tree, challenges + tiers, manager levels, Renown unlocks, Vision ladder, so every claim below is present in-tree.
 
 This document describes what the shipped neon-noir club-management idle **actually does**, not aspirational UI kits.
 
@@ -387,13 +387,13 @@ Full locked design: **`REPLAY_ROADMAP.md` §8**; implementation: `renownGain`, `
 
 | Wipes | Persists |
 |-------|----------|
-| `g.clubs` → `{ main: freshClubState() }`; `activeClub` → `'main'` (annex re-locks) | `g.renown` / `g.renownTotal` (+= gain) |
+| `g.clubs` → `{ main: freshClubState() }`; `activeClub` → `'main'` (annex, rooftop re-lock) | `g.renown` / `g.renownTotal` (+= gain) |
 | `legacy`, `legacyTotal`, `perks`, `prestiges` → 0 / 0 / `{}` / 0 | `g.achievements` |
 | `clout`, `r` → 0 / `{}`; `managers`, `managerPaused`, `managerLevels` → `{}` ×3 | `g.brand` — the PR 7 sink, the reason to sell again |
-| `crew` / `jobs`, `challengesDone` / `challenge`, `goals` / `clicks` / `rounds`, `whalesCount` / `specialsCount` / `golden` → fresh / 0 | |
+| `crew` / `jobs`, `challengesDone` / `challenge` / `challengeTier` / `challengeTiers`, `goals` / `clicks` / `rounds`, `whalesCount` / `specialsCount` / `golden` → fresh / 0 | `g.brandLevel` (0.11.12 repeatable sink) and `g.lifetimeEarned` (0.11.15 Vision accumulator) — permanent like brand ranks |
 
-- **Save format (SAVE_VER 12, §13):** `fresh()` adds `renown: 0, renownTotal: 0, brand: {}` (SAVE_VER 10, `MIGRATIONS[9]`), `brandLevel: 0` (SAVE_VER 11, `MIGRATIONS[10]`), and `challengeTier: 1, challengeTiers: {}` (SAVE_VER 12, `MIGRATIONS[11]`); each migration defaults missing/malformed values only (**no-clobber** — valid values pass through); `sanitizeG` fail-closes (non-numeric → 0, clamped ≥ 0; non-object `brand` → `{}`; fractional `brandLevel`/`challengeTier` floored; unknown `challengeTiers` ids dropped — with a `challengesDone` → tier-1 backfill); `completeImportedG` adds `renown` / `renownTotal` to the numeric list and defaults `brand` to `{}`; `isValidSavePayload` does not require them (migration fills them).
-- **UI (Perks panel):** after the first sale (`g.renownTotal > 0`) a **Renown** readout card ("`N spare · M lifetime`", meta "spent on Brand unlocks (coming)"); at the gate a distinct cyan **"Sell the franchise"** card previewing "+N Renown · a bigger reset than the franchise deal". The `showFranchise` modal previews "You keep Renown (X spare · Y lifetime) · achievements · Brand ranks" and "You reset **EVERYTHING else** — both clubs, Legacy, perks, research, Clout, managers, crew, challenges". Confirm is **two-click armed** (`state.franchiseArmed` — first click arms, second sells) and **disabled while `tabStale`** ("Reload to adopt fresh save before selling").
+- **Save format (SAVE_VER 13, §13):** `fresh()` adds `renown: 0, renownTotal: 0, brand: {}` (SAVE_VER 10, `MIGRATIONS[9]`), `brandLevel: 0` (SAVE_VER 11, `MIGRATIONS[10]`), `challengeTier: 1, challengeTiers: {}` (SAVE_VER 12, `MIGRATIONS[11]`), and `lifetimeEarned: 0` (SAVE_VER 13, `MIGRATIONS[12]`); each migration defaults missing/malformed values only (**no-clobber** — valid values pass through); `sanitizeG` fail-closes (non-numeric → 0, clamped ≥ 0; non-object `brand` → `{}`; fractional `brandLevel`/`challengeTier` floored; unknown `challengeTiers` ids dropped — with a `challengesDone` → tier-1 backfill; non-finite `lifetimeEarned` → 0); `completeImportedG` adds `renown` / `renownTotal` to the numeric list and defaults `brand` to `{}`; `isValidSavePayload` does not require them (migration fills them).
+- **UI (Perks panel):** after the first sale (`g.renownTotal > 0`) a **Renown** readout card ("`N spare · M lifetime`", meta "spent on Brand perks below"); at the gate a distinct cyan **"Sell the franchise"** card previewing "+N Renown · a bigger reset than the franchise deal". The `showFranchise` modal previews "You keep Renown (X spare · Y lifetime) · achievements · Brand ranks" and "You reset **EVERYTHING else** — both clubs, Legacy, perks, research, Clout, managers, crew, challenges". Confirm is **two-click armed** (`state.franchiseArmed` — first click arms, second sells) and **disabled while `tabStale`** ("Reload to adopt fresh save before selling").
 - **Persist-before-replace:** the sale candidate is persisted with `localStorage.setItem` **first**; on throw → `saveState: 'franchise failed'` and the live state stays untouched (same rule as prestige above and import, §13.3).
 
 ---
@@ -549,12 +549,12 @@ Achievements live in the Settings modal. Backfill on load credits already-earned
 | Field | Value |
 |-------|--------|
 | localStorage key | `afterglow.save` |
-| SAVE_VER | **10** |
+| SAVE_VER | **13** |
 | Envelope | `{ saveVer, ver, build, g }` |
 | Autosave | every 10 s (`save('auto')`) |
 | Manual | Settings → Save now |
 
-### 13.1 `g` shape (v10 — renown layer 0.11.9)
+### 13.1 `g` shape (v13 — Vision ladder 0.11.15)
 
 ```
 clubs: {
@@ -582,7 +582,7 @@ challengeTier, challengeTiers, // 0.11.13 challenge tier ladder (SAVE_VER 12)
 lifetimeEarned              // 0.11.15 Vision ladder accumulator (SAVE_VER 13)
 ```
 
-Club-level run fields live under `g.clubs[<id>]`; account/shared fields stay top-level. `club(g)` reads/writes the active club (SECOND_LOCATION.md §5), so club fields must never be treated as top-level. Flat `g.cash`-style access exists only through the `wrapState` compat proxy (same shape on disk: `JSON.stringify` emits the real v12 layout).
+Club-level run fields live under `g.clubs[<id>]`; account/shared fields stay top-level. `club(g)` reads/writes the active club (SECOND_LOCATION.md §5), so club fields must never be treated as top-level. Flat `g.cash`-style access exists only through the `wrapState` compat proxy (same shape on disk: `JSON.stringify` emits the real v13 layout).
 
 Additive fields (`managerPaused`, the 0.10.1 counters `whalesCount` / `specialsCount`, and the 0.10.2 `golden` offer) default to 0/false/null when absent — not required by `isValidSavePayload`, so they never force a SAVE_VER bump on their own. The 0.11.9 Renown fields (`renown`, `renownTotal`, `brand`) are part of SAVE_VER 10 itself — `MIGRATIONS[9]` defaults them, `sanitizeG` / `completeImportedG` fail close on malformed values, and `isValidSavePayload` still does not require them (migration fills them). The 0.11.12 Brand Endorsement level (`brandLevel`) is part of SAVE_VER 11 — `MIGRATIONS[10]` defaults it, same fail-closed shape. The 0.11.13 challenge tier fields (`challengeTier`, `challengeTiers`) are part of SAVE_VER 12 — `MIGRATIONS[11]` defaults them and backfills tier 1 from `challengesDone` (the repo convention: a new persisted field bumps, even when additive — PR 6/PR 1 review precedent). The 0.11.15 Vision accumulator (`lifetimeEarned`) is part of SAVE_VER 13 — `MIGRATIONS[12]` defaults it to 0 (no-clobber) and the ladder starts measuring from the migration (history cannot be reconstructed).
 
@@ -665,8 +665,8 @@ Main: three columns **`minmax(232px,300px) | minmax(320px,720px) | minmax(320px,
 
 | Region | Contents |
 |--------|----------|
-| Header | Afterglow wordmark, version badge (opens changelog), **Franchise offer** (once the 25-regulars gate is met), **Open second room** + `[ Main ] [ Annex ]` switcher (once the §17 gate is met), shift name + bar + night/mult, settings ☰ |
-| Ledger | Cash/Hype/Buzz/Patrons/Regulars/Clout with rates + notes; **room label** ("Main Room" / "Annex", 0.11.1); **Legacy** row (gold `#d4af37`, “spent on permanent perks”); Floor stats (crew, on stage, structures, night time) |
+| Header | Afterglow wordmark, version badge (opens changelog), **Franchise offer** (once the 25-regulars gate is met), **Open second room** + `[ Main ] [ Annex ]` switcher (once the §17 gate is met; a third `[ Rooftop ]` entry appears once the Rooftop Lease is bought, §22.2), shift name + bar + night/mult, settings ☰ |
+| Ledger | Cash/Hype/Buzz/Patrons/Regulars/Clout with rates + notes; **room label** ("Main Room" / "Annex" / "Rooftop", 0.11.1+); **Legacy** row (gold `#d4af37`, “spent on permanent perks”); Floor stats (crew, on stage, structures, night time) |
 | Stage | CSS stage set only (lighting, haze, crowd silhouettes, marquee, lip) — **no performer figure**; Main Stage line, Room energy %, Work the room + Buy a round, Night log |
 | Systems | Tabs Club + Crew (always visible) / **Upgrades** (gated on first building owned) / **Research** (gated on first Clout earned) / **Perks** (gated on `prestiges > 0`); **Owner's List** under tabs; scrollable cards + crew assignments |
 | Footer | full version string, save format, saveState, tick count; multi-tab takeover banner above when stale |
@@ -759,7 +759,7 @@ parameter, say — would not be discovered. Nothing in the current UI works that
 
 ### 14.5 Second-room header controls (0.11.1)
 
-Once the second-room gate is met (`g.prestiges >= 1` **and** at least one manager — account-level, §17), the header gains an **"Open second room"** control next to the Franchise offer family; below the gate it is absent, not grayed. Clicking opens a confirmation modal (preview: fresh till/crowd/build, shared Clout/Legacy/research/crew/managers, first club untouched); confirm opens the **annex** as a one-time account unlock that is **not** a prestige. After unlock, a compact `[ Main ] [ Annex ]` switcher appears beside the shift badge — instant switch, the inactive club pauses, and the Ledger's room label ("Main Room" / "Annex") tracks the active club. `tabStale` blocks both the unlock and the switch (no account progress written only to memory). **Responsive (0.11.1):** at ≤900px the header wraps to as many rows as it needs (`flex-wrap: wrap` with `height: auto` via `!important` over the inline styles), so the extra switcher buttons never push the shift block or ☰ offscreen; the app grid's auto header row grows and the shell keeps scrolling.
+Once the second-room gate is met (`g.prestiges >= 1` **and** at least one manager — account-level, §17), the header gains an **"Open second room"** control next to the Franchise offer family; below the gate it is absent, not grayed. Clicking opens a confirmation modal (preview: fresh till/crowd/build, shared Clout/Legacy/research/crew/managers, first club untouched); confirm opens the **annex** as a one-time account unlock that is **not** a prestige. After unlock, a compact `[ Main ] [ Annex ]` switcher appears beside the shift badge (a third `[ Rooftop ]` entry joins once the lease is bought, §22.2) — instant switch, the inactive club pauses, and the Ledger's room label ("Main Room" / "Annex" / "Rooftop") tracks the active club. `tabStale` blocks both the unlock and the switch (no account progress written only to memory). **Responsive (0.11.1):** at ≤900px the header wraps to as many rows as it needs (`flex-wrap: wrap` with `height: auto` via `!important` over the inline styles), so the extra switcher buttons never push the shift block or ☰ offscreen; the app grid's auto header row grows and the shell keeps scrolling.
 
 ---
 
