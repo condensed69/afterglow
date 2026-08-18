@@ -21,9 +21,9 @@ Max **every prestige perk**, hire **every manager**, and own **both rooms** — 
 - Each room has its own **location extras**: the Neon Pool in the Main Room, the Rooftop Bar + Skyline View in the Annex, and the Helipad Lounge + Panorama Deck on the Rooftop — bought from the same Structures/Upgrades tabs, alongside the shared catalog.
 - Switch rooms with the header buttons; Brand ranks survive selling the franchise — they are the reason to build and sell again.
 
-## Vision — the long game (0.11.11)
+## Vision — the long game (0.11.15)
 
-The Owner's List (left panel) shows a **Vision** line under the active goal: **3 clubs · $1e12 net worth** with a blended progress bar. It is a readout only — the goal line of the whole game. Net worth is the combined cash of every room you own; unlock the Rooftop (Rooftop Lease brand perk) and keep building to close it out, then sell the franchise and do it again.
+The Owner's List (left panel) shows a **Vision** line under the active goal: a **lifetime-value ladder** — **$10M / $100M / $1B** cumulative gross cash earned across all time (net till income plus wages, every sim slice, online and offline alike). Each rung crossed is a permanent all-cash bonus: **+1% / +1% / +2%** (**+4% total**), forever. Lifetime value survives every reset — prestige, challenge starts, and selling the franchise — so it is the brand's cumulative footprint, not run state. The readout shows `Lifetime value $X / $1B` with three star markers and the next tier's bonus; lifetime is earned by playing, so the ladder is the one goal line that keeps moving as you sell and build again.
 
 ## Achievements (0.11.14)
 

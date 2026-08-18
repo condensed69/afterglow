@@ -89,6 +89,7 @@ On confirm of Franchise offer:
 | `legacyTotal` | += newly earned this reset (never decreases) |
 | `perks` | unchanged (purchases permanent until a future redesign) |
 | `prestiges` | += 1 |
+| `lifetimeEarned` | unchanged — the Vision ladder's accumulator is the brand's cumulative footprint, not run state (0.11.15) |
 | Save-format / version fields | as always on write (`saveVer`, `ver`, `build`) |
 
 **Order of operations (locked):** same safety pattern as import (`importSaveFromText`: log → persist → replace). Construct the post-prestige **candidate** fully, require `localStorage.setItem` success, **then** replace live state. Never replace first and leave the critical write to the next autosave — a storage failure or a reload before the next scheduled autosave would restore the pre-prestige run and discard the reset + awarded Legacy.
@@ -434,6 +435,7 @@ This section is the locked spec of the second prestige layer, with the same auth
 | Renown lifetime | `g.renownTotal` (number) |
 | Brand perk ranks | `g.brand` (object map `perkId → rank`) |
 | Brand Endorsement level | `g.brandLevel` (number ≥ 0 — the repeatable sink, 0.11.12) |
+| Vision lifetime value | `g.lifetimeEarned` (number ≥ 0 — the Vision ladder's accumulator, 0.11.15) |
 | Third club id | `'rooftop'` (unlock target, PR 7) |
 
 ### 10.2 Gate
@@ -478,6 +480,7 @@ On the confirmed sale — the confirm is **two-click armed** (`state.franchiseAr
 | `g.achievements` | permanent unlocks, unchanged |
 | `g.brand` | Brand perk ranks, unchanged — **the reason to sell again** (PR 7 sink) |
 | `g.brandLevel` | Brand Endorsement level, unchanged — the repeatable sink keeps every sale spendable (0.11.12) |
+| `g.lifetimeEarned` | Vision ladder accumulator, unchanged — lifetime is the brand's cumulative footprint across every franchise cycle (0.11.15) |
 
 **Order of operations (locked, mirrors §3):** snapshot the four permanent layers → build the post-sale candidate from `fresh()` → restore the snapshot → push the sale log line onto the candidate → `localStorage.setItem` must succeed → only then replace live `state.g`. On `setItem` throw: `saveState: 'franchise failed'` and the live state is untouched — no silent in-memory sale.
 

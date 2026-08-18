@@ -2256,9 +2256,9 @@ test('non-numeric saveVer fails closed', () => {
 
 console.log('\nSave migration map (PLAN §2.2)');
 
-test('SAVE_VER is 12', () => {
+test('SAVE_VER is 13', () => {
   const game = newGame();
-  strictEqual(game.SAVE_VER, 12);
+  strictEqual(game.SAVE_VER, 13);
   ok(typeof game.MIGRATIONS[3] === 'function', 'MIGRATIONS[3] must exist');
   ok(typeof game.MIGRATIONS[4] === 'function', 'MIGRATIONS[4] must exist (Owner\'s List)');
   ok(typeof game.MIGRATIONS[5] === 'function', 'MIGRATIONS[5] must exist (prestige)');
@@ -2268,6 +2268,7 @@ test('SAVE_VER is 12', () => {
   ok(typeof game.MIGRATIONS[9] === 'function', 'MIGRATIONS[9] must exist (Renown)');
   ok(typeof game.MIGRATIONS[10] === 'function', 'MIGRATIONS[10] must exist (Brand Endorsement)');
   ok(typeof game.MIGRATIONS[11] === 'function', 'MIGRATIONS[11] must exist (challenge tiers)');
+  ok(typeof game.MIGRATIONS[12] === 'function', 'MIGRATIONS[12] must exist (lifetime value)');
 });
 
 test('v8 save migrates to the current version: club fields land in clubs.main, account fields stay', () => {
@@ -4666,6 +4667,7 @@ const ACCOUNT_FIELDS = [
   'whalesCount', 'specialsCount', 'golden',
   'challenge', 'challengesDone', 'challengeTier', 'challengeTiers',
   'renown', 'renownTotal', 'brand', 'brandLevel',
+  'lifetimeEarned',
   'ts', 'log',
   'crew', 'jobs',
   'clubs', 'activeClub',
@@ -5862,33 +5864,261 @@ test('renderVals shows the Brand Endorsement card with live cost/meta', () => {
   strictEqual(c1.meta, 'ready', 'enough Renown → ready');
 });
 
-test('renderVals().horizon: worth sums club cash; done needs BOTH legs (3 clubs + $1e12)', () => {
+test('renderVals().horizon: the lifetime-value ladder (stars, next tier, pct)', () => {
   const game = newGame();
   const g = game.state.g;
+  // Fresh account: zero earned, zero stars, first tier is the next target.
+  let h = game.renderVals().horizon;
+  strictEqual(h.earned, 0, 'fresh earned is 0');
+  strictEqual(h.stars, 0, 'no stars at 0');
+  strictEqual(h.total, 3, 'three tiers');
+  strictEqual(h.next, 1e7, 'next star at ★1 ($1e7)');
+  strictEqual(h.target, 1e9, 'top target $1e9');
+  strictEqual(h.done, false, 'not done');
+  strictEqual(h.pct, 0, '0% at 0 earned');
+  // Mid-ladder: $50M earned → one star, next ★2, 5% of the top target.
+  g.lifetimeEarned = 5e7;
+  h = game.renderVals().horizon;
+  strictEqual(h.stars, 1, '★1 crossed');
+  strictEqual(h.next, 1e8, 'next star at ★2 ($1e8)');
+  strictEqual(h.pct, 5, '5% of $1e9');
+  strictEqual(h.done, false, 'not done mid-ladder');
+  // Boundary: exactly $1e9 is done (>= semantics on every tier).
+  g.lifetimeEarned = 1e9;
+  h = game.renderVals().horizon;
+  strictEqual(h.stars, 3, 'all three stars at $1e9');
+  strictEqual(h.next, null, 'no next tier when done');
+  strictEqual(h.done, true, 'done at the top');
+  strictEqual(h.pct, 100, '100% when done');
+  strictEqual(h.bonus, 0.04, 'total bonus +4%');
+  // The old net-worth legs are gone — club cash no longer feeds the Vision.
+  g.lifetimeEarned = 0;
   g.clubs.annex = game.freshClubState('annex');
   g.clubs.rooftop = game.freshClubState('rooftop');
-  g.clubs.main.cash = 100;
-  g.clubs.annex.cash = 200;
-  g.clubs.rooftop.cash = 300;
-  let h = game.renderVals().horizon;
-  strictEqual(h.nClubs, 3, 'three clubs counted');
-  strictEqual(h.worth, 600, 'worth is the sum of per-club cash');
-  strictEqual(h.done, false, 'not done below $1e12');
-  strictEqual(h.pct, 50, 'clubs leg done (100) + worth leg ~0 → blended 50');
-  // Worth leg alone finishing is impossible without clubs — 3 clubs + $1e12.
+  g.clubs.main.cash = 1e12;
+  g.clubs.annex.cash = 1e12;
   g.clubs.rooftop.cash = 1e12;
   h = game.renderVals().horizon;
-  strictEqual(h.done, true, 'done at 3 clubs AND >= $1e12');
-  strictEqual(h.pct, 100, 'both legs done → 100%');
-  // One leg only: 3/3 clubs with no net worth reads 50%, not 100 — the
-  // blended bar keeps the worth leg from being hidden by the clubs leg.
-  g.clubs.main.cash = 0;
-  g.clubs.annex.cash = 0;
-  g.clubs.rooftop.cash = 0;
-  h = game.renderVals().horizon;
-  strictEqual(h.done, false, 'worth leg not done');
-  strictEqual(h.pct, 50, '3/3 clubs alone reads 50%');
+  strictEqual(h.done, false, 'net worth no longer completes the Vision');
+  strictEqual(h.earned, 0, 'club cash does not feed lifetime value');
 });
+
+// ── PR 4 — Vision retarget: lifetime-value ladder (next-roadmap) ─────────────
+
+test('step() accrues lifetimeEarned once per slice (gross = net cash + wage)', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  // Income + a wage drain so the gross-reconstruction (cash + wage) is
+  // distinguishable from crediting the net rate: crew on stage, patrons tipping.
+  g.b.rail = 2;
+  g.patrons = 10;
+  g.crew = 1;
+  g.jobs = { stage: 1, vipjob: 0, floor: 0, off: 0 };
+  const r = game.rates(g);
+  ok(r.wage > 0, 'setup produces a wage drain (gross ≠ net)');
+  strictEqual(g.lifetimeEarned, 0, 'starts at 0');
+  // dt 0.1 = exactly one slice: one rates() call, so the credit is exactly
+  // (r.cash + r.wage) * 0.1 — captured before the slice, no drift possible.
+  game.step(0.1);
+  ok(Math.abs(g.lifetimeEarned - (r.cash + r.wage) * 0.1) < 1e-9,
+    'one slice credits gross exactly once');
+  // 10 more slices with a rates() spy: rates drift per slice (hype/patrons
+  // move), so exact linearity vs a frozen rate would be wrong — the correct
+  // oracle is the per-slice sum. One rates() call per slice is structural
+  // (step() and autoBuyManagers share the slice's `r` via the strike opt).
+  const orig = game.rates.bind(game);
+  let grossSum = 0;
+  game.rates = (gg) => { const rr = orig(gg); grossSum += rr.cash + rr.wage; return rr; };
+  const before = g.lifetimeEarned;
+  game.step(1); // 10 slices of SIM 0.1, no shift rollover within 1s
+  game.rates = orig;
+  ok(Math.abs((g.lifetimeEarned - before) - grossSum * 0.1) < 1e-6,
+    'accrual is the exact per-slice gross sum (single credit, no double count)');
+});
+
+test('FP-residue guard: fractional dt runs exactly floor(dt/SIM) slices, no phantom slice', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  // Same income + wage-drain setup as the single-credit test above.
+  g.b.rail = 2;
+  g.patrons = 10;
+  g.crew = 1;
+  g.jobs = { stage: 1, vipjob: 0, floor: 0, off: 0 };
+  const orig = game.rates.bind(game);
+  let calls = 0;
+  game.rates = (gg) => { calls++; return orig(gg); };
+  // step(0.1+0.1+0.1) is step(0.30000000000000004) in binary FP: three whole
+  // 0.1 slices leave a ~2.8e-17 residue. The guard clamps it (sub-1e-9), so the
+  // loop exits at exactly 3 — without it, a phantom 4th slice would run rates()
+  // at 2.8e-17s of time (the bug the guard fixes).
+  game.step(0.1 + 0.1 + 0.1);
+  strictEqual(calls, 3, '3 slices for 0.1+0.1+0.1 — no phantom 4th (FP residue clamped)');
+  // The documented whole-second case: step(1) with SIM 0.1 leaves a ~1.4e-16
+  // remainder; exactly 10 slices, no phantom 11th.
+  calls = 0;
+  game.step(1);
+  strictEqual(calls, 10, '10 slices for step(1) — no phantom 11th (FP residue clamped)');
+  game.rates = orig;
+});
+
+test('catchUp() accrues lifetimeEarned at the away-report rate, single-counted', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  g.b.rail = 3;
+  g.patrons = 12;
+  g.crew = 2;
+  g.jobs = { stage: 1, vipjob: 0, floor: 1, off: 0 };
+  const before = g.lifetimeEarned;
+  // Spy the per-slice gross (one rates() call per slice; autoBuyManagers
+  // receives the slice's rates via the strike opt) to build the exact oracle.
+  const orig = game.rates.bind(game);
+  let grossSum = 0;
+  game.rates = (gg) => { const rr = orig(gg); grossSum += rr.cash + rr.wage; return rr; };
+  const report = game.catchUp(g, 10); // 10 offline slices of OFFLINE_STEP 1s
+  game.rates = orig;
+  // The away report's `earned` IS the per-slice gross sum at the scaled dt;
+  // the accumulator must equal it exactly — anything more is a double count
+  // (both writers in one loop), anything less is a missed slice.
+  ok(Math.abs((g.lifetimeEarned - before) - report.earned) < 1e-6,
+    'lifetimeEarned delta equals the away-report gross (no double count)');
+  ok(g.lifetimeEarned > 0, 'offline accrues lifetime value (offline is first-class)');
+  // Scale proof: fresh account → offline factor is exactly 0.5 (no offline65
+  // perk, brandRank 0), so the credit is half the raw gross sum — offline
+  // earning runs at the scaled rate, not the live one.
+  ok(Math.abs((g.lifetimeEarned - before) - grossSum * 0.5) < 1e-6,
+    'accrues at the exact 0.5 offline scale of the per-slice gross');
+});
+
+test('lifetimeEarned survives every reset (prestige, challenge start, franchise sale)', () => {
+  // Ordinary prestige.
+  const game = newGame();
+  const g = game.state.g;
+  g.regulars = 30; g.night = 10; g.legacy = 100;
+  g.lifetimeEarned = 123456.78;
+  game.confirmPrestige();
+  strictEqual(game.state.g.lifetimeEarned, 123456.78, 'survives ordinary prestige (fractional precision kept)');
+  // Challenge start.
+  const game2 = newGame();
+  const g2 = game2.state.g;
+  g2.renown = 30;
+  g2.lifetimeEarned = 9876.5;
+  const tight = game2.CHALLENGES.find(c => c.id === 'tight');
+  game2.startChallenge(tight); // first click arms only
+  game2.startChallenge(tight); // confirm
+  strictEqual(game2.state.g.lifetimeEarned, 9876.5, 'survives challenge start');
+  // Franchise sale — lifetime is the brand's cumulative footprint.
+  const game3 = newGame(5000);
+  const g3 = gateMetGame(game3);
+  g3.lifetimeEarned = 5.5e7;
+  g3.renown = 3;
+  const gain = game3.renownGain(g3);
+  game3.openFranchise();
+  game3.confirmFranchiseSale(); // arms
+  game3.confirmFranchiseSale(); // confirms
+  strictEqual(game3.state.g.lifetimeEarned, 5.5e7, 'survives the franchise sale');
+  strictEqual(game3.state.g.renown, 3 + gain, 'sale still grants its Renown');
+});
+
+test('sanitizeG/import fail-close malformed lifetimeEarned (parity)', () => {
+  const game = newGame();
+  const g = game.state.g;
+  g.lifetimeEarned = NaN;
+  game.sanitizeG(g);
+  strictEqual(g.lifetimeEarned, 0, 'NaN → 0');
+  g.lifetimeEarned = -3;
+  game.sanitizeG(g);
+  strictEqual(g.lifetimeEarned, 0, 'negative → 0');
+  g.lifetimeEarned = 'rich';
+  game.sanitizeG(g);
+  strictEqual(g.lifetimeEarned, 0, 'string → 0');
+  // Deliberately NOT floored: it is a money accumulator credited fractionally
+  // every slice (same class as c.cash) — unlike integer counters (brandLevel).
+  g.lifetimeEarned = 123.456;
+  game.sanitizeG(g);
+  strictEqual(g.lifetimeEarned, 123.456, 'fractional precision kept');
+  // Import path: a v13 payload keeps its value; a v12 envelope gains 0 from
+  // MIGRATIONS[12] (history cannot be reconstructed — the ladder starts now).
+  const g2 = game.state.g;
+  g2.lifetimeEarned = 4242.5;
+  const raw = JSON.parse(JSON.stringify(g2));
+  game.importSaveFromText(JSON.stringify({ saveVer: 13, g: raw }));
+  strictEqual(game.state.g.lifetimeEarned, 4242.5, 'imported v13 keeps lifetimeEarned');
+  const raw12 = JSON.parse(JSON.stringify(g2));
+  delete raw12.lifetimeEarned;
+  game.importSaveFromText(JSON.stringify({ saveVer: 12, g: raw12 }));
+  strictEqual(game.state.g.lifetimeEarned, 0, 'imported v12 defaults to 0 (MIGRATIONS[12])');
+});
+
+test('v12 → v13 migration defaults lifetimeEarned without clobbering', () => {
+  const game = newGame();
+  const g = game.fresh();
+  delete g.lifetimeEarned;
+  ok(game.migrateFrom(g, 12), 'migration chain runs');
+  strictEqual(g.lifetimeEarned, 0, 'missing lifetimeEarned defaults to 0');
+  const g2 = game.fresh();
+  g2.lifetimeEarned = 5e6;
+  ok(game.migrateFrom(g2, 12), 'migration chain runs');
+  strictEqual(g2.lifetimeEarned, 5e6, 'existing lifetimeEarned preserved (no-clobber)');
+  // Present-but-malformed on a v12 save: same fail-closed guard as sanitizeG.
+  const g3 = game.fresh();
+  g3.lifetimeEarned = NaN;
+  ok(game.migrateFrom(g3, 12), 'migration chain runs');
+  strictEqual(g3.lifetimeEarned, 0, 'present-but-NaN lifetimeEarned defaults to 0 (MIGRATIONS[12])');
+});
+
+test('vision tiers fire once through totalCashMult (derived, never re-fires)', () => {
+  const game = newGame();
+  const g = game.state.g;
+  const multBase = game.totalCashMult(g);
+  strictEqual(game.visionBonus(g), 0, 'fresh account: zero bonus');
+  strictEqual(game.totalCashMult(g), multBase, '×1.0 factor is exact below ★1 (bit-identical bot path)');
+  // One cent below ★1: still zero. At ★1: +1%. Boundary is >=.
+  g.lifetimeEarned = 1e7 - 0.01;
+  strictEqual(game.visionBonus(g), 0, 'just under ★1 → no bonus');
+  g.lifetimeEarned = 1e7;
+  ok(Math.abs(game.totalCashMult(g) - multBase * 1.01) < 1e-9, 'crossing ★1 → ×1.01');
+  g.lifetimeEarned = 1e8;
+  ok(Math.abs(game.totalCashMult(g) - multBase * 1.02) < 1e-9, '★2 → ×1.02 (stacked)');
+  g.lifetimeEarned = 1e9;
+  ok(Math.abs(game.totalCashMult(g) - multBase * 1.04) < 1e-9, '★3 → ×1.04 total');
+  // "Never re-fires" is structural: the bonus is derived from the accumulator,
+  // so re-reading cannot change it and no per-tier state exists to drift.
+  const before = JSON.stringify(Object.keys(g).sort());
+  game.visionBonus(g);
+  game.visionBonus(g);
+  strictEqual(JSON.stringify(Object.keys(g).sort()), before, 'reading the bonus writes no state');
+  strictEqual(game.visionBonus(g), 0.04, 'derived bonus is stable');
+});
+
+test('visionBonus folds into rates() (the composition point feeds passive income)', () => {
+  const game = newGame();
+  const g = game.state.g;
+  const c = game.club(g);
+  c.b.bar = 1;
+  c.patrons = 8;
+  g.lifetimeEarned = 1e7;
+  const rHi = game.rates(g);
+  g.lifetimeEarned = 0;
+  const rLo = game.rates(g);
+  ok(Math.abs(rHi.cash - rLo.cash * 1.01) < 1e-6, 'rates cash scales ×1.01 past ★1');
+});
+
+test('bot-path silence: a deterministic step-driven run never crosses ★1', () => {
+  // The economy-suite mirror of pacing.mjs's endgameProbe assert: the plain
+  // bot-path state (no sale, no brand, no challenges) earns lifetime value at
+  // sim rates only — after a full simulated HOUR of steps the bonus is still
+  // exactly 0, so the totalCashMult factor stays ×1.0 on the deterministic path.
+  const game = newGame(20);
+  const g = game.state.g;
+  g.b.rail = 2; g.b.bar = 2; g.b.marquee = 2; g.b.dj = 2; g.b.vip = 2;
+  g.patrons = 40; g.crew = 3;
+  g.jobs = { stage: 1, vipjob: 2, floor: 0, off: 0 };
+  for (let i = 0; i < 600; i++) game.step(6); // 3600 simulated seconds
+  ok(g.lifetimeEarned > 0, 'the run earned lifetime value');
+  ok(g.lifetimeEarned < 1e7, `1 simulated hour of sim-rate income stays under ★1 (got ${g.lifetimeEarned.toFixed(0)})`);
+  strictEqual(game.visionBonus(g), 0, 'no tier fired — factor is exactly ×1.0');
+});
+
 
 test('freshClubState(loc) initializes that location\'s extras; sanitize backfills missing ones', () => {
   const game = newGame();

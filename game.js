@@ -36,8 +36,8 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.14', build: 227, channel: 'alpha', date: '2026-08-16', codename: 'Neon Zero' };
-  SAVE_VER = 12;
+  VERSION = { num: '0.11.15', build: 228, channel: 'alpha', date: '2026-08-17', codename: 'Neon Zero' };
+  SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
   // A plain boolean is copied when the browser duplicates a tab, so a duplicate would
@@ -187,10 +187,23 @@ class Game {
         g.challengeTiers[ch.id] = (typeof t === 'number' && Number.isFinite(t) && t >= 1) ? Math.min(3, Math.floor(t))
           : ((Array.isArray(g.challengesDone) && g.challengesDone.includes(ch.id)) ? 1 : 0);
       }
+    },
+    // v12 → v13: lifetime value (next-roadmap PR 4) — g.lifetimeEarned, the
+    // gross cash earned across all time that drives the Vision tier ladder.
+    // No-clobber: a finite non-negative number passes through; only
+    // missing/malformed values default to 0 (history before this version
+    // cannot be reconstructed — the ladder starts measuring now, which is
+    // the documented migration semantics, not a bug). sanitizeG runs the
+    // same shape after the chain.
+    12(g) {
+      if (typeof g.lifetimeEarned !== 'number' || !Number.isFinite(g.lifetimeEarned) || g.lifetimeEarned < 0) g.lifetimeEarned = 0;
     }
   };
 
   CHANGELOG = [
+      { v: '0.11.15', date: '2026-08-17', codename: 'Neon Zero', notes: [
+        'VISION RETARGET (next-roadmap PR 4): the impossible $1e12 net-worth target is replaced by a cumulative lifetime-value ladder with a real payoff. New additive g.lifetimeEarned tracks gross cash earned across all time (the away-report semantics — net cash + wages per sim slice), credited exactly once per slice in step() and once per slice in catchUp() (offline accrues at the same scaled rate), surviving prestige, challenge starts, AND the franchise sale — lifetime is the brand\'s cumulative footprint. VISION_TIERS ($10M/$100M/$1B) each grant a permanent all-cash bonus once crossed (+1%/+1%/+2%, +4% total), derived from lifetimeEarned at the single totalCashMult composition point — no per-tier state, so tiers can never re-fire or desync. The Owner\'s List Vision block now reads "Lifetime value $X / $1B" with three star markers instead of the 3-clubs/$1e12 bar. Tier sizing is probe-pinned: pacing.mjs gains endgameProbe(), which proves the deterministic bot\'s 8-hour lifetime earned stays strictly below ★1 ($10M), so the bonus factor is exactly ×1.0 on the bot path and every band is bit-identical. Bonus is cash%, not Renown — a Renown grant on crossing would cannibalize the sale loop, the spine (documented rejection). step()\'s sim loop gains an FP-residue guard (a whole-second dt with SIM 0.1 previously ran a phantom 11th slice at ~1.4e-16s; below 1e-9s the slice is clamped) so per-slice credits stay exactly 1:1 with rates() calls. SAVE_VER bumped to 13 with a no-clobber MIGRATIONS[12] (v12 saves default lifetimeEarned to 0 — history cannot be reconstructed, the ladder starts measuring now).'
+      ] },
       { v: '0.11.14', date: '2026-08-16', codename: 'Neon Zero', notes: [
         'META ACHIEVEMENTS (next-roadmap PR 3): the achievement catalog grows 38 → 48 with ten new achievements covering the post-sale meta. Franchise sales (franchise_1 checking renownTotal ≥ 1; franchise_5/10 checking renownTotal ≥ 30/60 — lifetime Renown is the only durable counter), Brand perks (brand_1 unlock, brand_max checks each perk at its individual max rank so the rooftop lease with max:1 works), the Rooftop club (rooftop_1, heli_1), challenge tiers (challenge_1 any tier, challenge_all all 4 challenges), and Brand Endorsements (endorse_5) all reward Legacy only (no Clout). The milk multiplier ceiling expands from +34% to +44% (44 non-burst of 48 total). None of the new checks fire on the pacing bot\'s standard path (it never sells, opens rooftop, starts challenges, or owns brand), so pacing.mjs bands remain bit-identical. SAVE_VER stays 12 (achievements reuse the existing g.achievements array).'
       ] },
@@ -630,6 +643,23 @@ class Game {
     { id: 'rooftop', name: 'Rooftop Lease', cost: 10, max: 1, desc: 'Unlock the Rooftop — a third location.' }
   ];
 
+  // Vision tier ladder (next-roadmap PR 4) — the replacement for the
+  // unreachable $1e12 net-worth target. Each tier grants a permanent all-cash
+  // bonus once CUMULATIVE lifetime gross (g.lifetimeEarned) crosses its worth;
+  // +4% total at the top. Derived state only — there is no per-tier flag, so a
+  // tier can never re-fire, and dropping below a worth (impossible by
+  // construction — the accumulator is monotonic) would only ever un-grant.
+  // Sizing is probe-pinned: the deterministic pacing bot's 8-hour lifetime
+  // earned stays strictly below ★1 (pacing.mjs endgameProbe asserts
+  // botLifetime < 1e7), so the bonus factor is exactly ×1.0 on the bot path
+  // and the bands are bit-identical. Bonus is cash%, not Renown — a Renown
+  // grant on crossing would cannibalize the sale loop (the spine).
+  VISION_TIERS = [
+    { worth: 1e7, bonus: 0.01 },
+    { worth: 1e8, bonus: 0.01 },
+    { worth: 1e9, bonus: 0.02 }
+  ];
+
   // Location-specific buildings/upgrades (REPLAY_ROADMAP.md §9) — additive
   // identity per club, appended to the shared BUILDINGS/UPGRADES catalog.
   // `kind`: 'b' = building (cost/growth/desc, optional max), 'u' = upgrade
@@ -790,6 +820,27 @@ class Game {
   // integer floor stays exact for every reachable level.
   endorsementCost(g) {
     return Math.floor(15 * Math.pow(1.35, this.brandLevel(g)));
+  }
+
+  // Lifetime gross cash earned (next-roadmap PR 4) — the Vision ladder's only
+  // input. Fail-closed read: a missing/malformed accumulator reads as 0 (the
+  // tiers simply stay locked instead of poisoning totalCashMult with NaN).
+  lifetimeEarned(g) {
+    const n = g && g.lifetimeEarned;
+    // > 0 (not >= 0) is deliberate: 0 and -0 both read as 0, so a zeroed or
+    // hand-crafted -0 accumulator can never satisfy a tier boundary. Sanitize
+    // guards write 0 for anything < 0, which -0 is not; this read is the backstop.
+    return typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : 0;
+  }
+
+  // Sum of the VISION_TIERS bonuses already crossed (0 → 0.04). Derived from
+  // lifetimeEarned on every read — no per-tier state to save, migrate, or
+  // restore, so the ladder can never re-fire or drift out of sync.
+  visionBonus(g) {
+    const earned = this.lifetimeEarned(g);
+    let bonus = 0;
+    for (const t of this.VISION_TIERS) if (earned >= t.worth) bonus += t.bonus;
+    return bonus;
   }
 
   // Location-specific content for a club id (REPLAY_ROADMAP.md §9): the extras
@@ -1001,9 +1052,11 @@ class Game {
     const incomeMod = typeof mod.incomeMult === 'number' ? mod.incomeMult : 1;
     // Nationwide Reach brand perk (REPLAY_ROADMAP.md §9): +10% all cash per rank.
     // Brand Endorsement (next-roadmap PR 1): +2% all cash per level, repeatable.
+    // Vision ladder (next-roadmap PR 4): +1%/+1%/+2% all cash per lifetime-value
+    // tier crossed — ×1.0 on the pacing bot's path (probe-pinned under ★1).
     return this.cashIncomeMult(g) * this.achievementMult(g) * (g.r.brand ? 1.10 : 1)
       * (1 + this.challengeBonus(g).cashMult) * (1 + 0.10 * this.brandRank(g, 'nationwide'))
-      * (1 + 0.02 * this.brandLevel(g)) * incomeMod;
+      * (1 + 0.02 * this.brandLevel(g)) * (1 + this.visionBonus(g)) * incomeMod;
   }
 
   // Featured regular name — derived from the active club's regulars count
@@ -1319,7 +1372,11 @@ class Game {
       // Brand Endorsement level (next-roadmap PR 1) — the repeatable Renown
       // sink: +2% all cash per level, cost escalates 15 × 1.35^level. Additive;
       // persists through every reset like brand ranks.
-      brandLevel: 0
+      brandLevel: 0,
+      // Lifetime gross cash earned (next-roadmap PR 4) — the Vision ladder's
+      // input. Monotonic accumulator; survives every reset (prestige, challenge
+      // start, franchise sale) — lifetime is the brand's cumulative footprint.
+      lifetimeEarned: 0
     };
     this.applyStartPerks(g);
     return g;
@@ -1536,6 +1593,12 @@ class Game {
     // endorsementCost exponent and the renderVals readout).
     if (typeof g.brandLevel !== 'number' || !Number.isFinite(g.brandLevel) || g.brandLevel < 0) g.brandLevel = 0;
     g.brandLevel = Math.floor(g.brandLevel);
+    // Lifetime value (next-roadmap PR 4) — gross cash earned across all time.
+    // Fail-closed: non-numeric → 0, clamp ≥ 0. Deliberately NOT floored — it is
+    // a money accumulator credited fractionally every sim slice (same class as
+    // c.cash); the tiers compare against 1e7+, where a fraction of a cent is
+    // noise, and flooring a hot-loop accumulator would just lose precision.
+    if (typeof g.lifetimeEarned !== 'number' || !Number.isFinite(g.lifetimeEarned) || g.lifetimeEarned < 0) g.lifetimeEarned = 0;
     return g;
   }
 
@@ -1793,6 +1856,12 @@ class Game {
     // integer ≥ 0, fail-closed.
     if (typeof g.brandLevel !== 'number' || !Number.isFinite(g.brandLevel) || g.brandLevel < 0) g.brandLevel = 0;
     g.brandLevel = Math.floor(g.brandLevel);
+
+    // Lifetime value (next-roadmap PR 4) — parity with sanitizeG: lenient fill
+    // (finite ≥ 0 passes, missing/malformed → 0). v12 envelopes gain the field
+    // from MIGRATIONS[12] before this runs; the lenient fill is for hand-edited
+    // current-version payloads, same class as the brandLevel handling above.
+    if (typeof g.lifetimeEarned !== 'number' || !Number.isFinite(g.lifetimeEarned) || g.lifetimeEarned < 0) g.lifetimeEarned = 0;
 
     if (!Array.isArray(g.log)) g.log = [];
     // Keep raw validated t/msg (length-capped) so export→import is idempotent.
@@ -2475,6 +2544,11 @@ class Game {
         * (1 + 0.10 * this.brandRank(g, 'offline'));
       // rates.cash is net of wage; reconstruct gross for reporting.
       earned += (rates.cash + rates.wage) * dt;
+      // Lifetime value (next-roadmap PR 4): the same gross credit, promoted to
+      // the persistent accumulator — ONE write here, at the same point the
+      // away-report's `earned` is credited, so a slice can never double-count
+      // (step() is not called from this loop; the two paths are disjoint).
+      g.lifetimeEarned += (rates.cash + rates.wage) * dt;
       wagesPaid += rates.wage * dt;
       c.cash = Math.max(0, c.cash + rates.cash * dt);
       c.hype = Math.max(0, Math.min(cap.hype, c.hype + rates.hype * dt));
@@ -2528,6 +2602,12 @@ class Game {
       const chunk = Math.min(remaining, left, this.SIM);
       const chatty = remaining <= 0.5;
       c.cash = Math.max(0, c.cash + r.cash * chunk);
+      // Lifetime value (next-roadmap PR 4): gross cash earned this slice — net
+      // cash plus the wages that were subtracted from it (the away-report
+      // semantics), credited exactly once here. Active clicks, whale drops and
+      // golden tips are deliberately NOT credited — the ladder measures the
+      // business's sim-driven earning power, and rates() is its single source.
+      g.lifetimeEarned += (r.cash + r.wage) * chunk;
       c.hype = Math.max(0, Math.min(cap.hype, c.hype + r.hype * chunk));
       c.buzz = Math.max(0, Math.min(cap.buzz, c.buzz + r.buzz * chunk - r.buzzSpent * chunk));
       c.patrons = Math.max(0, Math.min(cap.patrons, c.patrons + r.patrons * chunk));
@@ -2536,6 +2616,14 @@ class Game {
       c.elapsed += chunk;
       c.shiftT += chunk;
       remaining -= chunk;
+      // 0.11.15 (PR 4): FP-residue guard. A dt that is a whole number of SIM
+      // steps (e.g. step(1) with SIM 0.1) leaves a ~1.4e-16 remainder, which
+      // would otherwise run a phantom extra slice — a full rates() +
+      // autoBuyManagers + noteGoals + checkAchievements pass credited at
+      // 1.4e-16s of time. Below 1e-9s the slice is below sim resolution;
+      // clamping it keeps per-slice crediting exactly 1:1 with rates() (the
+      // lifetimeEarned accrual test asserts that 1:1).
+      if (remaining < 1e-9) remaining = 0;
       // Managers auto-buy buildings (PLAN.md §4.1) — after cash accrues for this slice,
       // respects strike rule (no auto-buy at cash=0 or on strike).
       // Ordered before noteGoals/checkAchievements to match catchUp() slice ordering,
@@ -2988,7 +3076,8 @@ class Game {
       managerLevels: {},
       brand: {},
       brandLevel: this.brandLevel(g),
-      challengeTiers: {}
+      challengeTiers: {},
+      lifetimeEarned: this.lifetimeEarned(g)
     };
     for (const def of this.PRESTIGE_PERKS) snapshot.perks[def.id] = this.perk(g, def.id);
     for (const def of this.MANAGERS) snapshot.managers[def.id] = g.managers && g.managers[def.id] === true;
@@ -3045,6 +3134,9 @@ class Game {
     // active challenge ends (fresh() clears it), but earned tiers persist.
     for (const ch of this.CHALLENGES) snapshot.challengeTiers[ch.id] = this.challengeTier(g, ch.id);
     next.challengeTiers = snapshot.challengeTiers;
+    // Lifetime value (next-roadmap PR 4) survives every reset — prestige
+    // included: lifetime is the brand's cumulative footprint, not run state.
+    next.lifetimeEarned = snapshot.lifetimeEarned;
     this.applyStartPerks(next);
     // Start-perk state can satisfy building achievements.
     this.checkAchievements(next);
@@ -3100,7 +3192,8 @@ class Game {
       renownTotal: (g.renownTotal || 0),
       achievements: Array.isArray(g.achievements) ? g.achievements.slice() : [],
       brand: (g.brand && typeof g.brand === 'object' && !Array.isArray(g.brand)) ? { ...g.brand } : {},
-      brandLevel: this.brandLevel(g)
+      brandLevel: this.brandLevel(g),
+      lifetimeEarned: this.lifetimeEarned(g)
     };
 
     // Build the post-sale candidate from fresh() defaults — wipes both clubs
@@ -3114,6 +3207,10 @@ class Game {
     // Brand Endorsement level (next-roadmap PR 1) — permanent like brand ranks:
     // the repeatable Renown sink is the reason the NEXT sale has a spend.
     next.brandLevel = snapshot.brandLevel;
+    // Lifetime value (next-roadmap PR 4) survives the sale too — the Vision
+    // ladder is the brand's cumulative footprint across every franchise cycle;
+    // wiping it would reset the only reachable long-game payoff.
+    next.lifetimeEarned = snapshot.lifetimeEarned;
     this.applyStartPerks(next);
     // Start-perk state can satisfy building achievements (parity with prestige).
     this.checkAchievements(next);
@@ -3224,7 +3321,8 @@ class Game {
       legacy: (g.legacy || 0), legacyTotal: (g.legacyTotal || 0),
       perks: {}, prestiges: (g.prestiges || 0), managers: {}, managerPaused: {}, managerLevels: {},
       brand: {}, brandLevel: this.brandLevel(g),
-      challengeTiers: {}
+      challengeTiers: {},
+      lifetimeEarned: this.lifetimeEarned(g)
     };
     for (const p of this.PRESTIGE_PERKS) snapshot.perks[p.id] = this.perk(g, p.id);
     for (const m of this.MANAGERS) {
@@ -3260,6 +3358,10 @@ class Game {
     // Brand Endorsement level (next-roadmap PR 1) — same class as the ranks:
     // the repeatable Renown sink must not wipe on a challenge start either.
     next.brandLevel = snapshot.brandLevel;
+    // Lifetime value (next-roadmap PR 4) — survives every reset, challenge
+    // starts included: the challenge tests skill under a handicap, it does not
+    // erase the brand's cumulative footprint.
+    next.lifetimeEarned = snapshot.lifetimeEarned;
     // Modifier startCash overrides the default starting till (tier-aware: the
     // active tier's mod, not just the tier-1 table mod).
     const mod = this.challengeTierMod(def, nextTier);
@@ -3903,21 +4005,24 @@ class Game {
           onboardingPulse
         };
       })(),
-      // Endgame horizon (REPLAY_ROADMAP.md §10): a visible goal line — 3 clubs
-      // and $1e12 franchise net worth — in the Owner's List "Vision" block.
-      // Purely a target + progress readout computed from existing state; no new
-      // mechanic, no save-shape change, and no economy coupling (read-only).
+      // Endgame horizon (next-roadmap PR 4): the Vision block — a cumulative
+      // lifetime-value ladder ($10M/$100M/$1B gross earned, all time) with a
+      // permanent all-cash payoff per tier (+1%/+1%/+2% through totalCashMult).
+      // Replaces the unreachable $1e12 net-worth target (probe-measured ~3.6
+      // sim-years away on a decked account). Still a readout: every value is
+      // derived from g.lifetimeEarned + VISION_TIERS at render time.
       horizon: (() => {
-        const clubIds = Object.keys(g.clubs || {});
-        const TARGET = 1e12;
-        let worth = 0;
-        for (const id of clubIds) worth += (g.clubs[id].cash || 0);
-        const nClubs = clubIds.length;
-        const done = nClubs >= 3 && worth >= TARGET;
-        // Both legs must finish; the blended bar keeps one leg from hiding the
-        // other (clubs 3/3 alone reads 50%).
-        const pct = Math.round((Math.min(100, (nClubs / 3) * 100) + Math.min(100, (worth / TARGET) * 100)) / 2);
-        return { nClubs, clubMax: 3, worth, target: TARGET, done, pct };
+        const tiers = this.VISION_TIERS;
+        const earned = this.lifetimeEarned(g);
+        let stars = 0;
+        for (const t of tiers) if (earned >= t.worth) stars++;
+        const target = tiers[tiers.length - 1].worth;
+        const next = stars < tiers.length ? tiers[stars].worth : null;
+        const pct = Math.round(Math.min(100, (earned / target) * 100));
+        return {
+          earned, stars, total: tiers.length, next, target,
+          bonus: this.visionBonus(g), done: stars >= tiers.length, pct
+        };
       })(),
       achievements: this.ACHIEVEMENTS.map(a => ({
         id: a.id,
@@ -4662,23 +4767,30 @@ class Game {
           ${(() => {
             const h = v.horizon;
             if (!h) return '';
-            // Endgame horizon (REPLAY_ROADMAP.md §10): readout only — the goal
-            // line is 3 clubs + $1e12 net worth; progress is computed, not a
-            // mechanic. Rendered under the active goal so it never steals the
-            // onboarding banner's place.
+            // Endgame horizon (next-roadmap PR 4): readout only — the goal line
+            // is the lifetime-value ladder ($10M/$100M/$1B gross earned); each
+            // star crossed is a permanent all-cash bonus already applied through
+            // totalCashMult. Rendered under the active goal so it never steals
+            // the onboarding banner's place.
+            const stars = Array.from({ length: h.total }, (_, i) =>
+              `<span style="color:${i < h.stars ? '#ffd700' : '#3a2350'};text-shadow:${i < h.stars ? '0 0 6px #ffd700' : 'none'}">★</span>`
+            ).join('<span style="color:#2a1738">·</span>');
+            const sub = h.done
+              ? `Lifetime value ${this.fmt(h.earned)} · +${Math.round(h.bonus * 100)}% all cash earned`
+              : `Lifetime value ${this.fmt(h.earned)} / ${this.fmt(h.target)} · next ★ at ${this.fmt(h.next)} (+${Math.round(this.VISION_TIERS[h.stars].bonus * 100)}% all cash)`;
             return `<div style="margin-top:9px;padding-top:8px;border-top:1px dashed #2a1738">
               <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px">
                 <span style="font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:#7b5f90;font-weight:700">Vision — the long game</span>
-                ${h.done ? '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#ffd700;font-weight:700">★ reached</span>' : ''}
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:2px">${stars}</span>
               </div>
               <div style="display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#c4a8e0;margin-bottom:3px">
-                <span>Clubs ${h.nClubs}/${h.clubMax} · Net worth ${this.fmt(h.worth)} / ${this.fmt(h.target)}</span>
+                <span>${sub}</span>
                 <span>${h.pct}%</span>
               </div>
               <div style="height:4px;background:#1c1129;border-radius:3px;overflow:hidden">
                 <div style="width:${h.pct}%;height:100%;background:linear-gradient(90deg,#ffc94a,#22d3ee);border-radius:3px;transition:width .18s linear"></div>
               </div>
-              ${h.done ? '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#ffc94a;margin-top:4px">The empire is built. Sell it, and build again.</div>' : ''}
+              ${h.done ? '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#ffc94a;margin-top:4px">A billion-dollar brand. Every night pays it forward.</div>' : ''}
             </div>`;
           })()}
         </div>`;
