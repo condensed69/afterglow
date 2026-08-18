@@ -827,6 +827,9 @@ class Game {
   // tiers simply stay locked instead of poisoning totalCashMult with NaN).
   lifetimeEarned(g) {
     const n = g && g.lifetimeEarned;
+    // > 0 (not >= 0) is deliberate: 0 and -0 both read as 0, so a zeroed or
+    // hand-crafted -0 accumulator can never satisfy a tier boundary. Sanitize
+    // guards write 0 for anything < 0, which -0 is not; this read is the backstop.
     return typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : 0;
   }
 

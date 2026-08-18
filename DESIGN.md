@@ -1081,7 +1081,11 @@ the post-§9 loop can actually reach, with a real payoff per rung:
   cap and asserts its lifetime earned stays **strictly below ★1 ($10M)** — so
   `visionBonus(g)` is exactly 0 on every bot path (the prestige-loop bound is
   asserted separately inside `renownRun()`) and every band is bit-identical to
-  the 0.11.14 reference.
+  the 0.11.14 reference. The sim-loop FP-residue guard cannot shift those
+  bands: `simulate()` drives `step(1)` (whole SIM steps), and the clamped
+  phantom slice would accrue income at ~1.4e-16s of time — below sim
+  resolution and far below the probes' measurement noise (verified
+  empirically by the passing gates).
 
 **Pacing guard (same-achievements control, §10):** `renownRun()` in
 `pacing.mjs` now proves the third club's location content is not dead weight on

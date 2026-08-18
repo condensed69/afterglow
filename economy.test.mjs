@@ -5936,6 +5936,31 @@ test('step() accrues lifetimeEarned once per slice (gross = net cash + wage)', (
     'accrual is the exact per-slice gross sum (single credit, no double count)');
 });
 
+test('FP-residue guard: fractional dt runs exactly floor(dt/SIM) slices, no phantom slice', () => {
+  const game = newGame(20);
+  const g = game.state.g;
+  // Same income + wage-drain setup as the single-credit test above.
+  g.b.rail = 2;
+  g.patrons = 10;
+  g.crew = 1;
+  g.jobs = { stage: 1, vipjob: 0, floor: 0, off: 0 };
+  const orig = game.rates.bind(game);
+  let calls = 0;
+  game.rates = (gg) => { calls++; return orig(gg); };
+  // step(0.1+0.1+0.1) is step(0.30000000000000004) in binary FP: three whole
+  // 0.1 slices leave a ~2.8e-17 residue. The guard clamps it (sub-1e-9), so the
+  // loop exits at exactly 3 — without it, a phantom 4th slice would run rates()
+  // at 2.8e-17s of time (the bug the guard fixes).
+  game.step(0.1 + 0.1 + 0.1);
+  strictEqual(calls, 3, '3 slices for 0.1+0.1+0.1 — no phantom 4th (FP residue clamped)');
+  // The documented whole-second case: step(1) with SIM 0.1 leaves a ~1.4e-16
+  // remainder; exactly 10 slices, no phantom 11th.
+  calls = 0;
+  game.step(1);
+  strictEqual(calls, 10, '10 slices for step(1) — no phantom 11th (FP residue clamped)');
+  game.rates = orig;
+});
+
 test('catchUp() accrues lifetimeEarned at the away-report rate, single-counted', () => {
   const game = newGame(20);
   const g = game.state.g;
@@ -6034,6 +6059,11 @@ test('v12 → v13 migration defaults lifetimeEarned without clobbering', () => {
   g2.lifetimeEarned = 5e6;
   ok(game.migrateFrom(g2, 12), 'migration chain runs');
   strictEqual(g2.lifetimeEarned, 5e6, 'existing lifetimeEarned preserved (no-clobber)');
+  // Present-but-malformed on a v12 save: same fail-closed guard as sanitizeG.
+  const g3 = game.fresh();
+  g3.lifetimeEarned = NaN;
+  ok(game.migrateFrom(g3, 12), 'migration chain runs');
+  strictEqual(g3.lifetimeEarned, 0, 'present-but-NaN lifetimeEarned defaults to 0 (MIGRATIONS[12])');
 });
 
 test('vision tiers fire once through totalCashMult (derived, never re-fires)', () => {

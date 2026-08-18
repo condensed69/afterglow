@@ -224,7 +224,7 @@ Transparent, mirrors `legacyGain`'s shape (`sqrt` of lifetime + linear term). Wi
 | `g.research` (`g.r`) | `{}` |
 | `g.managers` / `g.managerPaused` / `g.managerLevels` | `{}` / `{}` / `{}` |
 | `g.crew` / `g.jobs` | `0` / fresh |
-| `g.challengesDone` / `g.challengeRewards` | `[]` / `{}` (challenges re-lock) |
+| `g.challengesDone` / `g.challengeRewards` / `g.challengeTiers` | `[]` / `{}` / `{}` (challenges re-lock; earned tiers wipe with the sale, consistent with `challengesDone`) |
 | `g.goals` / `g.clicks` / `g.rounds` | fresh / `0` / `0` |
 | `g.whalesCount` / `g.specialsCount` / `g.golden` | `0` / `0` / `null` |
 
@@ -235,6 +235,8 @@ Transparent, mirrors `legacyGain`'s shape (`sqrt` of lifetime + linear term). Wi
 | `g.renown` / `g.renownTotal` | Spendable + lifetime Renown. Never wipes. |
 | `g.achievements` | Permanent unlocks, unchanged. |
 | `g.brand` | Brand perk ranks (PR 7). Never wipes — the reason to sell again. |
+| `g.brandLevel` | Brand Endorsement level (next-roadmap PR 1). Never wipes — the repeatable Renown sink is the reason the NEXT sale has a spend. |
+| `g.lifetimeEarned` | Cumulative lifetime value (next-roadmap PR 4). Never wipes — the brand's footprint; the Vision ladder survives every reset. |
 
 **Order of operations (locked, mirrors prestige):** build the post-sale candidate → `setItem` must succeed → replace live state. Never replace first.
 
