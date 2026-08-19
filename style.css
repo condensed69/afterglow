@@ -165,6 +165,14 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
 /* Small screens: stack Ledger / Stage / Systems vertically, no horizontal scroll.
    Below the sum of the three column minimums (232+320+320 = 872px) the fixed
    mins would force a page-level horizontal scrollbar; single-column removes it. */
+/* Golden ticket banner + Stage line/energy banner (PR: mobile-golden-ticket-access):
+   hidden on desktop where the stage shows them inline; shown on phones where
+   #stage is display:none. Visibility is owned by CSS — game.js wrappers no
+   longer set inline display so the hide works without !important. */
+#golden-banner,
+#stage-line-energy-banner {
+  display: none;
+}
 @media (max-width: 900px) {
   .shell-grid {
     grid-template-columns: 1fr;
@@ -215,6 +223,18 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
      tip-floater anchor) both stay non-null and no-op. Desktop is untouched. */
   #stage {
     display: none;
+  }
+
+  /* Mobile banners — shown only when #stage is hidden (desktop hide is the base rule above).
+     The app-root grid is inline `auto auto 1fr auto` for header/ticker/shell/footer.
+     With 0-2 banners as siblings between ticker and shell they'd auto-place into
+     the shell's 1fr track and steal height. Add dedicated auto rows for banners. */
+  #golden-banner,
+  #stage-line-energy-banner {
+    display: flex;
+  }
+  .app-root {
+    grid-template-rows: auto auto auto auto 1fr auto !important;
   }
 
   /* Ledger collapses to the CASH row on narrow screens (v0.10.16). The full
