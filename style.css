@@ -312,4 +312,26 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
     padding: 2px 12px !important;
     min-height: 20px;
   }
+
+  /* Sticky CTA footer on mobile (v0.12): Work the room / Buy a round bar
+     stays pinned above the 28px footer while mobile scrolls. The bar sits
+     at bottom:28px so the app footer remains visible; shell-grid padding
+     keeps the last Night-log lines and Systems cards from hiding behind it.
+     At 390px the two buttons wrap (240px + 190px + 10px gap > 364px
+     content), making the bar ~116px tall (44+44+10+24 padding) — reserve
+     two rows plus a little headroom. z-index 20 sits under modals (60)
+     and Look panel (70), on par with the header. */
+  .stage-cta {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 28px;
+    z-index: 20;
+    background: #0b0712;
+    border-top: 1px solid #2a1738;
+    box-shadow: 0 -4px 12px rgba(0,0,0,.3);
+  }
+  .shell-grid {
+    padding-bottom: 130px !important;
+  }
 }
