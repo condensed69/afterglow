@@ -3607,10 +3607,11 @@ class Game {
     const tabs = tabDefs.map(t => ({
       label: t.label, go: () => this.setState({ tab: t.id }),
       style: {
-        flex: 1, padding: '11px 4px', background: this.state.tab === t.id ? '#170e22' : 'transparent',
+        flex: '1 0 auto', padding: '11px 12px', background: this.state.tab === t.id ? '#170e22' : 'transparent',
         border: 0, borderBottom: '2px solid ' + (this.state.tab === t.id ? '#ff2d78' : 'transparent'),
         color: this.state.tab === t.id ? '#fff' : '#7b5f90', cursor: 'pointer',
-        fontSize: '11px', fontWeight: 700, letterSpacing: '1.4px', textTransform: 'uppercase'
+        fontSize: '11px', fontWeight: 700, letterSpacing: '1.4px', textTransform: 'uppercase',
+        scrollSnapAlign: 'start', whiteSpace: 'nowrap'
       }
     }));
 
@@ -4760,7 +4761,7 @@ class Game {
     </section>
 
     <aside class="sys-col" style="border-left:1px solid #2a1738;background:#0a0611;display:grid;grid-template-rows:auto auto minmax(0,1fr);min-height:0">
-      <div style="display:flex;border-bottom:1px solid #2a1738;background:#0d0814">${tabRows}</div>
+      <div style="display:flex;overflow-x:auto;scroll-snap-type:x mandatory;border-bottom:1px solid #2a1738;background:#0d0814;padding:0 12px">${tabRows}</div>
 
       ${v.ownersList ? (() => {
         const ol = v.ownersList;
