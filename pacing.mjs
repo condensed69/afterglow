@@ -54,7 +54,7 @@ globalThis.localStorage = {
 // Strip page boot so the process can exit cleanly.
 const src = readFileSync(new URL('./game.js', import.meta.url), 'utf8');
 const stripped = src
-  .replace(/\nconst game = new Game\(document\.getElementById\('app'\)\);\s*\ngame\.init\(\);\s*(?:\ngame\.mountLook\(\);\s*)?(?:\ngame\.mountFxLayer\(\);\s*)?$/, '\n');
+  .replace(/\nconst game = new Game\(document\.getElementById\('app'\)\);\s*\ngame\.init\(\);\s*(?:\ngame\.mountLook\(\);)?\s*(?:\ngame\.mountFxLayer\(\);)?\n?$/, '');
 if (stripped === src) {
   console.error('pacing.mjs: failed to strip game.js boot lines — process may hang');
   process.exit(2);

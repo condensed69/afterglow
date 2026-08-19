@@ -4306,6 +4306,40 @@ class Game {
     return true;
   }
 
+  // Golden ticket banner for mobile (outside #stage which is display:none <900px)
+  goldenTicketBanner(v) {
+    if (!v.golden) return '';
+    if (v.goldenOpen) {
+      return `<div id="golden-banner" style="display:flex;flex-wrap:wrap;gap:8px;padding:8px 12px;background:#1a0d2e;border-bottom:1px solid #3a2350;align-items:center">
+        <span style="font-size:9px;letter-spacing:2.4px;text-transform:uppercase;color:#ffc94a;font-weight:700">Golden ticket</span>
+        <span style="font-size:11px;color:#f3e2c2;flex:1;min-width:0">VIP booked the booth.</span>
+        <button data-h="${this.bind(v.takeGoldenCash)}" ${v.golden.locked ? 'disabled' : ''} style="flex:0 0 auto;min-height:44px;min-width:44px;background:${v.golden.locked ? '#2a1d0a' : 'linear-gradient(180deg,#ffc94a,#b8860b)'};border:0;border-radius:6px;color:${v.golden.locked ? '#6b5212' : '#1c1105'};font-weight:700;font-size:10px;padding:8px 12px;cursor:${v.golden.locked ? 'not-allowed' : 'pointer'}">+$${this.fmt(v.golden.cashAmount)}</button>
+        <button data-h="${this.bind(v.takeGoldenCrowd)}" ${v.golden.locked ? 'disabled' : ''} style="flex:0 0 auto;min-height:44px;min-width:44px;background:${v.golden.locked ? '#1a1226' : '#170e22'};border:1px solid ${v.golden.locked ? '#2a1738' : '#ffc94a'};border-radius:6px;color:${v.golden.locked ? '#5a3a70' : '#ffc94a'};font-weight:700;font-size:10px;padding:8px 12px;cursor:${v.golden.locked ? 'not-allowed' : 'pointer'}">+${v.golden.crowdAmount} crowd</button>
+        <button data-h="${this.bind(v.closeGolden)}" style="flex:0 0 auto;min-height:44px;min-width:44px;background:transparent;border:0;color:#8b7355;font-size:16px;line-height:1;cursor:pointer;padding:4px 8px">✕</button>
+      </div>`;
+    }
+    return `<div id="golden-banner" style="display:flex;flex-wrap:wrap;gap:8px;padding:8px 12px;background:#1a0d2e;border-bottom:1px solid #3a2350;align-items:center">
+      <span style="font-size:9px;letter-spacing:2.4px;text-transform:uppercase;color:#ffc94a;font-weight:700">Golden ticket</span>
+      <span style="font-size:11px;color:#f3e2c2;flex:1;min-width:0">VIP booked the booth.</span>
+      <button data-h="${this.bind(v.openGolden)}" style="flex:0 0 auto;min-height:44px;min-width:44px;background:linear-gradient(180deg,#ffc94a,#b8860b);border:0;border-radius:20px;padding:8px 12px;box-shadow:0 0 18px rgba(255,201,74,.45);display:flex;align-items:center;gap:6px;cursor:pointer;animation:pulseDot 1.6s ease-in-out infinite">
+        <span style="font-size:13px">🎫</span>
+        <span style="font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:#1c1105;font-weight:800">VIP</span>
+      </button>
+    </div>`;
+  }
+
+  // Stage line + energy banner for mobile (inside #stage which is display:none <900px)
+  stageLineEnergyBanner(v) {
+    if (!v.stageLineAct && v.energyPct === '0%') return '';
+    return `<div id="stage-line-energy-banner" style="display:flex;flex-wrap:wrap;gap:10px;padding:8px 12px;background:#12081c;border-bottom:1px solid #2a1738;align-items:center;justify-content:space-between">
+      ${v.stageLineAct ? `<button data-h="${this.bind(v.stageLineAct)}" class="hv-pink" style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#ff2d78;background:transparent;border:0;padding:0;cursor:pointer;text-decoration:underline;text-underline-offset:3px;min-height:44px">${v.stageLine}</button>` : `<div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#ff2d78;min-height:44px;display:flex;align-items:center">${v.stageLine}</div>`}
+      <div style="text-align:right;min-height:44px;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;gap:2px">
+        <span style="font-size:9px;letter-spacing:2.6px;text-transform:uppercase;color:#7b5f90;font-weight:700">Room energy</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:22px;color:#ffc94a;font-weight:600;line-height:1.1">${v.energyPct}</span>
+      </div>
+    </div>`;
+  }
+
   bind(fn) {
     this.handlers.push(fn);
     return this.handlers.length - 1;
@@ -4623,6 +4657,10 @@ class Game {
     <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:2px;color:#ff2d78;font-weight:700;flex-shrink:0">TODAY</span>
     <span class="ticker-text" style="font-size:11px;color:#9c86ab;text-overflow:ellipsis;overflow:hidden">${v.ticker}</span>
   </div>
+
+  ${this.goldenTicketBanner(v)}
+
+  ${this.stageLineEnergyBanner(v)}
 
   <main data-scroll="main" class="shell-grid">
 

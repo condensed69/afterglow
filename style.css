@@ -217,6 +217,14 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
     display: none;
   }
 
+  /* Golden ticket banner + Stage line/energy banner (PR: mobile-golden-ticket-access):
+     Show these banners on mobile since #stage is display:none. They replace the
+     inline stage presentation with compact stacked banners above the shell-grid. */
+  #golden-banner,
+  #stage-line-energy-banner {
+    display: flex;
+  }
+
   /* Ledger collapses to the CASH row on narrow screens (v0.10.16). The full
      Ledger — six resource rows plus the Floor block — measured 776px tall on a
      390px phone, taller than the whole viewport, and sat first in the stacked
@@ -257,6 +265,15 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
   }
   #look-panel button.lk-seg {
     min-height: 44px !important;
+  }
+
+  /* Golden ticket banner + Stage line/energy banner (PR: mobile-golden-ticket-access):
+     On desktop these are rendered inside #stage; on mobile #stage is display:none
+     so we duplicate them as separate banners above the shell-grid. On desktop
+     (≥901px) the banners are hidden because the stage shows them inline. */
+  #golden-banner,
+  #stage-line-energy-banner {
+    display: none;
   }
 
   /* Second-room header (v0.11.1): the club switcher adds up to two more buttons
