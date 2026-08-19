@@ -4715,7 +4715,7 @@ class Game {
         <button data-h="${this.bind(v.buyRound)}" ${v.roundLocked ? 'disabled' : ''} style="${css(v.roundStyle)}">${v.roundLabel}</button>
       </div>
 
-      <div data-scroll="log" style="background:#080510;overflow-y:auto;padding:10px 14px">
+      <div data-scroll="log" style="background:#080510;overflow-y:auto;padding:10px 14px;padding-bottom:80px">
         <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700;margin-bottom:7px">Night log</div>
         <div style="display:flex;flex-direction:column;gap:3px">${logRows}</div>
       </div>

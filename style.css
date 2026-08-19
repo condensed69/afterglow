@@ -292,4 +292,16 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
     padding: 2px 12px !important;
     min-height: 20px;
   }
+
+  /* Sticky CTA footer on mobile (v0.12): Work the room / Buy a round row
+     sticks to bottom so primary actions are always reachable without scrolling.
+     The ledger section gets padding-bottom to make room. */
+  .ledger-col > div:last-child {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    background: #0b0712;
+    border-top: 1px solid #2a1738;
+    box-shadow: 0 -4px 12px rgba(0,0,0,.3);
+  }
 }
