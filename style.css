@@ -165,6 +165,14 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
 /* Small screens: stack Ledger / Stage / Systems vertically, no horizontal scroll.
    Below the sum of the three column minimums (232+320+320 = 872px) the fixed
    mins would force a page-level horizontal scrollbar; single-column removes it. */
+/* Golden ticket banner + Stage line/energy banner (PR: mobile-golden-ticket-access):
+   hidden on desktop where the stage shows them inline; shown on phones where
+   #stage is display:none. Visibility is owned by CSS — game.js wrappers no
+   longer set inline display so the hide works without !important. */
+#golden-banner,
+#stage-line-energy-banner {
+  display: none;
+}
 @media (max-width: 900px) {
   .shell-grid {
     grid-template-columns: 1fr;
@@ -217,9 +225,7 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
     display: none;
   }
 
-  /* Golden ticket banner + Stage line/energy banner (PR: mobile-golden-ticket-access):
-     Show these banners on mobile since #stage is display:none. They replace the
-     inline stage presentation with compact stacked banners above the shell-grid. */
+  /* Mobile banners — shown only when #stage is hidden (desktop hide is the base rule above) */
   #golden-banner,
   #stage-line-energy-banner {
     display: flex;
@@ -265,15 +271,6 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
   }
   #look-panel button.lk-seg {
     min-height: 44px !important;
-  }
-
-  /* Golden ticket banner + Stage line/energy banner (PR: mobile-golden-ticket-access):
-     On desktop these are rendered inside #stage; on mobile #stage is display:none
-     so we duplicate them as separate banners above the shell-grid. On desktop
-     (≥901px) the banners are hidden because the stage shows them inline. */
-  #golden-banner,
-  #stage-line-energy-banner {
-    display: none;
   }
 
   /* Second-room header (v0.11.1): the club switcher adds up to two more buttons
