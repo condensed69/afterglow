@@ -4521,29 +4521,29 @@ class Game {
       </div>` : '';
 
     const settingsModal = v.showSettings ? `
-          <div style="position:fixed;inset:0;background:rgba(5,3,9,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:32px">
-            <div style="width:420px;max-width:calc(100vw - 24px);background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
-              <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #241536">
-                <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700">Settings</div>
-                <button data-h="${this.bind(v.toggleSettings)}" class="hv-pink" style="width:30px;height:30px;border:1px solid #3a2350;border-radius:6px;background:#160d22;color:#9c86ab;cursor:pointer;font-size:14px">✕</button>
-              </div>
-              <div style="padding:16px 18px;display:flex;flex-direction:column;gap:10px">
-                <button data-h="${this.bind(v.saveNow)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Save now</button>
-                <button data-h="${this.bind(v.downloadSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Download save (.json)</button>
-                <button data-h="${this.bind(v.importSaveFile)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Load save from file…</button>
-                <button data-h="${this.bind(v.exportSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Copy save to clipboard</button>
-                <button data-h="${this.bind(v.importSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Restore save from clipboard</button>
-                <button data-h="${this.bind(v.openLook)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Look & feel…  <span style="color:#6f5885;font-weight:400">(L)</span></button>
-                <button data-h="${this.bind(v.toggleAchievements)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Achievements… <span style="color:#6f5885;font-weight:400">${v.achievements.filter(a => a.unlocked).length}/${v.achievements.length}</span></button>
-                <button data-h="${this.bind(v.hardReset)}" style="${css(v.resetStyle)}">${v.resetLabel}</button>
-                <div style="font-size:10.5px;color:#9c86ab;line-height:1.5;font-family:'IBM Plex Mono',monospace">${v.resetHint} Files and clipboard saves are the same format — either restores either way. ${v.verFull} · save format v${v.saveVer}</div>
-              </div>
-            </div>
-          </div>` : '';
+      <div style="position:fixed;inset:0;background:rgba(5,3,9,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:32px">
+        <div style="width:420px;max-width:calc(100vw - 24px);max-height:78vh;overflow-y:auto;background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #241536">
+            <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700">Settings</div>
+            <button data-h="${this.bind(v.toggleSettings)}" class="hv-pink" style="width:30px;height:30px;border:1px solid #3a2350;border-radius:6px;background:#160d22;color:#9c86ab;cursor:pointer;font-size:14px">✕</button>
+          </div>
+          <div style="padding:16px 18px;display:flex;flex-direction:column;gap:10px">
+            <button data-h="${this.bind(v.saveNow)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Save now</button>
+            <button data-h="${this.bind(v.downloadSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Download save (.json)</button>
+            <button data-h="${this.bind(v.importSaveFile)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Load save from file…</button>
+            <button data-h="${this.bind(v.exportSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Copy save to clipboard</button>
+            <button data-h="${this.bind(v.importSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Restore save from clipboard</button>
+            <button data-h="${this.bind(v.openLook)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Look & feel…  <span style="color:#6f5885;font-weight:400">(L)</span></button>
+            <button data-h="${this.bind(v.toggleAchievements)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Achievements… <span style="color:#6f5885;font-weight:400">${v.achievements.filter(a => a.unlocked).length}/${v.achievements.length}</span></button>
+            <button data-h="${this.bind(v.hardReset)}" style="${css(v.resetStyle)}">${v.resetLabel}</button>
+            <div style="font-size:10.5px;color:#9c86ab;line-height:1.5;font-family:'IBM Plex Mono',monospace">${v.resetHint} Files and clipboard saves are the same format — either restores either way. ${v.verFull} · save format v${v.saveVer}</div>
+          </div>
+        </div>
+      </div>` : '';
 
     const achievementsModal = v.showAchievements ? `
-          <div style="position:fixed;inset:0;background:rgba(5,3,9,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:32px">
-            <div style="width:560px;max-width:calc(100vw - 24px);max-height:78vh;overflow-y:auto;background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
+      <div style="position:fixed;inset:0;background:rgba(5,3,9,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:32px">
+        <div style="width:560px;max-width:calc(100vw - 24px);max-height:78vh;overflow-y:auto;background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #241536;position:sticky;top:0;background:#0e0918">
             <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700">Achievements</div>
             <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#ffd700">${v.achievements.filter(a => a.unlocked).length} / ${v.achievements.length}</div>
