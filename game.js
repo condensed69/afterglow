@@ -3607,10 +3607,11 @@ class Game {
     const tabs = tabDefs.map(t => ({
       label: t.label, go: () => this.setState({ tab: t.id }),
       style: {
-        flex: 1, padding: '11px 4px', background: this.state.tab === t.id ? '#170e22' : 'transparent',
+        flex: '1 0 auto', padding: '11px 12px', background: this.state.tab === t.id ? '#170e22' : 'transparent',
         border: 0, borderBottom: '2px solid ' + (this.state.tab === t.id ? '#ff2d78' : 'transparent'),
         color: this.state.tab === t.id ? '#fff' : '#7b5f90', cursor: 'pointer',
-        fontSize: '11px', fontWeight: 700, letterSpacing: '1.4px', textTransform: 'uppercase'
+        fontSize: '11px', fontWeight: 700, letterSpacing: '1.4px', textTransform: 'uppercase',
+        scrollSnapAlign: 'start', whiteSpace: 'nowrap'
       }
     }));
 
@@ -4306,6 +4307,40 @@ class Game {
     return true;
   }
 
+  // Golden ticket banner for mobile (outside #stage — rendered above shell-grid since #stage is display:none <900px)
+  goldenTicketBanner(v) {
+    if (!v.golden) return '';
+    if (v.goldenOpen) {
+      return `<div id="golden-banner" style="flex-wrap:wrap;gap:8px;padding:8px 12px;background:#1a0d2e;border-bottom:1px solid #3a2350;align-items:center">
+        <span style="font-size:9px;letter-spacing:2.4px;text-transform:uppercase;color:#ffc94a;font-weight:700">Golden ticket</span>
+        <span style="font-size:11px;color:#f3e2c2;flex:1;min-width:0">VIP booked the booth.</span>
+        <button data-h="${this.bind(v.takeGoldenCash)}" ${v.golden.locked ? 'disabled' : ''} style="flex:0 0 auto;min-height:44px;min-width:44px;background:${v.golden.locked ? '#2a1d0a' : 'linear-gradient(180deg,#ffc94a,#b8860b)'};border:0;border-radius:6px;color:${v.golden.locked ? '#6b5212' : '#1c1105'};font-weight:700;font-size:10px;padding:8px 12px;cursor:${v.golden.locked ? 'not-allowed' : 'pointer'}">+$${this.fmt(v.golden.cashAmount)}</button>
+        <button data-h="${this.bind(v.takeGoldenCrowd)}" ${v.golden.locked ? 'disabled' : ''} style="flex:0 0 auto;min-height:44px;min-width:44px;background:${v.golden.locked ? '#1a1226' : '#170e22'};border:1px solid ${v.golden.locked ? '#2a1738' : '#ffc94a'};border-radius:6px;color:${v.golden.locked ? '#5a3a70' : '#ffc94a'};font-weight:700;font-size:10px;padding:8px 12px;cursor:${v.golden.locked ? 'not-allowed' : 'pointer'}">+${v.golden.crowdAmount} crowd</button>
+        <button data-h="${this.bind(v.closeGolden)}" style="flex:0 0 auto;min-height:44px;min-width:44px;background:transparent;border:0;color:#8b7355;font-size:16px;line-height:1;cursor:pointer;padding:4px 8px">✕</button>
+      </div>`;
+    }
+    return `<div id="golden-banner" style="flex-wrap:wrap;gap:8px;padding:8px 12px;background:#1a0d2e;border-bottom:1px solid #3a2350;align-items:center">
+      <span style="font-size:9px;letter-spacing:2.4px;text-transform:uppercase;color:#ffc94a;font-weight:700">Golden ticket</span>
+      <span style="font-size:11px;color:#f3e2c2;flex:1;min-width:0">VIP booked the booth.</span>
+      <button data-h="${this.bind(v.openGolden)}" style="flex:0 0 auto;min-height:44px;min-width:44px;background:linear-gradient(180deg,#ffc94a,#b8860b);border:0;border-radius:20px;padding:8px 12px;box-shadow:0 0 18px rgba(255,201,74,.45);display:flex;align-items:center;gap:6px;cursor:pointer;animation:pulseDot 1.6s ease-in-out infinite">
+        <span style="font-size:13px">🎫</span>
+        <span style="font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:#1c1105;font-weight:800">VIP</span>
+      </button>
+    </div>`;
+  }
+
+  // Stage line + energy banner for mobile (rendered outside #stage, above shell-grid; #stage is display:none <900px)
+  stageLineEnergyBanner(v) {
+    if (!v.stageLineAct && v.energyPct === '0%') return '';
+    return `<div id="stage-line-energy-banner" style="flex-wrap:wrap;gap:10px;padding:8px 12px;background:#12081c;border-bottom:1px solid #2a1738;align-items:center;justify-content:space-between">
+      ${v.stageLineAct ? `<button data-h="${this.bind(v.stageLineAct)}" class="hv-pink" style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#ff2d78;background:transparent;border:0;padding:0;cursor:pointer;text-decoration:underline;text-underline-offset:3px;min-height:44px">${v.stageLine}</button>` : `<div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#ff2d78;min-height:44px;display:flex;align-items:center">${v.stageLine}</div>`}
+      <div style="text-align:right;min-height:44px;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;gap:2px">
+        <span style="font-size:9px;letter-spacing:2.6px;text-transform:uppercase;color:#7b5f90;font-weight:700">Room energy</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:22px;color:#ffc94a;font-weight:600;line-height:1.1">${v.energyPct}</span>
+      </div>
+    </div>`;
+  }
+
   bind(fn) {
     this.handlers.push(fn);
     return this.handlers.length - 1;
@@ -4404,7 +4439,7 @@ class Game {
 
     const changelogModal = v.showChangelog ? `
       <div style="position:fixed;inset:0;background:rgba(5,3,9,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:32px">
-        <div style="width:560px;max-height:78vh;overflow-y:auto;background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
+        <div style="width:560px;max-width:calc(100vw - 24px);max-height:78vh;overflow-y:auto;background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #241536;position:sticky;top:0;background:#0e0918">
             <div>
               <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700">Version history</div>
@@ -4434,7 +4469,7 @@ class Game {
 
     const prestigeModal = v.showPrestige ? `
       <div style="position:fixed;inset:0;background:rgba(5,3,9,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:32px">
-        <div style="width:480px;background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
+        <div style="width:480px;max-width:calc(100vw - 24px);background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #241536">
             <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700">Franchise offer</div>
             <button data-h="${this.bind(v.togglePrestige)}" class="hv-pink" style="width:30px;height:30px;border:1px solid #3a2350;border-radius:6px;background:#160d22;color:#9c86ab;cursor:pointer;font-size:14px">✕</button>
@@ -4464,7 +4499,7 @@ class Game {
 
     const franchiseModal = v.showFranchise ? `
       <div style="position:fixed;inset:0;background:rgba(5,3,9,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:32px">
-        <div style="width:480px;background:#0e0918;border:1px solid #22d3ee;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
+        <div style="width:480px;max-width:calc(100vw - 24px);background:#0e0918;border:1px solid #22d3ee;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #241536">
             <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#22d3ee;font-weight:700">Sell the franchise</div>
             <button data-h="${this.bind(v.toggleFranchise)}" class="hv-pink" style="width:30px;height:30px;border:1px solid #3a2350;border-radius:6px;background:#160d22;color:#9c86ab;cursor:pointer;font-size:14px">✕</button>
@@ -4493,7 +4528,7 @@ class Game {
 
     const openRoomModal = v.showOpenRoom ? `
       <div style="position:fixed;inset:0;background:rgba(5,3,9,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:32px">
-        <div style="width:480px;background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
+        <div style="width:480px;max-width:calc(100vw - 24px);background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #241536">
             <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700">Open second room</div>
             <button data-h="${this.bind(v.closeOpenRoom)}" class="hv-pink" style="width:30px;height:30px;border:1px solid #3a2350;border-radius:6px;background:#160d22;color:#9c86ab;cursor:pointer;font-size:14px">✕</button>
@@ -4522,7 +4557,7 @@ class Game {
 
     const settingsModal = v.showSettings ? `
       <div style="position:fixed;inset:0;background:rgba(5,3,9,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:32px">
-        <div style="width:420px;background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
+        <div style="width:420px;max-width:calc(100vw - 24px);max-height:78vh;overflow-y:auto;background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #241536">
             <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700">Settings</div>
             <button data-h="${this.bind(v.toggleSettings)}" class="hv-pink" style="width:30px;height:30px;border:1px solid #3a2350;border-radius:6px;background:#160d22;color:#9c86ab;cursor:pointer;font-size:14px">✕</button>
@@ -4533,7 +4568,7 @@ class Game {
             <button data-h="${this.bind(v.importSaveFile)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Load save from file…</button>
             <button data-h="${this.bind(v.exportSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Copy save to clipboard</button>
             <button data-h="${this.bind(v.importSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Restore save from clipboard</button>
-            <button data-h="${this.bind(v.openLook)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Look &amp; feel…  <span style="color:#6f5885;font-weight:400">(L)</span></button>
+            <button data-h="${this.bind(v.openLook)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Look & feel…  <span style="color:#6f5885;font-weight:400">(L)</span></button>
             <button data-h="${this.bind(v.toggleAchievements)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Achievements… <span style="color:#6f5885;font-weight:400">${v.achievements.filter(a => a.unlocked).length}/${v.achievements.length}</span></button>
             <button data-h="${this.bind(v.hardReset)}" style="${css(v.resetStyle)}">${v.resetLabel}</button>
             <div style="font-size:10.5px;color:#9c86ab;line-height:1.5;font-family:'IBM Plex Mono',monospace">${v.resetHint} Files and clipboard saves are the same format — either restores either way. ${v.verFull} · save format v${v.saveVer}</div>
@@ -4543,7 +4578,7 @@ class Game {
 
     const achievementsModal = v.showAchievements ? `
       <div style="position:fixed;inset:0;background:rgba(5,3,9,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:32px">
-        <div style="width:560px;max-height:78vh;overflow-y:auto;background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
+        <div style="width:560px;max-width:calc(100vw - 24px);max-height:78vh;overflow-y:auto;background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #241536;position:sticky;top:0;background:#0e0918">
             <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700">Achievements</div>
             <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#ffd700">${v.achievements.filter(a => a.unlocked).length} / ${v.achievements.length}</div>
@@ -4565,7 +4600,7 @@ class Game {
       </div>` : '';
 
     this.root.innerHTML = `
-<div style="height:100vh;height:100dvh;display:grid;grid-template-rows:auto auto 1fr auto;grid-template-columns:minmax(0,1fr);background:radial-gradient(1200px 700px at 50% -10%,#1a0e26 0%,#07050c 62%);overflow:hidden">
+<div class="app-root" style="height:100vh;height:100dvh;display:grid;grid-template-rows:auto auto 1fr auto;grid-template-columns:minmax(0,1fr);background:radial-gradient(1200px 700px at 50% -10%,#1a0e26 0%,#07050c 62%);overflow:hidden">
 
   <header style="display:flex;align-items:center;gap:20px;padding:0 18px;height:62px;border-bottom:1px solid #2a1738;background:linear-gradient(180deg,#140b1f,#0b0712);position:relative;z-index:20">
     <div style="display:flex;align-items:baseline;gap:12px">
@@ -4623,6 +4658,10 @@ class Game {
     <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:2px;color:#ff2d78;font-weight:700;flex-shrink:0">TODAY</span>
     <span class="ticker-text" style="font-size:11px;color:#9c86ab;text-overflow:ellipsis;overflow:hidden">${v.ticker}</span>
   </div>
+
+  ${this.goldenTicketBanner(v)}
+
+  ${this.stageLineEnergyBanner(v)}
 
   <main data-scroll="main" class="shell-grid">
 
@@ -4722,7 +4761,7 @@ class Game {
     </section>
 
     <aside class="sys-col" style="border-left:1px solid #2a1738;background:#0a0611;display:grid;grid-template-rows:auto auto minmax(0,1fr);min-height:0">
-      <div style="display:flex;border-bottom:1px solid #2a1738;background:#0d0814">${tabRows}</div>
+      <div style="display:flex;overflow-x:auto;scroll-snap-type:x mandatory;border-bottom:1px solid #2a1738;background:#0d0814;padding:0 12px">${tabRows}</div>
 
       ${v.ownersList ? (() => {
         const ol = v.ownersList;
