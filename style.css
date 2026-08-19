@@ -334,4 +334,13 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
   .shell-grid {
     padding-bottom: 130px !important;
   }
+
+  /* Font scaling (v0.12): intentionally minimal. The two prior selectors
+     matched live inline sizes but the clamp math inverted the goal — at
+     390px clamp(11px,2.8vw,12px) and clamp(12px,3vw,13px) both clamp to
+     their minima (11px / 12px), shrinking 11.5px log and 13px CTA on the
+     target viewport and only reaching "larger" near 900px. No scaling that
+     actually grows at 390px without exceeding desktop can be expressed
+     with a single clamp against vw, so mobile keeps desktop sizes until a
+     proper 390px bump is designed. */
 }
