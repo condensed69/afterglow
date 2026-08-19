@@ -343,4 +343,58 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
      actually grows at 390px without exceeding desktop can be expressed
      with a single clamp against vw, so mobile keeps desktop sizes until a
      proper 390px bump is designed. */
+
+  /* Condensed header (v0.12): reduce horizontal clutter on narrow screens.
+     - Tighter gaps and padding
+     - Version button truncates build/channel/autosave info
+     - Club switcher buttons shrink
+     - Shift block keeps essential info only
+     - ☰ menu stays accessible */
+  header {
+    gap: 8px !important;
+    padding: 0 10px !important;
+    min-height: 48px !important;
+    height: auto !important;
+  }
+  header .brand {
+    gap: 6px !important;
+  }
+  header .brand span:first-child {
+    font-size: 18px !important;
+  }
+  header .brand span:last-child {
+    font-size: 8px !important;
+    letter-spacing: 2px !important;
+  }
+  header button[title="Version history"] {
+    padding: 4px 8px !important;
+    gap: 5px !important;
+  }
+  header button[title="Version history"] span:not(:first-child):not(:nth-child(2)) {
+    display: none !important;
+  }
+  header button.cta {
+    padding: 6px 10px !important;
+    font-size: 10px !important;
+    letter-spacing: 0.5px !important;
+  }
+  header > div[style*="flex:1"] {
+    flex: 0 0 8px !important;
+  }
+  header > div[style*="display:flex;gap:6px"] button {
+    padding: 5px 8px !important;
+    font-size: 9px !important;
+  }
+  header > div[style*="display:flex;align-items:center;gap:14px"] {
+    gap: 8px !important;
+  }
+  header > div[style*="display:flex;align-items:center;gap:14px"] > div:first-child {
+    display: none !important;
+  }
+  header > div[style*="display:flex;align-items:center;gap:14px"] > div[style*="width:112px"] {
+    width: 80px !important;
+  }
+  header > div[style*="display:flex;align-items:center;gap:14px"] > div[style*="width:112px"] > div:last-child {
+    font-size: 8px !important;
+  }
 }
