@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.15', build: 228, channel: 'alpha', date: '2026-08-17', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.16', build: 229, channel: 'alpha', date: '2026-08-20', codename: 'Neon Zero' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -201,6 +201,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.11.16', date: '2026-08-20', codename: 'Neon Zero', notes: [
+        'Mobile touch affordances (v0.12 PR 8/9): the Crew assignment steppers gain aria-label and a stable 48px count width, the ×1 multi-buy button gets a visible Shift/max hint, and the club switcher buttons carry an accessible label; the Look House-lights slider thumb grows to 28×28px on phones (14px on desktop). Purely affordance/accessibility and CSS — no behavior or save change (SAVE_VER stays 13), pacing untouched.'
+      ] },
       { v: '0.11.15', date: '2026-08-17', codename: 'Neon Zero', notes: [
         'VISION RETARGET (next-roadmap PR 4): the impossible $1e12 net-worth target is replaced by a cumulative lifetime-value ladder with a real payoff. New additive g.lifetimeEarned tracks gross cash earned across all time (the away-report semantics — net cash + wages per sim slice), credited exactly once per slice in step() and once per slice in catchUp() (offline accrues at the same scaled rate), surviving prestige, challenge starts, AND the franchise sale — lifetime is the brand\'s cumulative footprint. VISION_TIERS ($10M/$100M/$1B) each grant a permanent all-cash bonus once crossed (+1%/+1%/+2%, +4% total), derived from lifetimeEarned at the single totalCashMult composition point — no per-tier state, so tiers can never re-fire or desync. The Owner\'s List Vision block now reads "Lifetime value $X / $1B" with three star markers instead of the 3-clubs/$1e12 bar. Tier sizing is probe-pinned: pacing.mjs gains endgameProbe(), which proves the deterministic bot\'s 8-hour lifetime earned stays strictly below ★1 ($10M), so the bonus factor is exactly ×1.0 on the bot path and every band is bit-identical. Bonus is cash%, not Renown — a Renown grant on crossing would cannibalize the sale loop, the spine (documented rejection). step()\'s sim loop gains an FP-residue guard (a whole-second dt with SIM 0.1 previously ran a phantom 11th slice at ~1.4e-16s; below 1e-9s the slice is clamped) so per-slice credits stay exactly 1:1 with rates() calls. SAVE_VER bumped to 13 with a no-clobber MIGRATIONS[12] (v12 saves default lifetimeEarned to 0 — history cannot be reconstructed, the ladder starts measuring now).'
       ] },
@@ -3844,6 +3847,8 @@ class Game {
         inc: () => this.moveJob(j.id, 1), dec: () => this.moveJob(j.id, -1),
         incLocked: !unlocked || g.jobs.off < 1 || (g.crew - g.jobs.off) >= cap.crew,
         decLocked: g.jobs[j.id] < 1,
+        decLabel: `Remove crew from ${j.name}`,
+        incLabel: `Assign crew to ${j.name}`,
         stepStyle: (locked) => ({ width: '26px', height: '26px', border: '1px solid ' + (locked ? '#1f1430' : '#3a2350'), borderRadius: '5px', background: locked ? '#120c1c' : '#170e22', color: locked ? '#4a3860' : '#e7d8f2', cursor: locked ? 'not-allowed' : 'pointer', fontSize: '14px', lineHeight: 1 })
       };
     });
@@ -4400,12 +4405,12 @@ class Game {
             ? `<span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#6f5885;font-weight:600;min-width:104px;text-align:center;padding:8px 12px">requires ${cd.reqName}</span>`
             : cd.multi && !cd.multi.maxed
               ? `<div style="display:flex;gap:6px;align-items:center">
-                  <button data-h="${this.bind(cd.multi.x1.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.multi.x1.locked ? 'disabled' : ''} title="Shift-click to buy the maximum affordable" style="${css({ ...cd.multi.x1.style, minWidth: '40px', padding: '8px 6px' })}">×1</button>
-                  <button data-h="${this.bind(cd.multi.x5.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.multi.x5.locked ? 'disabled' : ''} style="${css({ ...cd.multi.x5.style, minWidth: '40px', padding: '8px 6px' })}">${cd.multi.x5.label}</button>
-                  <button data-h="${this.bind(cd.multi.x10.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.multi.x10.locked ? 'disabled' : ''} style="${css({ ...cd.multi.x10.style, minWidth: '40px', padding: '8px 6px' })}">${cd.multi.x10.label}</button>
-                  <button data-h="${this.bind(cd.multi.max.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.multi.max.locked ? 'disabled' : ''} style="${css({ ...cd.multi.max.style, minWidth: '48px', padding: '8px 6px' })}">${cd.multi.max.label}</button>
+                  <button data-h="${this.bind(cd.multi.x1.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.multi.x1.locked ? 'disabled' : ''} aria-label="Buy 1 ${this.escapeHtml(cd.name)} (Shift-click for max)" title="Buy 1 — Shift-click/max button for maximum affordable" style="${css({ ...cd.multi.x1.style, minWidth: '40px', padding: '8px 6px' })}">×1</button>
+                  <button data-h="${this.bind(cd.multi.x5.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.multi.x5.locked ? 'disabled' : ''} title="Buy ${cd.multi.x5.label.replace('×', '')} — same building" style="${css({ ...cd.multi.x5.style, minWidth: '40px', padding: '8px 6px' })}">${cd.multi.x5.label}</button>
+                  <button data-h="${this.bind(cd.multi.x10.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.multi.x10.locked ? 'disabled' : ''} title="Buy ${cd.multi.x10.label.replace('×', '')} — same building" style="${css({ ...cd.multi.x10.style, minWidth: '40px', padding: '8px 6px' })}">${cd.multi.x10.label}</button>
+                  <button data-h="${this.bind(cd.multi.max.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.multi.max.locked ? 'disabled' : ''} title="Buy maximum affordable — hold Shift on ×1 or use this button" style="${css({ ...cd.multi.max.style, minWidth: '48px', padding: '8px 6px' })}">${cd.multi.max.label}</button>
                 </div>`
-              : `<button data-h="${this.bind(cd.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.locked ? 'disabled' : ''} title="${cd.buildingId ? 'Shift-click to buy the maximum affordable' : (cd.btnTooltip || '')}" style="${css(cd.btnStyle)}">${cd.btn}</button>
+              : `<button data-h="${this.bind(cd.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.locked ? 'disabled' : ''} title="${cd.buildingId ? 'Buy 1 — Shift-click/max button for maximum affordable' : (cd.btnTooltip || '')}" style="${css(cd.btnStyle)}">${cd.btn}</button>
         ${cd.subAct ? `<button data-h="${this.bind(cd.subAct)}" ${cd.subLocked ? 'disabled' : ''} style="${css(cd.subStyle)}">${cd.subBtn}</button>` : ''}`}
           <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#6f5885;text-align:right;flex:1">${cd.meta}</span>
         </div>
@@ -4426,9 +4431,9 @@ class Game {
         </div>
         ${j.locked
           ? `<span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#6f5885;font-weight:600;text-align:right">requires ${j.unlockName}</span>`
-          : `<button data-h="${this.bind(j.dec)}" ${j.decLocked ? 'disabled' : ''} title="${j.decLocked ? 'No crew assigned here' : `Remove crew from ${j.rawName}`}" style="${css(j.stepStyle(j.decLocked))}">−</button>
-        <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#ffc94a;min-width:20px;text-align:center;font-weight:600">${j.n}</span>
-        <button data-h="${this.bind(j.inc)}" ${j.incLocked ? 'disabled' : ''} title="${j.incLocked ? 'No free crew available' : `Assign crew to ${j.rawName}`}" style="${css(j.stepStyle(j.incLocked))}">+</button>`}
+          : `<button data-h="${this.bind(j.dec)}" ${j.decLocked ? 'disabled' : ''} aria-label="${this.escapeHtml(j.decLocked ? 'No crew assigned here' : j.decLabel)}" title="${this.escapeHtml(j.decLocked ? 'No crew assigned here' : j.decLabel)}" style="${css(j.stepStyle(j.decLocked))}">−</button>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#ffc94a;min-width:48px;text-align:center;font-weight:600">${j.n}</span>
+        <button data-h="${this.bind(j.inc)}" ${j.incLocked ? 'disabled' : ''} aria-label="${this.escapeHtml(j.incLocked ? 'No free crew available' : j.incLabel)}" title="${this.escapeHtml(j.incLocked ? 'No free crew available' : j.incLabel)}" style="${css(j.stepStyle(j.incLocked))}">+</button>`}
       </div>`).join('');
 
     const assignments = v.crewOpen ? `
@@ -4633,7 +4638,7 @@ class Game {
 
     ${v.clubSwitcher.length > 1 ? `
     <div style="display:flex;gap:6px">
-      ${v.clubSwitcher.map(cl => `<button data-h="${this.bind(cl.go)}" title="${cl.label}" style="background:${cl.active ? '#170e22' : 'transparent'};border:1px solid ${cl.active ? '#ff2d78' : '#2f1c42'};border-radius:6px;padding:7px 12px;cursor:pointer;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:${cl.active ? '#fff' : '#7b5f90'}">${cl.label}</button>`).join('')}
+      ${v.clubSwitcher.map(cl => `<button data-h="${this.bind(cl.go)}" aria-label="${this.escapeHtml(cl.label)} club" title="${this.escapeHtml(cl.label)}" style="background:${cl.active ? '#170e22' : 'transparent'};border:1px solid ${cl.active ? '#ff2d78' : '#2f1c42'};border-radius:6px;padding:7px 12px;cursor:pointer;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:${cl.active ? '#fff' : '#7b5f90'}">${cl.label}</button>`).join('')}
     </div>` : ''}
 
     <div style="display:flex;align-items:center;gap:14px">

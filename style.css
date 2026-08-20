@@ -66,7 +66,8 @@ html[data-motion="still"] #app, html[data-motion="still"] #app * { animation-pla
 html[data-motion="easy"] #stage > div,
 html[data-motion="easy"] #stage > div > span { animation-play-state: paused !important; }
 #look-panel input[type="range"] { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 3px; background: #2a1738; }
-#look-panel input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #ffc94a; box-shadow: 0 0 8px rgba(255,201,74,.6); cursor: pointer; }
+#look-panel input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #ffc94a; box-shadow: 0 0 8px rgba(255,201,74,.6); cursor: pointer; border: 0; }
+#look-panel input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #ffc94a; box-shadow: 0 0 8px rgba(255,201,74,.6); cursor: pointer; border: 0; }
 
 /* Crowd row and silhouettes. The row is absolutely positioned at the bottom of
    #stage and sized with flex. On narrow stages it shrinks gaps/padding and
@@ -396,5 +397,17 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
   }
   header > div[style*="display:flex;align-items:center;gap:14px"] > div[style*="width:112px"] > div:last-child {
     font-size: 8px !important;
+  }
+
+  /* Touch affordances (v0.12): larger slider thumb + stepper/affordance fixes */
+  #look-panel input[type="range"]::-webkit-slider-thumb {
+    width: 28px !important;
+    height: 28px !important;
+    border: 2px solid #07050c !important;
+  }
+  #look-panel input[type="range"]::-moz-range-thumb {
+    width: 28px !important;
+    height: 28px !important;
+    border: 2px solid #07050c !important;
   }
 }
