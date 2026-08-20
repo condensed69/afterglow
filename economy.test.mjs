@@ -1527,6 +1527,9 @@ test('10-night run with buildings, crew, and purchases: all resources >= 0', () 
 
   // Spot-check non-negativity every night, not only at the end
   for (let n = 0; n < 10; n++) {
+    // Per-night heartbeat (issue #92): this loop drives a 10-night step and
+    // is the slow, previously-silent stretch noted as "stalls past section 3".
+    console.log(`    … night ${n + 1}/10`);
     simulateNights(game, 1);
     for (const k of resourceNames()) {
       ok(g[k] >= 0, `night+${n + 1}: ${k} is ${g[k]} (must be >= 0)`);

@@ -344,6 +344,13 @@ function simulate(game, stopCondition, maxSec = SIM_HOURS * 3600, opts = {}) {
   const hit = Object.create(null);
   for (const m of MILESTONES) hit[m.id] = null;
 
+  // Progress heartbeat (issue #92): a long sim has no lower-level output, so
+  // without this the suite sits silent for its whole 8h cap and a hang is
+  // indistinguishable from slowness. Print once per simulated hour so CI logs
+  // show liveness; the default is cheap (~8 lines per full run).
+  const beatEvery = opts.beatEvery || 3600;
+  let lastBeat = 0;
+
   let wall = 0;
   while (wall < maxSec) {
     // One bot decision per simulated second, then advance 1s of sim so
@@ -351,6 +358,11 @@ function simulate(game, stopCondition, maxSec = SIM_HOURS * 3600, opts = {}) {
     botSecond(game);
     game.step(1);
     wall += 1;
+
+    if (wall - lastBeat >= beatEvery) {
+      console.log(`    … wall ${fmtMin(wall)}/${fmtMin(maxSec)} (night ${game.state.g.night})`);
+      lastBeat = wall;
+    }
 
     const g = game.state.g;
     for (const m of MILESTONES) {
@@ -400,11 +412,11 @@ function reportMilestones(hit) {
 }
 
 function run() {
+  console.log('\n=== pacing.mjs — PLAN-NEXT §C reference bot ===\n');
   const game = newGame();
   const { wall, hit, g } = simulate(game);
 
   // ── Report ─────────────────────────────────────────────────────────────────
-  console.log('\n=== pacing.mjs — PLAN-NEXT §C reference bot ===\n');
   const { failed } = reportMilestones(hit);
 
   console.log('-'.repeat(72));
@@ -429,6 +441,8 @@ function run() {
 function prestigeRun() {
   const totalSec = SIM_HOURS * 3600;
 
+  console.log('\n=== Prestige scenario (PRESTIGE.md §7) ===\n');
+
   // Run 1: bot plays until prestige gate or wall cap (do not stop at milestones).
   const game1 = newGame();
   const ledMilestone = MILESTONES.find((m) => m.id === 'upgrade');
@@ -437,8 +451,6 @@ function prestigeRun() {
     if (t1 == null && ledMilestone.check(g)) t1 = wall;
     return g.regulars >= 25 && g.night >= 10;
   }, totalSec, { stopOnMilestones: false });
-
-  console.log('\n=== Prestige scenario (PRESTIGE.md §7) ===\n');
 
   if (g1.regulars < 25) {
     console.log(`FAIL: prestige gate not reached (regulars=${g1.regulars.toFixed(1)} < 25 at wall cap ${fmtMin(totalSec)})`);
