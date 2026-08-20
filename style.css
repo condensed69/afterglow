@@ -410,4 +410,40 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
     height: 28px !important;
     border: 2px solid #07050c !important;
   }
+
+  /* Polish & safe areas (v0.12 PR 9): ledger anim overrides the earlier display:none (v0.10.16) */
+  .ledger-detail {
+    display: block !important;
+    transition: max-height 0.25s ease, opacity 0.2s ease;
+    overflow: hidden;
+  }
+  .ledger-collapsed .ledger-detail {
+    max-height: 0 !important;
+    opacity: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+  #look-panel {
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
+    right: calc(16px + env(safe-area-inset-right, 0px)) !important;
+    max-width: calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 16px) !important;
+  }
+  .ledger-toggle {
+    order: -1;
+    margin-right: auto;
+  }
+  .tab-bar-wrap {
+    position: relative;
+  }
+  .tab-bar-wrap::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 24px;
+    background: linear-gradient(to left, #0d0814, transparent);
+    pointer-events: none;
+    opacity: 0.55;
+  }
 }
