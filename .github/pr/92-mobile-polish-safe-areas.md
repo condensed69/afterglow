@@ -10,7 +10,7 @@
 Final polish of the mobile 9-PR. Purely CSS/accessibility — no new JS affordances beyond the wrapper class. Closes the last open item in `MOBILE_IMPROVEMENT_PLAN.md` while PR91 (8/9 touch affordances) is in review; both PRs stay open for review before any merge per the workflow.
 
 ## Changed files
-- `game.js`: adds `tab-bar-wrap` class to the tab bar container (positioning hook); VERSION `0.11.17` build 230; CHANGELOG entry for 0.11.16.
+- `game.js`: adds `tab-bar-wrap` class to the tab bar container (positioning hook); VERSION `0.11.17` build 230; CHANGELOG entry for 0.11.17.
 - `style.css`: ledger animated collapse rules, `#look-panel` safe-area, `.ledger-toggle` reflow, `.tab-bar-wrap` fade — all inside existing `@media (max-width:900px)`.
 
 ## Gates
@@ -26,4 +26,4 @@ Final polish of the mobile 9-PR. Purely CSS/accessibility — no new JS affordan
 PR91 merges first (0.11.16/229), then PR92 rebases to `0.11.17`/`0.11.18` as needed. No merge until both clear review.
 
 ## Risk
-Low — CSS inside existing mobile media query and a single class addition on an already-rendered div. No economy, save, or pacing change.
+Low — CSS-only inside existing mobile media query and a single class addition on an already-rendered div. No economy, save, or pacing change.

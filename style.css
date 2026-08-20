@@ -251,8 +251,17 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
     align-items: center;
     justify-content: center;
   }
+  .ledger-detail {
+    max-height: 700px;
+    overflow: hidden;
+    transition: max-height 0.25s ease, opacity 0.2s ease;
+  }
   .ledger-collapsed .ledger-detail {
-    display: none;
+    max-height: 0 !important;
+    opacity: 0 !important;
+    overflow: hidden;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
   }
 
   /* Tap targets (v0.10.17): every button gets a 44px minimum hit area on
@@ -411,18 +420,8 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
     border: 2px solid #07050c !important;
   }
 
-  /* Polish & safe areas (v0.12 PR 9): ledger anim overrides the earlier display:none (v0.10.16) */
-  .ledger-detail {
-    display: block !important;
-    transition: max-height 0.25s ease, opacity 0.2s ease;
-    overflow: hidden;
-  }
-  .ledger-collapsed .ledger-detail {
-    max-height: 0 !important;
-    opacity: 0 !important;
-    padding-top: 0 !important;
-    padding-bottom: 0 !important;
-  }
+  /* Polish & safe areas (v0.12 PR 9): ledger anim lives above with the base ledger rule; */
+
   #look-panel {
     bottom: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
     right: calc(16px + env(safe-area-inset-right, 0px)) !important;
