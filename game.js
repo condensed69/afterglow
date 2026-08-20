@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.16', build: 229, channel: 'alpha', date: '2026-08-20', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.17', build: 230, channel: 'alpha', date: '2026-08-20', codename: 'Neon Zero' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -201,6 +201,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.11.17', date: '2026-08-20', codename: 'Neon Zero', notes: [
+        'Mobile polish & safe areas (MOBILE_IMPROVEMENT_PLAN.md PR 9 — final): ledger collapse animates (max-height/opacity transition), Look panel respects env(safe-area-inset) (bottom/right/max-width), tab bar gains edge fade shadows, and the ledger toggle moves thumb-reachable. Purely CSS/polish — no behavior or save change (SAVE_VER stays 13), pacing untouched.'
+      ] },
       { v: '0.11.16', date: '2026-08-20', codename: 'Neon Zero', notes: [
         'Mobile touch affordances (v0.12 PR 8/9): the Crew assignment steppers gain aria-label and a stable 48px count width, the ×1 multi-buy button gets a visible Shift/max hint, and the club switcher buttons carry an accessible label; the Look House-lights slider thumb grows to 28×28px on phones (14px on desktop). Purely affordance/accessibility and CSS — no behavior or save change (SAVE_VER stays 13), pacing untouched.'
       ] },
@@ -4766,7 +4769,7 @@ class Game {
     </section>
 
     <aside class="sys-col" style="border-left:1px solid #2a1738;background:#0a0611;display:grid;grid-template-rows:auto auto minmax(0,1fr);min-height:0">
-      <div style="display:flex;overflow-x:auto;scroll-snap-type:x mandatory;border-bottom:1px solid #2a1738;background:#0d0814;padding:0 12px">${tabRows}</div>
+      <div class="tab-bar-wrap" style="display:flex;overflow-x:auto;scroll-snap-type:x mandatory;border-bottom:1px solid #2a1738;background:#0d0814;padding:0 12px;position:relative">${tabRows}</div>
 
       ${v.ownersList ? (() => {
         const ol = v.ownersList;
