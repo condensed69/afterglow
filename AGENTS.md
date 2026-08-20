@@ -76,6 +76,12 @@ check run is the evidence.
 3. `node pacing.mjs` — reference-bot pacing bands. Exits non-zero when a milestone
    falls outside its band.
 
+CI's `pacing` step runs `node pacing.mjs --fast`, which skips the two full-cap
+scenarios (`renownRun()` franchise gate and `endgameProbe()` vision probe); the
+full five-scenario `node pacing.mjs` remains the local gate. Every scenario runs
+under a per-run wall-clock budget (default 5 min, override `PACING_BUDGET_MS`)
+and exits `2` on overrun, so a hang fails loudly instead of timing out silently.
+
 Any behavior change to the economy, save shape, offline catch-up, prestige, or
 achievements must land with a test in `economy.test.mjs` in the same commit — not
 as a review follow-up.

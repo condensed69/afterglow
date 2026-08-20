@@ -4,7 +4,14 @@
 // PLAN.md §1.0 — guards Phase 1 correctness fixes
 
 import { ok, strictEqual } from 'node:assert';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeSync } from 'node:fs';
+import { format } from 'node:util';
+
+// Flush every line to stdout synchronously (issue #92): on POSIX console.log to
+// a pipe is asynchronous and can buffer, which is how the slow 10-night §3 sim
+// reads as a "stall with no output" in CI. writeSync(1, …) lands each line
+// immediately so per-night/section progress is visible mid-run.
+console.log = (...args) => { writeSync(1, format(...args) + '\n'); };
 
 // ── DOM Prelude ──────────────────────────────────────────────────────────────
 // Stub browser globals so game.js can parse and construct without a DOM.
