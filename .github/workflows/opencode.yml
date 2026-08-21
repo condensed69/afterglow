@@ -47,7 +47,7 @@ jobs:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          model: opencode-go/qwen-3.7-plus
+          model: opencode-go/qwen3.7-plus
           use_github_token: true
           share: false
 
