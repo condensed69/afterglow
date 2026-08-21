@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.18', build: 231, channel: 'alpha', date: '2026-08-21', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.19', build: 232, channel: 'alpha', date: '2026-08-21', codename: 'Neon Zero' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -201,6 +201,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.11.19', date: '2026-08-21', codename: 'Neon Zero', notes: [
+        'Fix: mobile scrollbars were stuck and jittery. Three causes, all mobile-scoped: (1) the custom ::-webkit-scrollbar styling was global, which forces Chrome Android to render a persistent classic scrollbar with a reserved gutter that toggles as content height changes (the log appends, the Ledger expands/collapses) — that bar appearing/disappearing read as stuck and jittery. The styling now lives behind a (hover:hover) and (pointer:fine) gate, so touch devices keep the native auto-hiding overlay bar with no gutter. (2) The mobile shell scroller had no overscroll containment, so reaching the top/bottom handed the gesture to the browser (pull-to-refresh on Android, rubber-band chaining) — overscroll-behavior-y:contain keeps the gesture inside the shell. (3) The 0.11.18 film-grain layer used mix-blend-mode:overlay on a fixed full-viewport element, re-blending the whole screen on every scroll frame on mobile GPUs; coarse pointers now use normal blend (same texture, a fraction of the cost). Purely CSS — no behavior or save change (SAVE_VER stays 13), pacing untouched; verified in emulated Chrome at 390x844.'
+      ] },
       { v: '0.11.18', date: '2026-08-21', codename: 'Neon Zero', notes: [
         'MOBILE PREMIUM PASS (redesign): the mobile surface gains the universal state + texture layer that was missing. Every control now has an accessible :focus-visible ring (cyan 2px, offset 2px) — previously the whole surface had none; every button gets hover brightness + press feedback (translateY + dim) with a smooth filter/opacity/transform transition; disabled buttons read inert (60% opacity, not-allowed cursor); a fixed pointer-events-none film-grain overlay (SVG feTurbulence, opacity .035, mix-blend overlay) breaks the flat panels; and the primary CTA\'s 22px pink bloom is pulled tight to a short colored shadow on mobile to cut OLED glare in an idle game. Purely CSS — no game.js render, behavior, or save change (SAVE_VER stays 13), pacing untouched; all three gates pass.'
       ] },
