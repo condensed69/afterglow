@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.17', build: 230, channel: 'alpha', date: '2026-08-20', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.18', build: 231, channel: 'alpha', date: '2026-08-21', codename: 'Neon Zero' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -201,6 +201,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.11.18', date: '2026-08-21', codename: 'Neon Zero', notes: [
+        'MOBILE PREMIUM PASS (redesign): the mobile surface gains the universal state + texture layer that was missing. Every control now has an accessible :focus-visible ring (cyan 2px, offset 2px) — previously the whole surface had none; every button gets hover brightness + press feedback (translateY + dim) with a smooth filter/opacity/transform transition; disabled buttons read inert (60% opacity, not-allowed cursor); a fixed pointer-events-none film-grain overlay (SVG feTurbulence, opacity .035, mix-blend overlay) breaks the flat panels; and the primary CTA\'s 22px pink bloom is pulled tight to a short colored shadow on mobile to cut OLED glare in an idle game. Purely CSS — no game.js render, behavior, or save change (SAVE_VER stays 13), pacing untouched; all three gates pass.'
+      ] },
       { v: '0.11.17', date: '2026-08-20', codename: 'Neon Zero', notes: [
         'Mobile polish & safe areas (MOBILE_IMPROVEMENT_PLAN.md PR 9 — final): ledger collapse animates (max-height/opacity transition), Look panel respects env(safe-area-inset) (bottom/right/max-width), tab bar gains edge fade shadows, and the ledger toggle moves thumb-reachable. Purely CSS/polish — no behavior or save change (SAVE_VER stays 13), pacing untouched.'
       ] },

@@ -674,6 +674,15 @@ Main: three columns **`minmax(232px,300px) | minmax(320px,720px) | minmax(320px,
 
 Typography (loaded in `index.html`): **Monoton** (wordmark), **Space Grotesk** (UI), **IBM Plex Mono** (numbers). Palette is magenta `#ff2d78`, cyan `#22d3ee`, gold `#ffc94a` on near-black `#07050c`.
 
+**Surface layer — universal states & texture (0.11.18).** The sim UI is built with inline styles from `game.js`, so any property a button sets inline wins over a plain stylesheet rule — but `filter` / `opacity` / `transform` / `outline` / `transition` are set on almost no button, so the whole surface gained a universal layer from `style.css` without `!important`:
+
+- **Focus** — `:focus-visible` ring (2px `#22d3ee`, offset 2px) on every button, link, `[tabindex]` control (including the inline help `?` icons) and Look-panel input. The surface previously had no visible focus indicator at all; this is the keyboard/AT requirement, not decoration.
+- **Interactivity** — every button gets `transition: filter/opacity/transform .1–.15s`, `hover: brightness(1.10)` and `active: translateY(1px) + brightness(0.94)`; `.cta` keeps its stronger brightness. Disabled buttons read inert: `opacity:.6; cursor:not-allowed`.
+- **Texture** — a fixed, `pointer-events:none` film-grain overlay on `body::after` (inline SVG `feTurbulence`, `opacity:.035`, `mix-blend-mode:overlay`, `z-index:999`) breaks the flat panels without washing out the neon. The `still`/`easy` motion prefs do not interact with it (it is static).
+- **Mobile CTA glare** — below 900px the primary CTA's 22px pink bloom is pulled tight to `0 3px 14px rgba(255,45,120,.22)` (`!important` beats the inline `box-shadow`); an idle game sits on OLED panels for hours and the wide bloom read as glare.
+
+Purely CSS; the `game.js` render path, palette, and fonts are untouched, so the visual invariant above holds and `SAVE_VER` stays 13.
+
 **Narrow screens — one scroller, not four (v0.10.7).** The app root is `height:100dvh; overflow:hidden` (with `100vh` fallback for browsers without dynamic viewport units), and Ledger, Log and the Systems tab body each carry an inline `overflow-y:auto`. Side by side that is correct: each of the three columns owns a full-height viewport. Stacked into a single column below **900px** they instead share `100dvh − header − footer`, so every panel becomes a ~100px window with its own scrollbar nested inside the shell's. Below 900px:
 
 - the three inner panels go `overflow:visible !important` and size to content — `.shell-grid` (which already carries `data-scroll="main"`, so the existing save/restore in §14.2 covers it) is the only scroller;

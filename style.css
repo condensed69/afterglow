@@ -15,6 +15,23 @@ button { font-family: inherit; }
 a { color: #22d3ee; text-decoration: none; }
 a:hover { color: #67e8f9; }
 
+/* Premium pass (0.11.18) — film grain over the whole app to break the flat,
+   purely-digital panels. Fixed, pointer-events-none SVG noise at low opacity
+   with mix-blend-mode:overlay so it adds texture without washing out the neon.
+   A single documented layer; sits above the transient floaters (z 90-95) but
+   below nothing interactive — it never blocks input. The `still` motion pref
+   does not touch it (it is static, so pausing is a no-op anyway). */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  pointer-events: none;
+  opacity: .035;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
 @keyframes bulb { 0%, 100% { opacity: 1; box-shadow: 0 0 8px 2px rgba(255,201,74,.9); } 50% { opacity: .35; box-shadow: 0 0 3px 0 rgba(255,201,74,.4); } }
 @keyframes sweepL { 0%, 100% { transform: rotate(-13deg) scaleY(1); opacity: .5; } 50% { transform: rotate(9deg) scaleY(1.06); opacity: .78; } }
 @keyframes sweepR { 0%, 100% { transform: rotate(12deg) scaleY(1.05); opacity: .72; } 50% { transform: rotate(-10deg) scaleY(1); opacity: .46; } }
@@ -33,7 +50,39 @@ a:hover { color: #67e8f9; }
 .hv-pink:hover { border-color: #ff2d78; color: #fff; }
 .hv-cyan:hover { border-color: #22d3ee; }
 .cta:hover { filter: brightness(1.12); }
-.cta:active { transform: translateY(1px); }
+.cta:active { transform: translateY(1px); filter: brightness(0.94); }
+
+/* Premium pass (0.11.18) — universal interactive, disabled and focus states.
+   The sim UI is built with inline styles, so any property a button sets inline
+   wins over a plain stylesheet rule; but filter / opacity / transform / outline
+   / transition are set on almost no button, so these apply everywhere without
+   !important. Filter brightness is additive on top of each button's inline
+   gradient, so it never clashes with the look & feel prefs (which also use
+   filter but on #app / #stage, not on buttons). */
+#app button, #look-panel button {
+  transition: filter .15s ease, opacity .15s ease, transform .1s ease;
+}
+#app button:hover:not(:disabled),
+#look-panel button:hover:not(:disabled) { filter: brightness(1.10); }
+#app button:active:not(:disabled),
+#look-panel button:active:not(:disabled) { filter: brightness(0.94); transform: translateY(1px); }
+/* Disabled buttons read as inert: dimmed, non-clickable cursor. Most already
+   set their own cursor:not-allowed inline; this normalises the rest. */
+#app button:disabled,
+#look-panel button:disabled { opacity: .6; cursor: not-allowed; }
+
+/* Accessible focus — was absent from the entire surface. A visible ring on
+   keyboard/touch focus for every control and the inline help (?) icons, which
+   are focusable via tabindex="0". */
+#app button:focus-visible,
+#app a:focus-visible,
+#app [tabindex]:focus-visible,
+#look-panel button:focus-visible,
+#look-panel input:focus-visible {
+  outline: 2px solid #22d3ee;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px rgba(34,211,238,.22);
+}
 
 /* The CSS/DOM performer and pole were removed in 0.7.0 — the stage is lighting,
    haze, crowd silhouettes and the stage lip. Do not reintroduce a figure here. */
@@ -340,6 +389,13 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
     background: #0b0712;
     border-top: 1px solid #2a1738;
     box-shadow: 0 -4px 12px rgba(0,0,0,.3);
+  }
+  /* Premium pass (0.11.18): the primary CTA's 22px pink bloom is glare on an
+     OLED panel an idle game sits on for hours. Pull the glow in tight and lift
+     the button off the bar with a short, colored shadow instead. !important
+     beats the inline box-shadow. */
+  .stage-cta button.cta {
+    box-shadow: 0 3px 14px rgba(255,45,120,.22) !important;
   }
   .shell-grid {
     padding-bottom: 130px !important;
