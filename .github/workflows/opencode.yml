@@ -6,11 +6,19 @@ on:
   pull_request_review_comment:
     types: [created]
 
+concurrency:
+  group: opencode-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   opencode:
     if: |
-      contains(github.event.comment.body, '/oc') ||
-      contains(github.event.comment.body, '/opencode')
+      !github.event.comment.user.bot &&
+      (github.event.comment.author_association == 'OWNER' ||
+       github.event.comment.author_association == 'MEMBER' ||
+       github.event.comment.author_association == 'COLLABORATOR') &&
+      (contains(github.event.comment.body, '/oc') ||
+       contains(github.event.comment.body, '/opencode'))
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -19,9 +27,9 @@ jobs:
       issues: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Configure Git identity
@@ -29,8 +37,10 @@ jobs:
           git config user.name "opencode[bot]"
           git config user.email "opencode[bot]@users.noreply.github.com"
 
-      - name: Run OpenCode
+      - name: Run OpenCode (Primary - Qwen 3.7 Plus)
+        id: opencode-primary
         uses: anomalyco/opencode/github@latest
+        continue-on-error: true
         env:
           # models.dev registers opencode-go under OPENCODE_API_KEY (not OPENCODE_GO_API_KEY)
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
@@ -38,3 +48,15 @@ jobs:
         with:
           model: opencode-go/qwen-3.7-plus
           use_github_token: true
+          share: false
+
+      - name: Run OpenCode (Free Fallback)
+        if: steps.opencode-primary.outcome != 'success'
+        uses: anomalyco/opencode/github@latest
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          model: openrouter/free
+          use_github_token: true
+          share: false
