@@ -51,13 +51,16 @@ jobs:
           use_github_token: true
           share: false
 
-      - name: Run OpenCode (Free Fallback)
+      - name: Run OpenCode (Free Fallback - GLM 5.2)
         if: steps.opencode-primary.outcome != 'success'
         uses: anomalyco/opencode/github@latest
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          model: openrouter/free
+          # OpenRouter's `free` router alias is not an executable model in
+          # OpenCode's catalog. Pin a currently catalogued :free model so the
+          # fallback can actually run when OpenCode Go is unavailable.
+          model: openrouter/z-ai/glm-5.2:free
           use_github_token: true
           share: false

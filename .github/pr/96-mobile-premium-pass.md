@@ -20,6 +20,11 @@ Mobile-specific: the primary CTA's 22px pink bloom is pulled tight to
 `0 3px 14px rgba(255,45,120,.22)` below 900px — an idle game sits on OLED
 panels for hours and the wide bloom read as glare.
 
+The OpenCode review workflow's fallback is also repaired: `openrouter/free`
+was a router alias that OpenCode 1.18.21 would list as a suggestion but reject
+as an executable model. The fallback now pins the catalogued free model
+`openrouter/z-ai/glm-5.2:free`.
+
 ## Approach
 
 CSS-only, deliberately. The sim UI is built with ~284 inline styles from
@@ -45,6 +50,9 @@ upgrades" resolved to zero edits.
   one sim-minute per wall-second (needs ~8m for a ~480m sim). The band
   assertions themselves all pass; this is the issue #92 liveness guard, not a
   regression. CI runs `--fast`, which passes.
+- Workflow-only follow-up: pacing was explicitly skipped by operator direction;
+  `git diff --check`, `node --check game.js`, and `node economy.test.mjs`
+  (301 passed) succeeded, and the existing PR `gates` check remained green.
 - Visual verification in headless Chrome (390x844): cyan focus ring renders on
   keyboard Tab, grain overlay computed at opacity .035 / z 999 / overlay,
   button transition `filter, opacity, transform`, disabled at opacity .6; no
@@ -62,10 +70,13 @@ with a matching `CHANGELOG` entry (visual-only release).
   glare change; the visual-invariant line still holds (neon-noir, no
   performer figure).
 - `game.js` — `VERSION` + `CHANGELOG` top entry.
+- `.github/workflows/opencode.yml` — replace the rejected OpenRouter router
+  alias with an explicit catalogued free fallback model.
 
 ## Files
 
 - `style.css`
 - `game.js` (version bump + changelog only)
 - `DESIGN.md`
+- `.github/workflows/opencode.yml`
 - `.github/pr/96-mobile-premium-pass.md` (this body, added after open)
