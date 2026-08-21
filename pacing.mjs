@@ -3,7 +3,14 @@
 // Dependencies: none (Node built-ins only)
 // Exits non-zero when any milestone falls outside its band.
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeSync } from 'node:fs';
+import { format } from 'node:util';
+
+// Flush every line to stdout synchronously (issue #92): on POSIX console.log to
+// a pipe is asynchronous and can buffer, which is exactly how a slow sim reads
+// as a "hang with zero output" in CI. writeSync(1, …) lands each line the
+// moment it is reached so logs show liveness mid-run.
+console.log = (...args) => { writeSync(1, format(...args) + '\n'); };
 
 // ── DOM Prelude (same pattern as economy.test.mjs) ───────────────────────────
 const root = {
@@ -339,22 +346,83 @@ function newGame() {
   return game;
 }
 
+// ── Wall-clock budget + fast mode (issue #92) ────────────────────────────────
+// The suites are CPU-bound, not deadlocked — but a real regression is
+// indistinguishable from slowness on a runner with a timeout. Each scenario
+// runs under a generous per-run wall-clock ceiling (Date.now(), not sim-clock),
+// enforced inside the sim loop, so an overrun exits(2) with a clear message
+// instead of sitting silent until the job's own timeout. PACING_BUDGET_MS
+// overrides the default.
+const RUN_BUDGET_MS = Number(process.env.PACING_BUDGET_MS) || 5 * 60 * 1000;
+
+// --fast (or PACING_FAST=1) skips the two full-cap scenarios — endgameProbe()
+// (unconditional 8h cap) and renownRun() (franchise gate, ~5.6h sim) — which
+// dominate wall time. run()/prestigeRun()/secondRoomRun() early-exit at their
+// milestones and are cheap, so the core milestone-band gate still runs. The
+// full suite (all five scenarios) remains the local gate; CI runs --fast.
+const FAST = process.argv.includes('--fast') || process.env.PACING_FAST === '1';
+
+let budgetDeadline = 0;
+let budgetName = '';
+let budgetMs = 0;
+
+function withBudget(name, ms, fn) {
+  budgetName = name;
+  budgetMs = ms;
+  budgetDeadline = Date.now() + ms;
+  try {
+    fn();
+  } finally {
+    budgetName = '';
+    budgetMs = 0;
+    budgetDeadline = 0;
+  }
+}
+
 function simulate(game, stopCondition, maxSec = SIM_HOURS * 3600, opts = {}) {
   const stopOnMilestones = opts.stopOnMilestones !== false;
   const hit = Object.create(null);
   for (const m of MILESTONES) hit[m.id] = null;
 
+  // Progress heartbeat (issue #92): a long sim has no lower-level output, so
+  // without this the suite sits silent for its whole 8h cap and a hang is
+  // indistinguishable from slowness. Print once per simulated hour so CI logs
+  // show liveness; the default is cheap (~8 lines per full run).
+  const beatEvery = opts.beatEvery || 3600;
+  let lastBeat = 0;
+
   let wall = 0;
   while (wall < maxSec) {
+    // Wall-clock budget (issue #92): checked once per simulated second — cheap
+    // (a Date.now() vdso read) next to the step(1) it guards. An overrun is a
+    // loud, attributable exit(2) instead of the job's own silent timeout.
+    if (budgetDeadline && Date.now() > budgetDeadline) {
+      console.log(
+        `\n❌ ${budgetName}: wall-clock budget ${(budgetMs / 60000).toFixed(0)}m exceeded @ ${fmtMin(wall)} sim — hung or regressed.\n`
+      );
+      process.exit(2);
+    }
+
     // One bot decision per simulated second, then advance 1s of sim so
     // income/resource changes precede the next decision (not 5 decisions then +5s).
     botSecond(game);
     game.step(1);
     wall += 1;
 
+    if (wall - lastBeat >= beatEvery) {
+      console.log(`    … wall ${fmtMin(wall)}/${fmtMin(maxSec)} (night ${game.state.g.night})`);
+      lastBeat = wall;
+    }
+
     const g = game.state.g;
     for (const m of MILESTONES) {
-      if (hit[m.id] == null && m.check(g)) hit[m.id] = wall;
+      if (hit[m.id] == null && m.check(g)) {
+        hit[m.id] = wall;
+        // Per-milestone liveness (issue #92): surface each hit as it lands, not
+        // only inside reportMilestones() after the whole sim returns — so run()
+        // shows progress instead of sitting silent until its first full sim ends.
+        console.log(`    ✓ ${m.label} @ ${fmtMin(wall)} (band ${fmtMin(m.lo)}–${fmtMin(m.hi)})`);
+      }
     }
     if (stopCondition && stopCondition(g, wall)) break;
     if (stopOnMilestones && MILESTONES.every((m) => hit[m.id] != null)) break;
@@ -400,11 +468,11 @@ function reportMilestones(hit) {
 }
 
 function run() {
+  console.log('\n=== pacing.mjs — PLAN-NEXT §C reference bot ===\n');
   const game = newGame();
   const { wall, hit, g } = simulate(game);
 
   // ── Report ─────────────────────────────────────────────────────────────────
-  console.log('\n=== pacing.mjs — PLAN-NEXT §C reference bot ===\n');
   const { failed } = reportMilestones(hit);
 
   console.log('-'.repeat(72));
@@ -429,6 +497,8 @@ function run() {
 function prestigeRun() {
   const totalSec = SIM_HOURS * 3600;
 
+  console.log('\n=== Prestige scenario (PRESTIGE.md §7) ===\n');
+
   // Run 1: bot plays until prestige gate or wall cap (do not stop at milestones).
   const game1 = newGame();
   const ledMilestone = MILESTONES.find((m) => m.id === 'upgrade');
@@ -437,8 +507,6 @@ function prestigeRun() {
     if (t1 == null && ledMilestone.check(g)) t1 = wall;
     return g.regulars >= 25 && g.night >= 10;
   }, totalSec, { stopOnMilestones: false });
-
-  console.log('\n=== Prestige scenario (PRESTIGE.md §7) ===\n');
 
   if (g1.regulars < 25) {
     console.log(`FAIL: prestige gate not reached (regulars=${g1.regulars.toFixed(1)} < 25 at wall cap ${fmtMin(totalSec)})`);
@@ -946,11 +1014,16 @@ function endgameProbe() {
 `);
 }
 
-run();
-prestigeRun();
-secondRoomRun();
-renownRun();
-endgameProbe();
+if (FAST) {
+  console.log('fast mode (--fast): skipping renown + endgame full-cap scenarios\n');
+}
+withBudget('reference bot', RUN_BUDGET_MS, run);
+withBudget('prestige scenario', RUN_BUDGET_MS, prestigeRun);
+withBudget('second-room scenario', RUN_BUDGET_MS, secondRoomRun);
+if (!FAST) {
+  withBudget('renown scenario', RUN_BUDGET_MS, renownRun);
+  withBudget('endgame probe', RUN_BUDGET_MS, endgameProbe);
+}
 // Force exit on success: confirmPrestige()/the franchise sale start an autosave
 // setInterval that keeps the event loop alive. On the pre-existing failure path
 // process.exit(1) is called; on the success path node otherwise hangs.

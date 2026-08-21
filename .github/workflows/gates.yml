@@ -20,9 +20,12 @@ concurrency:
 jobs:
   gates:
     runs-on: ubuntu-latest
-    # The suite finishes in ~10s. A run that reaches 10 minutes has hung — an
-    # infinite loop in the sim, say — and should fail fast rather than sit until
-    # GitHub's multi-hour default.
+    # The gates are sim-heavy, not instant: economy ~2m and pacing ~6m for the
+    # FULL suite (measured on the PR91/PR93 CI runs, Node 22). CI runs pacing in
+    # --fast mode (~2m), which skips the two full-cap scenarios (endgame probe +
+    # renown); those still run in the local full-suite gate (AGENTS.md gate 3). A
+    # run that reaches 10 minutes has hung — an infinite loop in the sim, say —
+    # and should fail fast rather than sit until GitHub's multi-hour default.
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -40,5 +43,5 @@ jobs:
       - name: economy — node economy.test.mjs
         run: node economy.test.mjs
 
-      - name: pacing — node pacing.mjs
-        run: node pacing.mjs
+      - name: pacing — node pacing.mjs --fast
+        run: node pacing.mjs --fast

@@ -4,7 +4,14 @@
 // PLAN.md §1.0 — guards Phase 1 correctness fixes
 
 import { ok, strictEqual } from 'node:assert';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeSync } from 'node:fs';
+import { format } from 'node:util';
+
+// Flush every line to stdout synchronously (issue #92): on POSIX console.log to
+// a pipe is asynchronous and can buffer, which is how the slow 10-night §3 sim
+// reads as a "stall with no output" in CI. writeSync(1, …) lands each line
+// immediately so per-night/section progress is visible mid-run.
+console.log = (...args) => { writeSync(1, format(...args) + '\n'); };
 
 // ── DOM Prelude ──────────────────────────────────────────────────────────────
 // Stub browser globals so game.js can parse and construct without a DOM.
@@ -1527,6 +1534,9 @@ test('10-night run with buildings, crew, and purchases: all resources >= 0', () 
 
   // Spot-check non-negativity every night, not only at the end
   for (let n = 0; n < 10; n++) {
+    // Per-night heartbeat (issue #92): this loop drives a 10-night step and
+    // is the slow, previously-silent stretch noted as "stalls past section 3".
+    console.log(`    … night ${n + 1}/10`);
     simulateNights(game, 1);
     for (const k of resourceNames()) {
       ok(g[k] >= 0, `night+${n + 1}: ${k} is ${g[k]} (must be >= 0)`);
