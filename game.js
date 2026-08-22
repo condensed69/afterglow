@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.20', build: 233, channel: 'alpha', date: '2026-08-22', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.21', build: 234, channel: 'alpha', date: '2026-08-22', codename: 'Neon Zero' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -201,6 +201,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.11.21', date: '2026-08-22', codename: 'Neon Zero', notes: [
+        'Fix: mobile scroll jank caused by button transitions. The 0.11.18 premium pass added transition: filter/opacity/transform to every button, which overwhelmed mobile GPUs during scroll (content moved 1 frame, paused 3-4 frames). Touch devices don\'t have hover states, so these transitions are now disabled on coarse pointers. Desktop keeps the hover/active effects. Purely CSS — no behavior or save change (SAVE_VER stays 13), pacing untouched.'
+      ] },
       { v: '0.11.20', date: '2026-08-22', codename: 'Neon Zero', notes: [
         'Fix: mobile scroll still stuck/jerky when using thumbs. The 0.11.19 fix dropped the grain\'s mix-blend-mode on coarse pointers, but the fixed full-viewport layer with an SVG noise background still forced per-frame repaints on mobile GPUs — the "sticks when using thumbs" feeling. Grain is now disabled entirely on touch devices (display:none on coarse pointers); desktop keeps the overlay blend. Purely CSS — no behavior or save change (SAVE_VER stays 13), pacing untouched.'
       ] },

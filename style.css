@@ -74,14 +74,20 @@ body::after {
    / transition are set on almost no button, so these apply everywhere without
    !important. Filter brightness is additive on top of each button's inline
    gradient, so it never clashes with the look & feel prefs (which also use
-   filter but on #app / #stage, not on buttons). */
-#app button, #look-panel button {
-  transition: filter .15s ease, opacity .15s ease, transform .1s ease;
+   filter but on #app / #stage, not on buttons).
+   
+   0.11.21: Disabled on touch devices — transitions on every button caused
+   severe scroll jank (content moved 1 frame, paused 3-4 frames). Touch
+   devices don't have hover states, so these effects are irrelevant there. */
+@media (hover: hover) and (pointer: fine) {
+  #app button, #look-panel button {
+    transition: filter .15s ease, opacity .15s ease, transform .1s ease;
+  }
+  #app button:hover:not(:disabled),
+  #look-panel button:hover:not(:disabled) { filter: brightness(1.10); }
+  #app button:active:not(:disabled),
+  #look-panel button:active:not(:disabled) { filter: brightness(0.94); transform: translateY(1px); }
 }
-#app button:hover:not(:disabled),
-#look-panel button:hover:not(:disabled) { filter: brightness(1.10); }
-#app button:active:not(:disabled),
-#look-panel button:active:not(:disabled) { filter: brightness(0.94); transform: translateY(1px); }
 /* Disabled buttons read as inert: dimmed, non-clickable cursor. Most already
    set their own cursor:not-allowed inline; this normalises the rest. */
 #app button:disabled,
@@ -255,13 +261,8 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
        panels at their real heights. min-content refuses to shrink below
        content, which is the whole point when the shell is the scroller. */
     grid-auto-rows: min-content;
-    /* No scroll chaining / pull-to-refresh at the edges (0.11.19). The shell is
-       the only scroller below 900px; without containment, reaching the top or
-       bottom hands the gesture to the browser (page refresh on Android, rubber-
-       band on iOS) and the shell's scrollbar reads as stuck. contain keeps the
-       gesture inside the shell. -webkit-overflow-scrolling keeps momentum on
-       legacy iOS engines; a no-op on modern ones. */
-    overscroll-behavior-y: contain;
+    /* Legacy iOS momentum scrolling (0.11.19). Modern iOS has momentum by default;
+       this is a no-op on Android and modern iOS, but kept for older devices. */
     -webkit-overflow-scrolling: touch;
   }
   .shell-grid > section,
