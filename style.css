@@ -45,7 +45,7 @@ body::after {
    frame on mobile GPUs, which reads as scroll stutter. Normal blend keeps the
    texture at a fraction of the cost. Desktop keeps the overlay blend. */
 @media (hover: none) and (pointer: coarse) {
-  body::after { mix-blend-mode: normal; }
+  body::after { display: none; }
 }
 
 @keyframes bulb { 0%, 100% { opacity: 1; box-shadow: 0 0 8px 2px rgba(255,201,74,.9); } 50% { opacity: .35; box-shadow: 0 0 3px 0 rgba(255,201,74,.4); } }
