@@ -264,6 +264,9 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
     /* Legacy iOS momentum scrolling (0.11.19). Modern iOS has momentum by default;
        this is a no-op on Android and modern iOS, but kept for older devices. */
     -webkit-overflow-scrolling: touch;
+    /* Promote to compositor layer for smoother scroll (0.11.22). Offloads
+       scrolling to GPU, reducing main thread blocking during touch scroll. */
+    will-change: transform;
   }
   .shell-grid > section,
   .shell-grid > aside {
