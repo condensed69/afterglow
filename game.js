@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.21', build: 234, channel: 'alpha', date: '2026-08-22', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.22', build: 235, channel: 'alpha', date: '2026-08-22', codename: 'Neon Zero' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -201,6 +201,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.11.22', date: '2026-08-22', codename: 'Neon Zero', notes: [
+        'Fix: mobile scroll jank caused by render blocking. The render() does full innerHTML replacement which blocks the main thread. On mobile, this caused scroll to stutter (move 1 frame, pause 3-4 frames). Now defers renders during touch scroll, then catches up after scroll stops. Also promotes .shell-grid to its own compositor layer with will-change: transform for GPU-accelerated scrolling. Purely performance — no behavior or save change (SAVE_VER stays 13), pacing untouched.'
+      ] },
       { v: '0.11.21', date: '2026-08-22', codename: 'Neon Zero', notes: [
         'Fix: mobile scroll jank caused by button transitions. The 0.11.18 premium pass added transition: filter/opacity/transform to every button, which overwhelmed mobile GPUs during scroll (content moved 1 frame, paused 3-4 frames). Touch devices don\'t have hover states, so these transitions are now disabled on coarse pointers. Desktop keeps the hover/active effects. Purely CSS — no behavior or save change (SAVE_VER stays 13), pacing untouched.'
       ] },
@@ -1341,6 +1344,27 @@ class Game {
     window.addEventListener('pointercancel', () => armFlush(0), true);
     window.addEventListener('dragstart', () => armFlush(0), true);
     window.addEventListener('blur', () => armFlush(0));
+    // Mobile scroll jank fix (0.11.22): pause rendering during touch scroll.
+    // The render() does full innerHTML replacement which blocks the main thread.
+    // On mobile, this causes scroll to stutter (move 1 frame, pause 3-4 frames).
+    // Defer renders while scrolling, then catch up after scroll stops.
+    this.scrolling = false;
+    this.scrollTimer = null;
+    const shell = this.root.querySelector('.shell-grid');
+    if (shell) {
+      const onScroll = () => {
+        this.scrolling = true;
+        if (this.scrollTimer) clearTimeout(this.scrollTimer);
+        this.scrollTimer = setTimeout(() => {
+          this.scrolling = false;
+          if (this.needsRender) {
+            this.needsRender = false;
+            this.render();
+          }
+        }, 150);
+      };
+      shell.addEventListener('scroll', onScroll, { passive: true });
+    }
   }
 
   fresh() {
@@ -1441,7 +1465,7 @@ class Game {
   }
 
   forceUpdate() {
-    if (this.pointerDown) {
+    if (this.pointerDown || this.scrolling) {
       this.needsRender = true;
       return;
     }
