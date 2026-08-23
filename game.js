@@ -3652,7 +3652,6 @@ class Game {
       sessionDeltas,
       // Post-polish PR 5: back-half flavor chips (rep / specials / weekend energy).
       houseChips,
-      houseStrip: { rep: houseRep, specials, weekend, weekendTint },
       // Second room (SECOND_LOCATION.md §8): unlock control before annex exists,
       // compact switcher after. activeClubLabel names the room in the ledger.
       canOpenRoom: this.canOpenRoom(),
