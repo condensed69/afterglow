@@ -431,6 +431,55 @@ test('flavorLine returns a non-empty deterministic ticker line', () => {
   ok(seen.size >= 3, 'ticker rotates through multiple applicable lines');
 });
 
+test('houseReputation tiers a label from rounds bought (no save field)', () => {
+  const game = newGame();
+  const g = game.state.g;
+  strictEqual(game.houseReputation(g), null, 'no reputation before the first round');
+  g.rounds = 1;
+  strictEqual(game.houseReputation(g).label, 'Buys the first round', 'first tier at 1 round');
+  g.rounds = 5;
+  strictEqual(game.houseReputation(g).label, 'Generous host', 'tier up at 5 rounds');
+  g.rounds = 15;
+  strictEqual(game.houseReputation(g).label, "The block's favorite", 'tier up at 15 rounds');
+  g.rounds = 30;
+  strictEqual(game.houseReputation(g).label, 'Neighborhood legend', 'top tier at 30 rounds');
+  ok(game.houseReputation(g).tint, 'every tier carries a tint');
+});
+
+test('specialRecord and weekendEnergy derive from existing counters', () => {
+  const game = newGame();
+  const g = game.state.g;
+  strictEqual(game.specialRecord(g), null, 'no special record at zero specials');
+  g.specialsCount = 3;
+  strictEqual(game.specialRecord(g), 3, 'special record reads specialsCount');
+  strictEqual(game.weekendEnergy(g), 1 / 30, 'night 1 maps to 1/30 energy');
+  g.night = 15;
+  strictEqual(game.weekendEnergy(g), 0.5, 'night 15 maps to 0.5');
+  g.night = 60;
+  strictEqual(game.weekendEnergy(g), 1, 'energy caps at 1 past 30 nights');
+});
+
+test('House strip renders only when a derived chip is present', () => {
+  const game = newGame();
+  const g = game.state.g;
+  // Fresh club: no rounds, no specials, night 1 (< 10) — the strip stays empty.
+  let v = game.renderVals();
+  strictEqual(v.houseChips.length, 0, 'fresh club has an empty House strip');
+  // Buy a round → the reputation chip appears.
+  g.rounds = 6;
+  v = game.renderVals();
+  ok(v.houseChips.length >= 1 && v.houseChips[0].includes('Generous host'), 'reputation chip renders after rounds are bought');
+  // A special shift and night 10+ add the other two chips.
+  g.specialsCount = 2;
+  g.night = 20;
+  v = game.renderVals();
+  strictEqual(v.houseChips.length, 3, 'all three chips render in the back half');
+  ok(v.houseChips.some(ch => ch.includes('special shift')), 'special-shift chip renders');
+  ok(v.houseChips.some(ch => ch.includes('Weekend energy')), 'weekend-energy chip renders');
+  // Render-only — nothing persisted to the save shape.
+  strictEqual(JSON.stringify(g).includes('houseChips'), false, 'House chips are not persisted');
+});
+
 test('session deltas frame stats since first render (no save field)', () => {
   const game = newGame(100);
   const g = game.state.g;

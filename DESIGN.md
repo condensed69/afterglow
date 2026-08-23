@@ -837,6 +837,13 @@ tables plus a ticker — **zero pacing impact**: nothing here is read by
 - **`REGULAR_NAMES`** — a 20-name pool. `regularName(g)` derives the featured
   regular from the active club's regulars count: one new name every 5 regulars,
   `null` below 5. Surfaced in the Ledger's Regulars note ("Margo is a regular").
+- **House strip (0.11.25, post-polish PR 5)** — a compact "House" readout in the
+  Ledger with three derived, render-only reads: `houseReputation(g)` tiers a label
+  from rounds bought ("Buys the first round" → "Neighborhood legend"), a
+  special-shift record from `g.specialsCount` (★ N), and `weekendEnergy(g)` maps
+  nights elapsed 0–1 (peaks at 30) to a cool→warm tint. The strip only renders
+  once a chip is non-empty. `FLAVOR` also gains three back-half lines keyed on
+  night 25, the first special shift, and the first Brand Endorsement.
 - **Ticker UI** — a slim `TODAY` strip under the header (`.ticker-bar`), truncated
   with ellipsis on narrow screens. Render-only; `ticker` is computed in `renderVals`
   and never persisted.

@@ -157,6 +157,11 @@ const AfterglowCatalogs = {
     { cond: (g, c) => c.b.marquee >= 2, text: 'The marquee out front glows two blocks away.' },
     { cond: (g, c) => c.b.vip >= 2, text: 'The VIP room has a waiting list.' },
     { cond: (g, c) => c.night >= 10, text: 'Ten nights in, the neighborhood knows the name.' },
+    // Post-polish PR 5 (flavor v2): back-half lines for the 105m–311m dead zone.
+    // Keyed on existing counters (night / specialsCount / brandLevel) — no save field.
+    { cond: (g, c) => c.night >= 25, text: 'Twenty-five nights in — the regulars have their own booth by now.' },
+    { cond: (g, c) => (g.specialsCount || 0) >= 1, text: 'Someone still talks about the Bachelorette Rush.' },
+    { cond: (g, c) => (g.brandLevel || 0) >= 1, text: 'The brand is catching on across town.' },
     { cond: () => true, text: 'The night is young.' }
   ],
 

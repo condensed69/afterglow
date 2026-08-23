@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.24', build: 237, channel: 'alpha', date: '2026-08-23', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.25', build: 238, channel: 'alpha', date: '2026-08-23', codename: 'Neon Zero' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -207,6 +207,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.11.25', date: '2026-08-23', codename: 'Neon Zero', notes: [
+        'BACK-HALF FLAVOR (post-polish PR 5): the Ledger gains a "House" strip with three derived, render-only reads that surface progress in the quiet 105m–311m band — House Reputation (a tiered label from rounds bought: "Buys the first round" → "Neighborhood legend"), a special-shift record (★ N special shifts, from the live-only specialsCount counter), and Weekend Energy (nights elapsed mapped 0–100%, tinted cool→warm). The FLAVOR ticker also gains three back-half lines keyed on night 25, the first special shift, and the first Brand Endorsement. All of it reads existing counters in renderVals only: no save field, no economy coupling, no SAVE_VER bump, and pacing bands stay bit-identical.'
+      ] },
       { v: '0.11.24', date: '2026-08-23', codename: 'Neon Zero', notes: [
         'LEDGER "THIS SESSION" STRIP (post-polish PR 4): a compact strip at the top of the Ledger frames the main stats as session-level deltas — Cash, Hype, Regulars, Rounds, and Work all show how much changed since you loaded the page (e.g. "+$2.1K · +14 Hype · +3 Regulars"). Pure render: the baseline is captured on first render into a non-persisted snapshot, nothing feeds the economy, and there is no save-shape change (SAVE_VER stays 13). The strip rides the existing Ledger collapse, so on phones it is hidden by default and expands with the rest of the Ledger.'
       ] },
@@ -891,6 +894,37 @@ class Game {
     const lines = [];
     for (const f of this.FLAVOR) if (f.cond(g, c)) lines.push(f.text);
     return lines[Math.floor(tick / 30) % lines.length];
+  }
+
+  // House reputation — derived from rounds bought (the owner's generosity, a
+  // live-session counter). A higher count means the neighborhood knows the
+  // house. Pure display: read in renderVals only, never in rates()/step().
+  // null until the first round is bought.
+  houseReputation(g) {
+    const rounds = Math.floor(g.rounds || 0);
+    if (rounds <= 0) return null;
+    const tiers = [
+      { min: 30, label: 'Neighborhood legend', tint: '#ff2d78' },
+      { min: 15, label: "The block's favorite", tint: '#ffc94a' },
+      { min: 5,  label: 'Generous host', tint: '#22d3ee' },
+      { min: 1,  label: 'Buys the first round', tint: '#9c86ab' },
+    ];
+    for (const t of tiers) if (rounds >= t.min) return t;
+    return tiers[tiers.length - 1];
+  }
+
+  // Special shifts ridden this run — derived from the live-only specialsCount
+  // counter (0.10.1). Pure display; null until the first special fires.
+  specialRecord(g) {
+    const n = Math.floor(g.specialsCount || 0);
+    return n > 0 ? n : null;
+  }
+
+  // Weekend energy — nights elapsed mapped 0..1 (peaks at 30 nights). Drives a
+  // subtle gradient tint on the House strip. Pure display, derived from the
+  // existing night counter — no save field.
+  weekendEnergy(g, c = this.club(g)) {
+    return Math.min(1, Math.max(0, (c.night || 0) / 30));
   }
 
   // Job catalog (REPLAY_ROADMAP.md §5) — the single source of truth for the
@@ -3295,6 +3329,20 @@ class Game {
     const regularsNote = g.r.loop
       ? (regName ? regName + ' is a regular · $0.04/s each' : '$0.04/s each')
       : (regName ? regName + ' is a regular' : 'unlock Reputation Loop');
+    // Post-polish PR 5 (flavor v2): back-half derivations — house reputation
+    // (rounds bought), special-shift record, and weekend energy (nights elapsed).
+    // All read existing counters in renderVals only; no save field, no pacing impact.
+    const houseRep = this.houseReputation(g);
+    const specials = this.specialRecord(g);
+    const weekend = this.weekendEnergy(g, c);
+    const weekendTint = weekend >= 1 ? '#ff2d78' : (weekend >= 0.5 ? '#ffc94a' : (weekend >= 0.2 ? '#22d3ee' : '#9c86ab'));
+    // Build the House strip chips. All strings are source-controlled literals
+    // (labels/tints) or integers (specials count, rounded %), so no escaping is
+    // needed. The strip renders only when at least one chip is present.
+    const houseChips = [];
+    if (houseRep) houseChips.push(`<span><span style="color:${houseRep.tint}">●</span> ${houseRep.label}</span>`);
+    if (specials) houseChips.push(`<span><span style="color:#e879f9">★</span> ${specials} special shift${specials > 1 ? 's' : ''}</span>`);
+    if (weekend >= 1 / 3) houseChips.push(`<span>Weekend energy <span style="color:${weekendTint}">${Math.round(weekend * 100)}%</span></span>`);
 
     const resources = [
       { name: 'Cash' + this.helpIcon('Cash', 'Money in the till. Used to hire crew, buy structures, upgrades, and rounds.'), val: '$' + this.fmt(c.cash), rate: sign(r.cash), pct: 100, color: '#ffc94a', note: r.strike ? 'crew unpaid — on strike' : (r.wage > 0 ? 'wages −$' + this.fmt(r.wage) + '/s' : 'no payroll yet') },
@@ -3602,6 +3650,9 @@ class Game {
       resources: resourcesOut, stats, tabs, cards, tabHint, jobs, ticker, crewOpen: this.state.tab === 'crew' && g.crew > 0,
       metaUnlocked,
       sessionDeltas,
+      // Post-polish PR 5: back-half flavor chips (rep / specials / weekend energy).
+      houseChips,
+      houseStrip: { rep: houseRep, specials, weekend, weekendTint },
       // Second room (SECOND_LOCATION.md §8): unlock control before annex exists,
       // compact switcher after. activeClubLabel names the room in the ledger.
       canOpenRoom: this.canOpenRoom(),
@@ -4414,6 +4465,11 @@ class Game {
             ${v.sessionDeltas.map(d => `<span>${d.label} <span style="font-weight:600;color:${d.val[0] === '+' ? '#4ade80' : '#ff7aa8'}">${d.val}</span></span>`).join('')}
           </div>
         </div>
+        ${v.houseChips.length ? `
+        <div class="house-strip" style="border:1px solid #221434;border-radius:7px;background:#0f0a18;padding:8px 10px;margin-bottom:12px">
+          <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700;margin-bottom:5px">House</div>
+          <div style="display:flex;flex-wrap:wrap;gap:5px 14px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#9c86ab">${v.houseChips.join('')}</div>
+        </div>` : ''}
         <div style="display:flex;flex-direction:column;gap:9px">${ledgerDetailRows}</div>
         <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700;margin:18px 0 8px">Floor</div>
         <div style="border:1px solid #221434;border-radius:7px;background:#0f0a18;padding:9px">${statRows}</div>
