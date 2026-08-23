@@ -431,6 +431,31 @@ test('flavorLine returns a non-empty deterministic ticker line', () => {
   ok(seen.size >= 3, 'ticker rotates through multiple applicable lines');
 });
 
+test('session deltas frame stats since first render (no save field)', () => {
+  const game = newGame(100);
+  const g = game.state.g;
+  const c = game.club(g);
+  // First render captures the snapshot.
+  const v1 = game.renderVals();
+  ok(Array.isArray(v1.sessionDeltas) && v1.sessionDeltas.length === 5, 'strip has 5 deltas');
+  // At the very first render everything is 0 / +$0.
+  const cash0 = v1.sessionDeltas.find(d => d.label === 'Cash');
+  strictEqual(cash0.val, '+$' + game.fmt(0), 'first-render cash delta is zero');
+  // Advance state: earn cash, gain regulars, buy rounds, work the room.
+  c.cash += 500;
+  c.regulars += 3;
+  g.rounds = 2;
+  g.clicks = 12;
+  const v2 = game.renderVals();
+  const byLabel = Object.fromEntries(v2.sessionDeltas.map(d => [d.label, d.val]));
+  strictEqual(byLabel.Cash, '+$' + game.fmt(500), 'cash delta reflects the earned amount');
+  strictEqual(byLabel.Regulars, '+3', 'regulars delta is a whole number');
+  strictEqual(byLabel.Rounds, '+2', 'rounds delta counts bought rounds');
+  strictEqual(byLabel.Work, '+12', 'work delta counts clicks');
+  // Snapshot is NOT part of the save shape (render-only, no persisted field).
+  strictEqual(JSON.stringify(g).includes('sessionSnap'), false, 'sessionSnap is not persisted');
+});
+
 test('clout25 multiplier scales rates().clout', () => {
   const game = newGame();
   const g = game.state.g;
