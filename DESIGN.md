@@ -477,7 +477,7 @@ The roll scales by slice time like the whale (`chunk / SIM`), so a lag spike pac
 
 ---
 
-## 12. Achievements (`ACHIEVEMENTS`) — shipped 0.8.1 (23), density pass 0.10.1 (38), meta pass 0.11.14 (48)
+## 12. Achievements (`ACHIEVEMENTS`) — shipped 0.8.1 (23), density pass 0.10.1 (38), meta pass 0.11.14 (48), density pass 0.11.23 (53)
 
 Permanent unlocks with small Clout/Legacy rewards. `checkAchievements(g)` iterates the catalog; on first pass of a satisfied check it pushes the id, pays the reward once, and logs **“Achievement: <name> — <desc>”** (`#ffd700`). Called per-slice in `step`/`catchUp` (so stat/night thresholds reached mid-window unlock), after every buy/hire action, after `spawnWhale` and the 0.10.2 burst handlers (`maybeCritic`, `takeGolden`), after prestige, and on load via migration v6→v7 backfill.
 
@@ -487,7 +487,9 @@ Permanent unlocks with small Clout/Legacy rewards. `checkAchievements(g)` iterat
 
 **0.11.14 meta pass (PR 3):** catalog grew 38 → 48 — ten new achievements covering the post-sale meta: franchise sales (`franchise_1/5/10` checking `renownTotal`), Brand perks (`brand_1`, `brand_max`), the Rooftop club (`rooftop_1`, `heli_1`), challenge tiers (`challenge_1`, `challenge_all`), and Brand Endorsements (`endorse_5`). All reward Legacy only (no Clout), expanding the milk multiplier ceiling from +34% to +44% (44 non-burst of 48 total). None of these checks fire on the pacing bot's standard path (which never sells, never opens the rooftop, never starts challenges, never owns brand), so `pacing.mjs` bands remain bit-identical.
 
-**Milk multiplier (REPLAY_ROADMAP §3):** every achievement adds +1% to all cash income (passive + active clicks) via `achievementMult(g)`, folded into the `houseCut` multiplier alongside the House cut perk (§4.2). `achievementMult(g)` counts **unique, non-burst** achievements: duplicate ids are deduped, and the 4 live-only burst achievements (`whale_1`, `whale_10`, `special_1`, `special_5` — driven by `g.whalesCount`/`g.specialsCount`, which the deterministic pacing bot can never earn) are excluded. At the full 44 deterministic achievements that is +44% (not +48% of 48) — the collection is a real progression path, not a checklist. The multiplier applies to **all cash income** — passive `rates()`, active clicks, the whale bonus (§11.2), and the golden-ticket tip (§11.4) — through the single `totalCashMult(g)` composition point, so it can't silently skip a source. Derived from `g.achievements`, so no save-shape change. The pacing bot earns achievements deterministically, so this re-centers the "all upgrades owned" milestone (~45m → ~32m) — see `pacing.mjs`.
+**0.11.23 density pass (post-polish PR 3):** catalog grew 48 → 53 — five new achievements fill the location-extras and endorsement-ladder coverage gaps: `vista_1` (own the Panorama Deck at the Rooftop, `g.clubs.rooftop.u.vista === true`), `heli_2` (2 Helipads at the Rooftop), and `endorse_10/25/50` (Brand Endorsement levels 10/25/50). All reward Legacy only (crediting both `g.legacy` and `g.legacyTotal` per the 0.9.5 accounting rule), expanding the milk multiplier ceiling from +44% to +49% (49 non-burst of 53 total). Club-level reads use the full `g.clubs.rooftop` path (not the active club's `b`/`u` view). None fire on the pacing bot's standard path (it never opens the Rooftop or buys Brand Endorsement), so `pacing.mjs` bands remain bit-identical.
+
+**Milk multiplier (REPLAY_ROADMAP §3):** every achievement adds +1% to all cash income (passive + active clicks) via `achievementMult(g)`, folded into the `houseCut` multiplier alongside the House cut perk (§4.2). `achievementMult(g)` counts **unique, non-burst** achievements: duplicate ids are deduped, and the 4 live-only burst achievements (`whale_1`, `whale_10`, `special_1`, `special_5` — driven by `g.whalesCount`/`g.specialsCount`, which the deterministic pacing bot can never earn) are excluded. At the full 49 deterministic achievements that is +49% (not +53% of 53) — the collection is a real progression path, not a checklist. The multiplier applies to **all cash income** — passive `rates()`, active clicks, the whale bonus (§11.2), and the golden-ticket tip (§11.4) — through the single `totalCashMult(g)` composition point, so it can't silently skip a source. Derived from `g.achievements`, so no save-shape change. The pacing bot earns achievements deterministically, so this re-centers the "all upgrades owned" milestone (~45m → ~32m) — see `pacing.mjs`.
 
 | id | Name | Check | Reward |
 |----|------|-------|--------|
@@ -539,6 +541,11 @@ Permanent unlocks with small Clout/Legacy rewards. `checkAchievements(g)` iterat
 | challenge_1 | Trailblazer | challengesDone ≥ 1 | 2 Legacy |
 | challenge_all | Completionist | challengesDone ≥ 4 | 4 Legacy |
 | endorse_5 | Endorsed | brandLevel ≥ 5 | 3 Legacy |
+| vista_1 | Panorama | rooftop `u.vista === true` | 3 Legacy |
+| heli_2 | Sky Armada | rooftop heli ≥ 2 | 5 Legacy |
+| endorse_10 | Sponsored | brandLevel ≥ 10 | 4 Legacy |
+| endorse_25 | Household Name | brandLevel ≥ 25 | 8 Legacy |
+| endorse_50 | Icon | brandLevel ≥ 50 | 16 Legacy |
 
 Achievements live in the Settings modal. Backfill on load credits already-earned unlocks without double-paying (v6→v7 migration runs `checkAchievements`).
 

@@ -223,7 +223,17 @@ const AfterglowCatalogs = {
     { id: 'heli_1', name: 'Sky Hook', desc: 'Build a Helipad at the Rooftop', check: g => (g.clubs?.rooftop?.b?.heli || 0) >= 1, reward: { legacy: 3 } },
     { id: 'challenge_1', name: 'Trailblazer', desc: 'Complete any challenge tier', check: g => (g.challengesDone || []).length >= 1, reward: { legacy: 2 } },
     { id: 'challenge_all', name: 'Completionist', desc: 'Complete each of the 4 challenges', check: g => (g.challengesDone || []).length >= 4, reward: { legacy: 4 } },
-    { id: 'endorse_5', name: 'Endorsed', desc: 'Reach Brand Endorsement level 5', check: g => (g.brandLevel || 0) >= 5, reward: { legacy: 3 } }
+    { id: 'endorse_5', name: 'Endorsed', desc: 'Reach Brand Endorsement level 5', check: g => (g.brandLevel || 0) >= 5, reward: { legacy: 3 } },
+    // Post-polish PR 3: Achievement density — location-extras + endorsement ladder.
+    // All bot-unreachable (the pacing bot never opens the Rooftop or buys Brand
+    // Endorsement), so pacing bands stay bit-identical. Club-level reads use the
+    // full g.clubs.rooftop path (not the active club's b/u view). Legacy rewards
+    // credit legacyTotal per the 0.9.5 accounting rule.
+    { id: 'vista_1', name: 'Panorama', desc: 'Own the Panorama Deck at the Rooftop', check: g => g.clubs?.rooftop?.u?.vista === true, reward: { legacy: 3 } },
+    { id: 'heli_2', name: 'Sky Armada', desc: 'Build 2 Helipads at the Rooftop', check: g => (g.clubs?.rooftop?.b?.heli || 0) >= 2, reward: { legacy: 5 } },
+    { id: 'endorse_10', name: 'Sponsored', desc: 'Reach Brand Endorsement level 10', check: g => (g.brandLevel || 0) >= 10, reward: { legacy: 4 } },
+    { id: 'endorse_25', name: 'Household Name', desc: 'Reach Brand Endorsement level 25', check: g => (g.brandLevel || 0) >= 25, reward: { legacy: 8 } },
+    { id: 'endorse_50', name: 'Icon', desc: 'Reach Brand Endorsement level 50', check: g => (g.brandLevel || 0) >= 50, reward: { legacy: 16 } }
   ],
 
   // Owner's List — sequential onboarding goals (PLAN-NEXT §B). Exactly one active at a time.

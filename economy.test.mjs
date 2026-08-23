@@ -343,9 +343,9 @@ test('achievementMult counts unique non-burst achievements (milk multiplier)', (
   const g = game.state.g;
   strictEqual(game.achievementMult(g), 1, '1.00x at 0 achievements');
   g.achievements = game.ACHIEVEMENTS.map(a => a.id);
-  ok(Math.abs(game.achievementMult(g) - 1.44) < 1e-9, '1.44x at all 48 (44 non-burst)');
+  ok(Math.abs(game.achievementMult(g) - 1.49) < 1e-9, '1.49x at all 53 (49 non-burst)');
   g.achievements = game.ACHIEVEMENTS.map(a => a.id).concat(['first_rail', 'first_rail']);
-  ok(Math.abs(game.achievementMult(g) - 1.44) < 1e-9, 'duplicate ids ignored');
+  ok(Math.abs(game.achievementMult(g) - 1.49) < 1e-9, 'duplicate ids ignored');
   g.achievements = ['whale_1', 'whale_10', 'special_1', 'special_5'];
   strictEqual(game.achievementMult(g), 1, 'burst achievements excluded');
 });
@@ -1067,11 +1067,11 @@ test('round_10 unlocks after 10 rounds', () => {
   ok(g.achievements.includes('round_10'), 'round_10 (Toast)');
 });
 
-test('achievement catalog is 48 entries with unique ids', () => {
+test('achievement catalog is 53 entries with unique ids', () => {
   const game = newGame();
   const ids = game.ACHIEVEMENTS.map(a => a.id);
-  strictEqual(ids.length, 48, 'catalog grew 38 → 48 (meta pass)');
-  strictEqual(new Set(ids).size, 48, 'ids unique');
+  strictEqual(ids.length, 53, 'catalog grew 48 → 53 (post-polish density pass)');
+  strictEqual(new Set(ids).size, 53, 'ids unique');
 });
 
 test('every new meta achievement is reachable (reachability sweep)', () => {
@@ -1081,17 +1081,18 @@ test('every new meta achievement is reachable (reachability sweep)', () => {
   g.renownTotal = 60; // franchise_1, franchise_5, franchise_10
   g.brand = { nationwide: 3, loyalty: 3, rnd: 3, offline: 3, rooftop: 1 }; // brand_1, brand_max (all at their individual max)
   g.clubs.rooftop = game.freshClubState('rooftop');
-  g.clubs.rooftop.b.heli = 1; // rooftop_1, heli_1
+  g.clubs.rooftop.b.heli = 2; // rooftop_1, heli_1, heli_2
+  g.clubs.rooftop.u.vista = true; // vista_1
   g.challengesDone = ['tight', 'slim', 'dry', 'lean']; // challenge_1, challenge_all
-  g.brandLevel = 5; // endorse_5
+  g.brandLevel = 50; // endorse_5, endorse_10, endorse_25, endorse_50
   game.checkAchievements(g);
-  const newIds = ['franchise_1', 'franchise_5', 'franchise_10', 'brand_1', 'brand_max', 'rooftop_1', 'heli_1', 'challenge_1', 'challenge_all', 'endorse_5'];
+  const newIds = ['franchise_1', 'franchise_5', 'franchise_10', 'brand_1', 'brand_max', 'rooftop_1', 'heli_1', 'challenge_1', 'challenge_all', 'endorse_5', 'vista_1', 'heli_2', 'endorse_10', 'endorse_25', 'endorse_50'];
   for (const id of newIds) {
     ok(g.achievements.includes(id), `${id} should unlock in reachability fixture`);
   }
   // Also verify the Legacy credits (dual-credit rule: legacy AND legacyTotal)
-  ok(g.legacy >= 37, 'spendable legacy from new achievements');
-  ok(g.legacyTotal >= 37, 'lifetime legacy from new achievements');
+  ok(g.legacy >= 73, 'spendable legacy from new achievements');
+  ok(g.legacyTotal >= 73, 'lifetime legacy from new achievements');
 });
 
 test('brand_max respects per-perk max (rooftop lease max:1)', () => {
@@ -1101,6 +1102,22 @@ test('brand_max respects per-perk max (rooftop lease max:1)', () => {
   g.brand = { nationwide: 3, loyalty: 3, rnd: 3, offline: 3, rooftop: 1 };
   game.checkAchievements(g);
   ok(g.achievements.includes('brand_max'), 'brand_max unlocks when each perk at its own max');
+});
+
+test('post-polish density achievements credit exact Legacy (dual-credit)', () => {
+  const game = newGame();
+  const g = game.state.g;
+  g.clubs.rooftop = game.freshClubState('rooftop');
+  g.clubs.rooftop.b.heli = 2;
+  g.clubs.rooftop.u.vista = true;
+  g.brandLevel = 50;
+  game.checkAchievements(g);
+  // rooftop_1(3) + heli_1(3) + heli_2(5) + vista_1(3) + endorse_5(3) + endorse_10(4) + endorse_25(8) + endorse_50(16)
+  strictEqual(g.legacy, 45, 'exact spendable Legacy from the density achievements');
+  strictEqual(g.legacyTotal, 45, 'lifetime Legacy matches (0.9.5 dual-credit rule)');
+  for (const id of ['rooftop_1', 'heli_1', 'heli_2', 'vista_1', 'endorse_5', 'endorse_10', 'endorse_25', 'endorse_50']) {
+    ok(g.achievements.includes(id), `${id} unlocked`);
+  }
 });
 
 // ── 0.10.2 burst events (critic + golden ticket) ─────────────────────────────
