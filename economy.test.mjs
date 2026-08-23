@@ -114,6 +114,7 @@ globalThis.sessionStorage = {
 // ── Load Game class (never run page boot) ────────────────────────────────────
 // game.js ends with `const game = new Game(...); game.init();` which starts
 // setInterval timers. Strip that boot so the process can exit cleanly.
+const catSrc = readFileSync(new URL('./catalogs.js', import.meta.url), 'utf8');
 const src = readFileSync(new URL('./game.js', import.meta.url), 'utf8');
 const stripped = src
   .replace(/\nconst game = new Game\(document\.getElementById\('app'\)\);\s*\ngame\.init\(\);\s*(?:\ngame\.mountLook\(\);)?\s*(?:\ngame\.mountFxLayer\(\);)?\n?$/, '');
@@ -121,7 +122,7 @@ if (stripped === src) {
   console.error('economy.test.mjs: failed to strip game.js boot lines — process may hang');
   process.exit(2);
 }
-const Game = new Function(stripped + ';\nreturn Game;')();
+const Game = new Function(catSrc + '\n' + stripped + ';\nreturn Game;')();
 
 // ── Test Harness ─────────────────────────────────────────────────────────────
 let passed = 0, failed = 0, skipped = 0;
@@ -2989,7 +2990,7 @@ test('every GOALS entry has valid shape; check(fresh) false; progress ok or null
     ok(goal.reward && typeof goal.reward === 'object', 'reward');
     ok(typeof goal.reward.cash === 'number' && typeof goal.reward.clout === 'number', 'reward cash/clout');
     ok(typeof goal.check === 'function', 'check fn');
-    strictEqual(goal.check(g), false, `check(fresh) must be false for ${goal.id}`);
+    strictEqual(goal.check.call(game, g), false, `check(fresh) must be false for ${goal.id}`);
     if (goal.progress == null) {
       strictEqual(goal.progress, null);
     } else {
@@ -3245,12 +3246,12 @@ test('study/builtin ignore orphan keys; catalog research completes study', () =>
   g.u = { ghostUpgrade: true };
   const study = game.GOALS.find(x => x.id === 'study');
   const builtin = game.GOALS.find(x => x.id === 'builtin');
-  strictEqual(study.check(g), false, 'orphan r.franchise must not complete study');
-  strictEqual(builtin.check(g), false, 'orphan u.* must not complete builtin');
+  strictEqual(study.check.call(game, g), false, 'orphan r.franchise must not complete study');
+  strictEqual(builtin.check.call(game, g), false, 'orphan u.* must not complete builtin');
   g.r.loop = true;
-  strictEqual(study.check(g), true, 'catalog research completes study');
+  strictEqual(study.check.call(game, g), true, 'catalog research completes study');
   g.u.led = true;
-  strictEqual(builtin.check(g), true, 'catalog upgrade completes builtin');
+  strictEqual(builtin.check.call(game, g), true, 'catalog upgrade completes builtin');
 });
 
 test('init migrate + offline persists; second init does not double-count offline', () => withFrozenNow((t) => {
