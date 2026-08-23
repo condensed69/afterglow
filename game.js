@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.23', build: 236, channel: 'alpha', date: '2026-08-23', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.24', build: 237, channel: 'alpha', date: '2026-08-23', codename: 'Neon Zero' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -67,6 +67,12 @@ class Game {
   // (showDebug / simSpeed / startingCash). Fixed to their defaults now that
   // this runs as a plain page instead of inside that editor.
   props = { showDebug: false, simSpeed: 1, startingCash: 20 };
+
+  // "Since session" baseline (post-polish PR 4): captured on the FIRST render so
+  // the Ledger can frame stats as session-level deltas. Not persisted — a fresh
+  // page load starts a fresh session. Populated in renderVals(), never init()
+  // (init may still be restoring g from a save mid-load).
+  sessionSnap = null;
 
   // Max seconds of simulated time per catch-up slice (live tick and offline).
   // Re-reading rates() each slice keeps a resumed window from freezing rates
@@ -201,6 +207,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.11.24', date: '2026-08-23', codename: 'Neon Zero', notes: [
+        'LEDGER "THIS SESSION" STRIP (post-polish PR 4): a compact strip at the top of the Ledger frames the main stats as session-level deltas — Cash, Hype, Regulars, Rounds, and Work all show how much changed since you loaded the page (e.g. "+$2.1K · +14 Hype · +3 Regulars"). Pure render: the baseline is captured on first render into a non-persisted snapshot, nothing feeds the economy, and there is no save-shape change (SAVE_VER stays 13). The strip rides the existing Ledger collapse, so on phones it is hidden by default and expands with the rest of the Ledger.'
+      ] },
       { v: '0.11.23', date: '2026-08-23', codename: 'Neon Zero', notes: [
         'ACHIEVEMENT DENSITY (post-polish PR 3): five new achievements fill the location-extras and endorsement ladder coverage gaps — vista_1 (own the Panorama Deck at the Rooftop), heli_2 (build 2 Helipads at the Rooftop), and endorse_10/25/50 (Brand Endorsement levels 10/25/50). All reward Legacy only (crediting both g.legacy and g.legacyTotal per the 0.9.5 accounting rule). None fire on the pacing bot\'s standard path (it never opens the Rooftop or buys Brand Endorsement), so every pacing band is bit-identical. The milk multiplier ceiling expands +44% → +49% (49 non-burst of 53 total). SAVE_VER stays 13.'
       ] },
@@ -3262,6 +3271,20 @@ class Game {
 
     const c = this.club(g);
     const r = this.rates(g), cap = r.cap;
+    // Post-polish PR 4: first-render snapshot + "this session" deltas for the
+    // Ledger strip. Render-only — nothing here feeds the economy or the save.
+    if (!this.sessionSnap) {
+      this.sessionSnap = { cash: c.cash, hype: c.hype, regulars: c.regulars, rounds: g.rounds || 0, clicks: g.clicks || 0 };
+    }
+    const snap = this.sessionSnap;
+    const deltaFmt = (n, cash) => (n >= 0 ? '+' : '−') + (cash ? '$' : '') + (cash ? this.fmt(Math.abs(n)) : Math.floor(Math.abs(n)));
+    const sessionDeltas = [
+      { label: 'Cash', val: deltaFmt(c.cash - snap.cash, true) },
+      { label: 'Hype', val: deltaFmt(c.hype - snap.hype, false) },
+      { label: 'Regulars', val: deltaFmt(c.regulars - snap.regulars, false) },
+      { label: 'Rounds', val: deltaFmt((g.rounds || 0) - snap.rounds, false) },
+      { label: 'Work', val: deltaFmt((g.clicks || 0) - snap.clicks, false) }
+    ];
     const sign = v => (v >= 0 ? '+' : '') + this.fmt(v) + '/s';
     // Flavor layer (REPLAY_ROADMAP.md §4): ticker line + featured regular name.
     // Ticker text interpolates FLAVOR/REGULAR_NAMES source-controlled literals
@@ -3578,6 +3601,7 @@ class Game {
       ...base,
       resources: resourcesOut, stats, tabs, cards, tabHint, jobs, ticker, crewOpen: this.state.tab === 'crew' && g.crew > 0,
       metaUnlocked,
+      sessionDeltas,
       // Second room (SECOND_LOCATION.md §8): unlock control before annex exists,
       // compact switcher after. activeClubLabel names the room in the ledger.
       canOpenRoom: this.canOpenRoom(),
@@ -4384,6 +4408,12 @@ class Game {
       </div>
       <div class="ledger-cash" style="display:flex;flex-direction:column;gap:9px">${cashRow}</div>
       <div class="ledger-detail">
+        <div class="session-strip" style="border:1px solid #221434;border-radius:7px;background:#0f0a18;padding:8px 10px;margin-bottom:12px">
+          <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700;margin-bottom:5px">This session</div>
+          <div style="display:flex;flex-wrap:wrap;gap:5px 14px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#9c86ab">
+            ${v.sessionDeltas.map(d => `<span>${d.label} <span style="font-weight:600;color:${d.val[0] === '+' ? '#4ade80' : '#ff7aa8'}">${d.val}</span></span>`).join('')}
+          </div>
+        </div>
         <div style="display:flex;flex-direction:column;gap:9px">${ledgerDetailRows}</div>
         <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700;margin:18px 0 8px">Floor</div>
         <div style="border:1px solid #221434;border-radius:7px;background:#0f0a18;padding:9px">${statRows}</div>
