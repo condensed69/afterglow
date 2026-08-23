@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.25', build: 238, channel: 'alpha', date: '2026-08-23', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.26', build: 239, channel: 'alpha', date: '2026-08-23', codename: 'Neon Zero' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -207,6 +207,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.11.26', date: '2026-08-23', codename: 'Neon Zero', notes: [
+        'CHALLENGE-TIER ACHIEVEMENTS (post-polish PR 6): the achievement catalog grows 53 → 57 with four tier-aware achievements that celebrate the 12-run challenge ladder, not just the flat "4 challenges done" count — Hardened (any challenge at tier 2), Ironclad (any at tier 3), Gauntlet (all 4 at tier 2), and Legendary (all 4 at tier 3). All reward Legacy only (crediting both g.legacy and g.legacyTotal per the 0.9.5 accounting rule) and read g.challengeTiers — the post-0.11.13 source of truth — not the legacy g.challengesDone array. The milk multiplier ceiling expands +49% → +53% (53 non-burst of 57 total). None fire on the pacing bot\'s standard path (it never starts a challenge), so every pacing band stays bit-identical. SAVE_VER stays 13.'
+      ] },
       { v: '0.11.25', date: '2026-08-23', codename: 'Neon Zero', notes: [
         'BACK-HALF FLAVOR (post-polish PR 5): the Ledger gains a "House" strip with three derived, render-only reads that surface progress in the quiet 105m–311m band — House Reputation (a tiered label from rounds bought: "Buys the first round" → "Neighborhood legend"), a special-shift record (★ N special shifts, from the live-only specialsCount counter), and Weekend Energy (nights elapsed mapped 0–100%, tinted cool→warm). The FLAVOR ticker also gains three back-half lines keyed on night 25, the first special shift, and the first Brand Endorsement. All of it reads existing counters in renderVals only: no save field, no economy coupling, no SAVE_VER bump, and pacing bands stay bit-identical.'
       ] },
@@ -846,8 +849,8 @@ class Game {
   // each adds +1% to all cash income (passive + active clicks), so the collection is a
   // real progression path, not a checklist. Counts UNIQUE ids (Set-deduped) and EXCLUDES
   // the 4 burst achievements (whale_1/whale_10/special_1/special_5 — driven by live-only
-  // counters), so the deterministic pacing bot sees a stable ceiling of 1.49x (49
-  // non-burst of 53 total). Applied everywhere via totalCashMult(g).
+  // counters), so the deterministic pacing bot sees a stable ceiling of 1.53x (53
+  // non-burst of 57 total). Applied everywhere via totalCashMult(g).
   achievementMult(g) {
     const owned = new Set(Array.isArray(g.achievements) ? g.achievements : []);
     const count = this.ACHIEVEMENTS.filter(a => !a.burst && owned.has(a.id)).length;

@@ -228,6 +228,15 @@ const AfterglowCatalogs = {
     { id: 'heli_1', name: 'Sky Hook', desc: 'Build a Helipad at the Rooftop', check: g => (g.clubs?.rooftop?.b?.heli || 0) >= 1, reward: { legacy: 3 } },
     { id: 'challenge_1', name: 'Trailblazer', desc: 'Complete any challenge tier', check: g => (g.challengesDone || []).length >= 1, reward: { legacy: 2 } },
     { id: 'challenge_all', name: 'Completionist', desc: 'Complete each of the 4 challenges', check: g => (g.challengesDone || []).length >= 4, reward: { legacy: 4 } },
+    // Post-polish PR 6: challenge-tier-aware achievements — a second collectible
+    // axis on top of the flat challenge-done count. These read g.challengeTiers
+    // (the post-PR-#80 source of truth), NOT the legacy challengesDone array.
+    // Legacy-only; the pacing bot never completes a challenge, so none fire on the
+    // bot path and every pacing band stays bit-identical.
+    { id: 'challenge_t2_one', name: 'Hardened', desc: 'Complete any challenge at tier 2', check: g => Object.values(g.challengeTiers || {}).some(v => v >= 2), reward: { legacy: 3 } },
+    { id: 'challenge_t3_one', name: 'Ironclad', desc: 'Complete any challenge at tier 3', check: g => Object.values(g.challengeTiers || {}).some(v => v >= 3), reward: { legacy: 3 } },
+    { id: 'challenge_t2_all', name: 'Gauntlet', desc: 'Complete all 4 challenges at tier 2', check(g) { return this.CHALLENGES.every(c => (g.challengeTiers || {})[c.id] >= 2); }, reward: { legacy: 3 } },
+    { id: 'challenge_t3_all', name: 'Legendary', desc: 'Complete all 4 challenges at tier 3', check(g) { return this.CHALLENGES.every(c => (g.challengeTiers || {})[c.id] >= 3); }, reward: { legacy: 3 } },
     { id: 'endorse_5', name: 'Endorsed', desc: 'Reach Brand Endorsement level 5', check: g => (g.brandLevel || 0) >= 5, reward: { legacy: 3 } },
     // Post-polish PR 3: Achievement density — location-extras + endorsement ladder.
     // All bot-unreachable (the pacing bot never opens the Rooftop or buys Brand

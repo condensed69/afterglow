@@ -25,6 +25,6 @@ Max **every prestige perk**, hire **every manager**, and own **both rooms** — 
 
 The Owner's List (left panel) shows a **Vision** line under the active goal: a **lifetime-value ladder** — **$10M / $100M / $1B** cumulative gross cash earned across all time (net till income plus wages, every sim slice, online and offline alike). Each rung crossed is a permanent all-cash bonus: **+1% / +1% / +2%** (**+4% total**), forever. Lifetime value survives every reset — prestige, challenge starts, and selling the franchise — so it is the brand's cumulative footprint, not run state. The readout shows `Lifetime value $X / $1B` with three star markers and the next tier's bonus; lifetime is earned by playing, so the ladder is the one goal line that keeps moving as you sell and build again.
 
-## Achievements (0.11.14)
+## Achievements (0.11.26)
 
-The **Settings** modal lists all 48 achievements — complete the collection for a permanent +44% cash income boost (each non-burst achievement adds +1%). New meta achievements track franchise sales, Brand perks, the Rooftop club, challenge tiers, and Brand Endorsements.
+The **Settings** modal lists all 57 achievements — complete the collection for a permanent +53% cash income boost (each non-burst achievement adds +1%). Achievements track buildings, stats, prestige, franchise sales, Brand perks, the Rooftop club, the challenge-tier ladder (tier 2 / tier 3, any and all), and Brand Endorsements.
