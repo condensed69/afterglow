@@ -343,9 +343,9 @@ test('achievementMult counts unique non-burst achievements (milk multiplier)', (
   const g = game.state.g;
   strictEqual(game.achievementMult(g), 1, '1.00x at 0 achievements');
   g.achievements = game.ACHIEVEMENTS.map(a => a.id);
-  ok(Math.abs(game.achievementMult(g) - 1.49) < 1e-9, '1.49x at all 53 (49 non-burst)');
+  ok(Math.abs(game.achievementMult(g) - 1.53) < 1e-9, '1.53x at all 57 (53 non-burst)');
   g.achievements = game.ACHIEVEMENTS.map(a => a.id).concat(['first_rail', 'first_rail']);
-  ok(Math.abs(game.achievementMult(g) - 1.49) < 1e-9, 'duplicate ids ignored');
+  ok(Math.abs(game.achievementMult(g) - 1.53) < 1e-9, 'duplicate ids ignored');
   g.achievements = ['whale_1', 'whale_10', 'special_1', 'special_5'];
   strictEqual(game.achievementMult(g), 1, 'burst achievements excluded');
 });
@@ -1141,11 +1141,11 @@ test('round_10 unlocks after 10 rounds', () => {
   ok(g.achievements.includes('round_10'), 'round_10 (Toast)');
 });
 
-test('achievement catalog is 53 entries with unique ids', () => {
+test('achievement catalog is 57 entries with unique ids', () => {
   const game = newGame();
   const ids = game.ACHIEVEMENTS.map(a => a.id);
-  strictEqual(ids.length, 53, 'catalog grew 48 → 53 (post-polish density pass)');
-  strictEqual(new Set(ids).size, 53, 'ids unique');
+  strictEqual(ids.length, 57, 'catalog grew 53 → 57 (challenge-tier pass)');
+  strictEqual(new Set(ids).size, 57, 'ids unique');
 });
 
 test('every new meta achievement is reachable (reachability sweep)', () => {
@@ -1158,9 +1158,10 @@ test('every new meta achievement is reachable (reachability sweep)', () => {
   g.clubs.rooftop.b.heli = 2; // rooftop_1, heli_1, heli_2
   g.clubs.rooftop.u.vista = true; // vista_1
   g.challengesDone = ['tight', 'slim', 'dry', 'lean']; // challenge_1, challenge_all
+  g.challengeTiers = { tight: 3, slim: 3, dry: 3, lean: 3 }; // challenge_t2_one/t3_one/t2_all/t3_all
   g.brandLevel = 50; // endorse_5, endorse_10, endorse_25, endorse_50
   game.checkAchievements(g);
-  const newIds = ['franchise_1', 'franchise_5', 'franchise_10', 'brand_1', 'brand_max', 'rooftop_1', 'heli_1', 'challenge_1', 'challenge_all', 'endorse_5', 'vista_1', 'heli_2', 'endorse_10', 'endorse_25', 'endorse_50'];
+  const newIds = ['franchise_1', 'franchise_5', 'franchise_10', 'brand_1', 'brand_max', 'rooftop_1', 'heli_1', 'challenge_1', 'challenge_all', 'challenge_t2_one', 'challenge_t3_one', 'challenge_t2_all', 'challenge_t3_all', 'endorse_5', 'vista_1', 'heli_2', 'endorse_10', 'endorse_25', 'endorse_50'];
   for (const id of newIds) {
     ok(g.achievements.includes(id), `${id} should unlock in reachability fixture`);
   }
@@ -1176,6 +1177,40 @@ test('brand_max respects per-perk max (rooftop lease max:1)', () => {
   g.brand = { nationwide: 3, loyalty: 3, rnd: 3, offline: 3, rooftop: 1 };
   game.checkAchievements(g);
   ok(g.achievements.includes('brand_max'), 'brand_max unlocks when each perk at its own max');
+});
+
+test('challenge-tier achievements read g.challengeTiers (threshold + dual-credit)', () => {
+  const game = newGame();
+  const g = game.state.g;
+  // Flat challengesDone alone must NOT fire the tier-aware achievements.
+  g.challengesDone = ['tight', 'slim', 'dry', 'lean'];
+  game.checkAchievements(g);
+  ok(g.achievements.includes('challenge_all'), 'flat challenge_all fires');
+  ok(!g.achievements.includes('challenge_t2_one'), 'tier-aware does not fire from challengesDone alone');
+  const legacyAt = g.legacy, totalAt = g.legacyTotal;
+
+  // One tier-2 completion → t2_one only.
+  g.challengeTiers = { tight: 2 };
+  game.checkAchievements(g);
+  ok(g.achievements.includes('challenge_t2_one'), 't2_one fires at any tier 2');
+  ok(!g.achievements.includes('challenge_t3_one'), 't3_one needs tier 3');
+  ok(!g.achievements.includes('challenge_t2_all'), 't2_all needs all 4');
+
+  // All 4 at tier 2 → t2_all (not t3_all).
+  g.challengeTiers = { tight: 2, slim: 2, dry: 2, lean: 2 };
+  game.checkAchievements(g);
+  ok(g.achievements.includes('challenge_t2_all'), 't2_all fires at all 4 tier 2');
+  ok(!g.achievements.includes('challenge_t3_all'), 't3_all needs tier 3');
+
+  // All 4 at tier 3 → t3_one and t3_all.
+  g.challengeTiers = { tight: 3, slim: 3, dry: 3, lean: 3 };
+  game.checkAchievements(g);
+  ok(g.achievements.includes('challenge_t3_one'), 't3_one fires at any tier 3');
+  ok(g.achievements.includes('challenge_t3_all'), 't3_all fires at all 4 tier 3');
+
+  // 4 × 3 Legacy, dual-credited to spendable and lifetime.
+  strictEqual(g.legacy - legacyAt, 12, 'spendable Legacy credited (4×3)');
+  strictEqual(g.legacyTotal - totalAt, 12, 'lifetime Legacy credited (4×3)');
 });
 
 test('post-polish density achievements credit exact Legacy (dual-credit)', () => {
