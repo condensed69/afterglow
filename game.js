@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.22', build: 235, channel: 'alpha', date: '2026-08-22', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.23', build: 236, channel: 'alpha', date: '2026-08-23', codename: 'Neon Zero' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -201,6 +201,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.11.23', date: '2026-08-23', codename: 'Neon Zero', notes: [
+        'ACHIEVEMENT DENSITY (post-polish PR 3): five new achievements fill the location-extras and endorsement ladder coverage gaps — vista_1 (own the Panorama Deck at the Rooftop), heli_2 (build 2 Helipads at the Rooftop), and endorse_10/25/50 (Brand Endorsement levels 10/25/50). All reward Legacy only (crediting both g.legacy and g.legacyTotal per the 0.9.5 accounting rule). None fire on the pacing bot\'s standard path (it never opens the Rooftop or buys Brand Endorsement), so every pacing band is bit-identical. The milk multiplier ceiling expands +44% → +49% (49 non-burst of 53 total). SAVE_VER stays 13.'
+      ] },
       { v: '0.11.22', date: '2026-08-22', codename: 'Neon Zero', notes: [
         'Fix: mobile scroll jank caused by render blocking. The render() does full innerHTML replacement which blocks the main thread. On mobile, this caused scroll to stutter (move 1 frame, pause 3-4 frames). Now defers renders during touch scroll, then catches up after scroll stops. Also promotes .shell-grid to its own compositor layer with will-change: transform for GPU-accelerated scrolling. Purely performance — no behavior or save change (SAVE_VER stays 13), pacing untouched.'
       ] },
@@ -831,8 +834,8 @@ class Game {
   // each adds +1% to all cash income (passive + active clicks), so the collection is a
   // real progression path, not a checklist. Counts UNIQUE ids (Set-deduped) and EXCLUDES
   // the 4 burst achievements (whale_1/whale_10/special_1/special_5 — driven by live-only
-  // counters), so the deterministic pacing bot sees a stable ceiling of 1.44x (44
-  // non-burst of 48 total). Applied everywhere via totalCashMult(g).
+  // counters), so the deterministic pacing bot sees a stable ceiling of 1.49x (49
+  // non-burst of 53 total). Applied everywhere via totalCashMult(g).
   achievementMult(g) {
     const owned = new Set(Array.isArray(g.achievements) ? g.achievements : []);
     const count = this.ACHIEVEMENTS.filter(a => !a.burst && owned.has(a.id)).length;
