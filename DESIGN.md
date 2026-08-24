@@ -1133,6 +1133,17 @@ seeded (the player bought them). The extras run must win by **at least 15%**
 no-achievement fresh control would pass on achievement carryover alone, which
 is exactly the comparison §10 forbids.
 
+**Mid-band anchor (post-polish PR 7):** `pacing.mjs` gains
+`midBandRun()`, which closes the §1.3 dead zone (all-research ~105m → first
+franchise sale ~312m) at its far edge. The bot plays the prestige loop to the
+franchise gate, sells for the first Renown, and buys the first Brand perk (the
+first Renown-sink event — `offline`, 3 Renown). The milestone is pinned at the
+reference first sale (**311.70m**, ±5% → 296.12m–327.29m): the first Brand perk
+is bought the instant Renown exists, so its time is the gate time. The bot's
+standard per-second policy never buys Brand perks or Endorsements, so the
+explicit purchase cannot shift the other scenarios' bands; the five existing
+scenarios stay bit-identical.
+
 ## Doc maintenance
 
 - Rewrite claims against `game.js`, not against stale plans.  
