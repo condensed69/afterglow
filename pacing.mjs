@@ -356,11 +356,12 @@ function newGame() {
 // overrides the default.
 const RUN_BUDGET_MS = Number(process.env.PACING_BUDGET_MS) || 5 * 60 * 1000;
 
-// --fast (or PACING_FAST=1) skips the two full-cap scenarios — endgameProbe()
-// (unconditional 8h cap) and renownRun() (franchise gate, ~5.6h sim) — which
-// dominate wall time. run()/prestigeRun()/secondRoomRun() early-exit at their
-// milestones and are cheap, so the core milestone-band gate still runs. The
-// full suite (all five scenarios) remains the local gate; CI runs --fast.
+// --fast (or PACING_FAST=1) skips the three full-cap scenarios — endgameProbe()
+// (unconditional 8h cap), renownRun() (franchise gate, ~5.6h sim), and
+// midBandRun() (post-polish PR 7: franchise gate + first Brand perk, ~5.2h sim)
+// — which dominate wall time. run()/prestigeRun()/secondRoomRun() early-exit at
+// their milestones and are cheap, so the core milestone-band gate still runs.
+// The full suite (all six scenarios) remains the local gate; CI runs --fast.
 const FAST = process.argv.includes('--fast') || process.env.PACING_FAST === '1';
 
 let budgetDeadline = 0;
@@ -1015,14 +1016,103 @@ function endgameProbe() {
 `);
 }
 
+/**
+ * Mid-band scenario (post-polish PR 7). The deterministic bot's measured
+ * milestones top out at "all research owned" (~105m); nothing is band-measured
+ * between there and the first franchise sale (~312m) — the post-polish §1.3
+ * dead zone. This scenario plays the prestige loop to the franchise gate, sells
+ * for the first Renown, and buys the first Brand perk (the first Renown-sink
+ * event) — a finer-grained (±5%) anchor on the post-research progression than
+ * renownRun's wide 2h–8h gate band.
+ *
+ * The bot's standard per-second policy (botSecond / buyAllMeta) never buys
+ * Brand perks or Endorsements, so the explicit purchase below cannot shift the
+ * other scenarios' bands — the five existing scenarios stay bit-identical.
+ */
+function midBandRun() {
+  const totalSec = SIM_HOURS * 3600;
+
+  console.log(`
+=== Mid-band scenario (post-polish PR 7 — first brand perk) ===
+`);
+
+  const game = newGame();
+  let cycles = 0;
+  const { g, wall: gateAt } = simulate(game, (cur) => {
+    if (cur.prestiges >= 1 && !cur.clubs.annex &&
+        Object.values(cur.managers || {}).some(Boolean)) {
+      game.confirmOpenRoom();
+    }
+    if ((cur.regulars || 0) >= 25 && (cur.night || 0) >= 10) {
+      cycles++;
+      game.confirmPrestige();
+      buyAllMeta(game);
+    }
+    return game.franchiseGate(game.state.g);
+  }, totalSec, { stopOnMilestones: false });
+
+  if (!game.franchiseGate(g)) {
+    console.log(`
+❌ Mid-band scenario failed: franchise gate not reached within the ${fmtMin(totalSec)} cap.
+`);
+    process.exit(1);
+  }
+
+  // First franchise sale → first Renown → first Brand perk (the first
+  // Renown-sink event). Two-click armed, mirroring renownRun's sale. `gain` is
+  // computed from the PRE-sale account (g): the sale wipes legacy/prestiges, so
+  // renownGain(a) would read 0.
+  const gain = game.renownGain(g);
+  game.openFranchise();
+  game.confirmFranchiseSale(); // arm
+  if (!game.state.franchiseArmed) {
+    console.log(`
+❌ Mid-band scenario failed: sale did not arm on first click.
+`);
+    process.exit(1);
+  }
+  game.confirmFranchiseSale(); // sell
+  const a = game.state.g;
+  // Cheapest Brand perk (offline, 3 Renown) — the first affordable sink spend.
+  const cheapest = game.BRAND_PERKS.slice().sort((x, y) => x.cost - y.cost)[0];
+  const renownBefore = a.renown;
+  game.buyBrandPerk(cheapest);
+  if (game.brandRank(a, cheapest.id) !== 1 || a.renown !== renownBefore - cheapest.cost) {
+    console.log(`
+❌ Mid-band scenario failed: ${cheapest.id} not bought (rank=${game.brandRank(a, cheapest.id)}, renown=${a.renown}, expected ${renownBefore - cheapest.cost}).
+`);
+    process.exit(1);
+  }
+
+  // The first Brand perk is bought the instant Renown exists — at the franchise
+  // gate — so the milestone time is the gate time. Pin ±5% around the reference
+  // first sale (311.70m). Deterministic, so any drift >5% is a real balance
+  // change, not noise.
+  const anchor = 311.70 * 60;
+  const lo = anchor * 0.95;
+  const hi = anchor * 1.05;
+  console.log(`  first brand perk @ ${fmtMin(gateAt)} (${cycles} cycles, +${gain} Renown → ${cheapest.name} rank 1)`);
+  console.log(`  band ${fmtMin(lo)}–${fmtMin(hi)} (±5% around ${fmtMin(anchor)})`);
+  if (gateAt < lo || gateAt > hi) {
+    console.log(`
+❌ Mid-band scenario failed: first brand perk at ${fmtMin(gateAt)} is outside the ±5% band ${fmtMin(lo)}–${fmtMin(hi)}.
+`);
+    process.exit(1);
+  }
+  console.log(`
+✅ Mid-band scenario passed: first brand perk lands in the post-research anchor band.
+`);
+}
+
 if (FAST) {
-  console.log('fast mode (--fast): skipping renown + endgame full-cap scenarios\n');
+  console.log('fast mode (--fast): skipping renown + mid-band + endgame full-cap scenarios\n');
 }
 withBudget('reference bot', RUN_BUDGET_MS, run);
 withBudget('prestige scenario', RUN_BUDGET_MS, prestigeRun);
 withBudget('second-room scenario', RUN_BUDGET_MS, secondRoomRun);
 if (!FAST) {
   withBudget('renown scenario', RUN_BUDGET_MS, renownRun);
+  withBudget('mid-band scenario', RUN_BUDGET_MS, midBandRun);
   withBudget('endgame probe', RUN_BUDGET_MS, endgameProbe);
 }
 // Force exit on success: confirmPrestige()/the franchise sale start an autosave
