@@ -1,7 +1,7 @@
 # DESIGN.md — Afterglow Club Idle
 
 **Game:** Afterglow Club Idle (repo: stripper-dance)  
-**Spec target:** all shipped systems through 0.11.15 — file save, Owner's List, balance + `pacing.mjs`, prestige, achievements, managers, special shifts, whales, multi-tab ownership, second room + rooftop, research tree, challenge tiers, manager levels, Renown/Brand perks/Endorsement, Vision ladder, location extras (`game.js` v0.11.15, SAVE_VER 13)  
+**Spec target:** all shipped systems through 0.11.26 — file save, Owner's List, balance + `pacing.mjs`, prestige, achievements, managers, special shifts, whales, multi-tab ownership, second room + rooftop, research tree, challenge tiers, manager levels, Renown/Brand perks/Endorsement, Vision ladder, location extras, ledger session strip, back-half flavor (`game.js` v0.11.26, SAVE_VER 13)  
 **Source of truth for numbers:** `game.js` (`caps()`, `rates()`, constant tables) — re-diff this file when those change  
 **Related:** `PRESTIGE.md` (prestige deep design, shipped 0.8.0), `PLAN.md` (logic-fix predecessor, shipped), `AGENTS.md` (repo gates). Workstream sequencing lived in a local orchestrator plan (not published in the repo tree).  
 **Ancestry:** this branch stacks A (file save) → B (Owner's List) → C (`pacing.mjs` + balance) → D (`PRESTIGE.md`) → 0.7.x stage work → 0.8.x prestige/achievements/whale → 0.9.x managers/special shifts/perk tree → 0.9.5 legacyTotal fix → 0.10.x second room / burst events / golden ticket → 0.11.x research tree, challenges + tiers, manager levels, Renown unlocks, Vision ladder, so every claim below is present in-tree.
@@ -477,7 +477,7 @@ The roll scales by slice time like the whale (`chunk / SIM`), so a lag spike pac
 
 ---
 
-## 12. Achievements (`ACHIEVEMENTS`) — shipped 0.8.1 (23), density pass 0.10.1 (38), meta pass 0.11.14 (48), density pass 0.11.23 (53)
+## 12. Achievements (`ACHIEVEMENTS`) — shipped 0.8.1 (23), density pass 0.10.1 (38), meta pass 0.11.14 (48), density pass 0.11.23 (53), challenge-tier pass 0.11.26 (57)
 
 Permanent unlocks with small Clout/Legacy rewards. `checkAchievements(g)` iterates the catalog; on first pass of a satisfied check it pushes the id, pays the reward once, and logs **“Achievement: <name> — <desc>”** (`#ffd700`). Called per-slice in `step`/`catchUp` (so stat/night thresholds reached mid-window unlock), after every buy/hire action, after `spawnWhale` and the 0.10.2 burst handlers (`maybeCritic`, `takeGolden`), after prestige, and on load via migration v6→v7 backfill.
 

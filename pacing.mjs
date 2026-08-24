@@ -720,7 +720,7 @@ function secondRoomRun() {
  * LED within the wall cap. The bot never buys brand perks or location extras,
  * so the extras cannot move the measured main-run bands.
  *
- * Reference run: gate at ~336 min sim / 13 cycles, renownGain ≈ 15. Band is
+ * Reference run: gate at ~312 min sim / 12 cycles, renownGain ≈ 14. Band is
  * deliberately wide (2h–8h): it must catch a SLOWDOWN that pushes the gate past
  * the 8h sim cap, not punish a future balance change that makes the journey
  * shorter (a faster gate is a pacing improvement).
