@@ -185,11 +185,11 @@ Single helper used everywhere — no scattered `g.perks?.x` copies.
 ### Apply rules (locked)
 
 1. **`cash10` (House cut — all cash income, including clicks)** — multiplies **every** cash income source by `(1 + 0.15 * perk(g, 'cash10'))`:
-   - **Passive:** `rates().cash` is multiplied by `houseCut = totalCashMult(g)` — the House cut composed with the achievement milk multiplier (`cashIncomeMult(g) × achievementMult(g)`, REPLAY_ROADMAP §3).
+   - **Passive:** `rates().cash` is multiplied by `houseCut = totalCashMult(g)` — the House cut composed with the achievement milk multiplier (`totalCashMult(g)` — the single all-cash composition point (House cut × milk, plus the brand/endorsement/vision/challenge factors; see DESIGN.md §4.2)).
    - **Active:** `workCrowd` grants `clickGrant = clickVal × totalCashMult(g)` (the same composed factor). The perk copy "+15% all cash income" is **not** passive-only; the prestige pacing bot also uses `workCrowd` while cash is low, so click mult is load-bearing for the §7 scenario.
 2. **`startCrew` / `startFlyers`** — only in prestige reset path and in `fresh()` when loading a meta-save that already has those perks (new club after prestige, and brand-new game with perks should not happen without prestige; `fresh()` still checks perks so a future "new run keep meta" path is consistent).  
 3. **`offline65`** — `catchUp` uses `dt = wall * (perk(g, 'offline65') ? 0.65 : 0.5)` instead of hardcoded `0.5`. Live `step` unchanged. Away report still honest on gross/wages.  
-4. **`doorPlus`** — in buy path and UI max for Door Staff: `max = (BUILDINGS door max) + perk(g, 'doorPlus')` → 6 or 7. **Card description must not hardcode `"(max 6)"`** (current Door Staff blurb does). When implementing, derive displayed max from the same expression as the buy path (e.g. `"… (max " + doorMax(g) + ")"`) or drop the parenthetical and show remaining capacity only on the card body. Leaving static "max 6" while allowing a seventh hire is a bug.  
+4. **`doorPlus`** — in buy path and UI max for Door Staff: `max = (BUILDINGS door max) + perk(g, 'doorPlus')` → 6 or 7. Shipped: `doorMax(g)` derives the cap (6 + doorPlus + challenge doorMax), and the card description dynamically substitutes the value for `(max 6)` (game.js).
 5. **`clout25`** — `clout` rate × `(1 + 0.25 * perk(g, 'clout25'))` (rank is 0/1).  
 6. **Purchase action** — `buyPerk(id)`: if rank < max and `g.legacy >= cost` (cost is flat per rank for `cash10`, same 1 Legacy each rank), decrement legacy, increment `g.perks[id]`. No refunds.  
 7. **Shop availability** — Perks panel always visible once `g.prestiges >= 1` **or** `g.legacyTotal > 0` **or** any perk rank > 0. Before first prestige, no Perks UI (Legacy is 0 and unused).

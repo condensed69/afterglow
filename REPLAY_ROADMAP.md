@@ -1,6 +1,7 @@
 # REPLAY_ROADMAP.md — Deepening & Replay Design
 
-**Status:** design lock for a multi-PR roadmap. No code shipped yet.
+**Status:** complete — all 8 PRs shipped (0.11.4–0.11.11); post-polish PRs
+#102–#108 extended it further. See the timeline at the bottom.
 **Scope:** this doc specs the replay/deepening pass — the second prestige layer (core) plus the supporting systems that make the base game worth replaying.
 **Depends on:** everything shipped through v0.11.3 (SAVE_VER 9, `g.clubs` map, second room, pacing.mjs).
 **Save format:** SAVE_VER 9 → **10** (only in the second-prestige PR; earlier PRs are additive-field or derived, no bump).
@@ -15,7 +16,8 @@ This doc is intentionally complete enough that each PR below can be implemented 
 
 The game dead-ends. The current meta-progression is a single prestige layer:
 
-- **8 buildings, 6 upgrades, 4 research, 6 perks, 8 managers, 38 achievements, 4 jobs, ~10 goals, 4 shifts + 3 specials, 2 clubs.**
+- **8 buildings, 6 upgrades, 12 research, 6 perks, 8 managers, 57 achievements,
+  5 jobs, 14 goals, 4 shifts + 3 specials, 3 clubs.**
 - To buy *everything* (max 6 perks + 8 managers) is ~105 Legacy ≈ 15–20 prestiges — then the meta-progression **ends**. There is no "prestige the prestige."
 - Research is 4 flat one-time purchases — no tree, no prerequisites, nothing unlocks a *mechanic*.
 - Achievements are badges (rewards 1–10 Clout/Legacy, none change gameplay).
