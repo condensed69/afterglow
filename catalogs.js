@@ -247,7 +247,16 @@ const AfterglowCatalogs = {
     { id: 'heli_2', name: 'Sky Armada', desc: 'Build 2 Helipads at the Rooftop', check: g => (g.clubs?.rooftop?.b?.heli || 0) >= 2, reward: { legacy: 5 } },
     { id: 'endorse_10', name: 'Sponsored', desc: 'Reach Brand Endorsement level 10', check: g => (g.brandLevel || 0) >= 10, reward: { legacy: 4 } },
     { id: 'endorse_25', name: 'Household Name', desc: 'Reach Brand Endorsement level 25', check: g => (g.brandLevel || 0) >= 25, reward: { legacy: 8 } },
-    { id: 'endorse_50', name: 'Icon', desc: 'Reach Brand Endorsement level 50', check: g => (g.brandLevel || 0) >= 50, reward: { legacy: 16 } }
+    { id: 'endorse_50', name: 'Icon', desc: 'Reach Brand Endorsement level 50', check: g => (g.brandLevel || 0) >= 50, reward: { legacy: 16 } },
+    // Ultra-review W2 (0.11.27): mid-band progression hooks for the 105m–311m dead
+    // zone. Keyed on monotonic account counters the plain pacing bot never advances
+    // (it doesn't prestige), so the main milestone bands stay bit-identical. Legacy
+    // only (Legacy-not-Clout rule); credit both g.legacy AND g.legacyTotal per the
+    // 0.9.5 accounting rule. No save field → SAVE_VER stays 13.
+    { id: 'prestige_15', name: 'Franchise Habit', desc: 'Sign 15 franchise deals', check: g => (g.prestiges || 0) >= 15, reward: { legacy: 3 } },
+    { id: 'prestige_25', name: 'Dynasty', desc: 'Sign 25 franchise deals', check: g => (g.prestiges || 0) >= 25, reward: { legacy: 6 } },
+    { id: 'legacy_125', name: 'Century Club', desc: 'Accumulate 125 lifetime Legacy', check: g => (g.legacyTotal || 0) >= 125, reward: { legacy: 4 } },
+    { id: 'legacy_250', name: 'Old Money', desc: 'Accumulate 250 lifetime Legacy', check: g => (g.legacyTotal || 0) >= 250, reward: { legacy: 8 } }
   ],
 
   // Owner's List — sequential onboarding goals (PLAN-NEXT §B). Exactly one active at a time.

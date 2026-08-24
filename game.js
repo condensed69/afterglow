@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.26', build: 239, channel: 'alpha', date: '2026-08-23', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.27', build: 240, channel: 'alpha', date: '2026-08-23', codename: 'Neon Zero' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -207,6 +207,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.11.27', date: '2026-08-23', codename: 'Neon Zero', notes: [
+        'MID-BAND PROGRESSION (ultra-review W2): the achievement catalog grows 57 → 61 with four progression hooks for the 105m–311m dead zone (all-research owned → franchise gate). Franchise Habit (15 franchise deals) and Dynasty (25 deals) key on g.prestiges; Century Club (125 lifetime Legacy) and Old Money (250 lifetime Legacy) key on g.legacyTotal. The pacing bot\'s plain milestone run never prestiges, so it cannot advance these monotonic counters — every main milestone band stays bit-identical (1.53 / 5.70 / 7.70 / 14.35 / 19.85 / 32.00 / 105.18m). Re-classified from 10/100 to 15/125 after the 11-cycle renown run at 287.70m breached the mid-band ±5% band (296–327m): the low thresholds fired mid-run for +7 Legacy and +1% milk, accelerating the gate ~24m. At 15/125 the 11-cycle run stays clean and the band is green. All four reward Legacy only (crediting both g.legacy and g.legacyTotal per the 0.9.5 accounting rule). The milk multiplier ceiling expands +53% → +57% (57 non-burst of 61 total). SAVE_VER stays 13 — achievements are account-wide and already snapshot/restored in all three reset paths (confirmPrestige, startChallenge, confirmFranchiseSale); no save-shape change.'
+      ] },
       { v: '0.11.26', date: '2026-08-23', codename: 'Neon Zero', notes: [
         'CHALLENGE-TIER ACHIEVEMENTS (post-polish PR 6): the achievement catalog grows 53 → 57 with four tier-aware achievements that celebrate the 12-run challenge ladder, not just the flat "4 challenges done" count — Hardened (any challenge at tier 2), Ironclad (any at tier 3), Gauntlet (all 4 at tier 2), and Legendary (all 4 at tier 3). All reward Legacy only (crediting both g.legacy and g.legacyTotal per the 0.9.5 accounting rule) and read g.challengeTiers — the post-0.11.13 source of truth — not the legacy g.challengesDone array. The milk multiplier ceiling expands +49% → +53% (53 non-burst of 57 total). None fire on the pacing bot\'s standard path (it never starts a challenge), so every pacing band stays bit-identical. SAVE_VER stays 13.'
       ] },
