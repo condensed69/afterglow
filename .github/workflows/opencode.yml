@@ -42,6 +42,7 @@ jobs:
         id: opencode-primary
         uses: anomalyco/opencode/github@latest
         continue-on-error: true
+        timeout-minutes: 15
         env:
           # models.dev registers opencode-go under OPENCODE_API_KEY (not OPENCODE_GO_API_KEY)
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
@@ -51,16 +52,17 @@ jobs:
           use_github_token: true
           share: false
 
-      - name: Run OpenCode (Free Fallback - GLM 5.2)
+      - name: Run OpenCode (Free Fallback - Laguna S 2.1)
         if: steps.opencode-primary.outcome != 'success'
         uses: anomalyco/opencode/github@latest
+        timeout-minutes: 15
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          # OpenRouter's `free` router alias is not an executable model in
-          # OpenCode's catalog. Pin a currently catalogued :free model so the
-          # fallback can actually run when OpenCode Go is unavailable.
-          model: openrouter/z-ai/glm-5.2:free
+          # Pin a catalogued :free code model that is verified through this
+          # repository's current OpenRouter credential. The prior GLM fallback
+          # was intermittently rate-limited upstream.
+          model: openrouter/poolside/laguna-s-2.1:free
           use_github_token: true
           share: false
