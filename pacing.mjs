@@ -355,6 +355,7 @@ function newGame() {
 // instead of sitting silent until the job's own timeout. PACING_BUDGET_MS
 // overrides the default.
 const RUN_BUDGET_MS = Number(process.env.PACING_BUDGET_MS) || 5 * 60 * 1000;
+const ENDGAME_BUDGET_MS = 7 * 60 * 1000;   // endgame probe sits ~1% under the 5-min default; give it headroom so a concurrent gate run can't false-positive exit 2
 
 // --fast (or PACING_FAST=1) skips the three full-cap scenarios — endgameProbe()
 // (unconditional 8h cap), renownRun() (franchise gate, ~5.6h sim), and
@@ -1113,7 +1114,7 @@ withBudget('second-room scenario', RUN_BUDGET_MS, secondRoomRun);
 if (!FAST) {
   withBudget('renown scenario', RUN_BUDGET_MS, renownRun);
   withBudget('mid-band scenario', RUN_BUDGET_MS, midBandRun);
-  withBudget('endgame probe', RUN_BUDGET_MS, endgameProbe);
+  withBudget('endgame probe', ENDGAME_BUDGET_MS, endgameProbe);
 }
 // Force exit on success: confirmPrestige()/the franchise sale start an autosave
 // setInterval that keeps the event loop alive. On the pre-existing failure path
