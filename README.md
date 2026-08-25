@@ -1,5 +1,6 @@
 # stripper-dance
-2D web game: tip the stripper to show her tits
+A neon-noir nightclub-management idle game. Run the room, build the club,
+and grow a franchise.
 
 ## Help & tooltips
 
