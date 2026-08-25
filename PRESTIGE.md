@@ -185,7 +185,7 @@ Single helper used everywhere — no scattered `g.perks?.x` copies.
 ### Apply rules (locked)
 
 1. **`cash10` (House cut — all cash income, including clicks)** — multiplies **every** cash income source by `(1 + 0.15 * perk(g, 'cash10'))`:
-   - **Passive:** `rates().cash` is multiplied by `houseCut = totalCashMult(g)` — the House cut composed with the achievement milk multiplier (`totalCashMult(g)` — the single all-cash composition point (House cut × milk, plus the brand/endorsement/vision/challenge factors; see DESIGN.md §4.2)).
+   - **Passive:** `rates().cash` is multiplied by `houseCut = totalCashMult(g)` — the House cut composed with the achievement milk multiplier and all other cash factors (see DESIGN.md §4.2 for the full 8-factor composition).
    - **Active:** `workCrowd` grants `clickGrant = clickVal × totalCashMult(g)` (the same composed factor). The perk copy "+15% all cash income" is **not** passive-only; the prestige pacing bot also uses `workCrowd` while cash is low, so click mult is load-bearing for the §7 scenario.
 2. **`startCrew` / `startFlyers`** — only in prestige reset path and in `fresh()` when loading a meta-save that already has those perks (new club after prestige, and brand-new game with perks should not happen without prestige; `fresh()` still checks perks so a future "new run keep meta" path is consistent).  
 3. **`offline65`** — `catchUp` uses `dt = wall * (perk(g, 'offline65') ? 0.65 : 0.5)` instead of hardcoded `0.5`. Live `step` unchanged. Away report still honest on gross/wages.  
