@@ -1600,7 +1600,6 @@ class Game {
     g.challengeTiers = ctNext;
 
     // Brand perks (PR 7) — known ids, integer 0–max, fail-closed.
-    if (!g.brand || typeof g.brand !== 'object' || Array.isArray(g.brand)) g.brand = {};
     const brandNext = Object.create(null);
     for (const def of this.BRAND_PERKS) {
       const r = g.brand[def.id];

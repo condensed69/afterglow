@@ -95,7 +95,13 @@ crewMult  = residency ? 1.4 : 1
 cashMult  = (twodrink ? 1.35 : 1) * hypeMult * sm
 bottle    = bottle service ? 2.2 : 1
 houseCut  = totalCashMult(g)                              // multiplies ALL cash income
-totalCashMult(g) = cashIncomeMult(g) × achievementMult(g) // single composition point for ALL cash income: passive rates(), clicks, whale bonus, golden tip
+totalCashMult(g) = cashIncomeMult(g) × achievementMult(g)                       // House cut × milk
+                 × (g.r.brand ? 1.10 : 1)                                      // Brand Licensing research
+                 × (1 + challengeBonus(g).cashMult)                            // challenge permanent rewards
+                 × (1 + 0.10 × brandRank(g, 'nationwide'))                     // Nationwide Reach brand perk
+                 × (1 + 0.02 × brandLevel(g))                                  // Brand Endorsement
+                 × (1 + visionBonus(g))                                        // Vision lifetime-value ladder
+                 × incomeMod                                                   // active challenge incomeMult
 cashIncomeMult(g) = 1 + 0.15 × cash10 perk rank
 achievementMult(g) = 1 + 0.01 × owned non-burst achievements // milk multiplier (REPLAY_ROADMAP §3), unique ids only
 cloutMult = 1 + 0.25 × clout25 perk rank                      // multiplies Clout gain
@@ -896,7 +902,7 @@ the host job adds +0.04 patrons/s each.
 
 **Pacing:** a new "all research owned" milestone (~105 min ±30%) joins
 `pacing.mjs`. The cheapest item is unchanged, so "first research" and every
-earlier band stay bit-identical (1.53 / 7.70 / 5.70 / 14.35 / 19.85 / 32.00 m).
+earlier band stay bit-identical (1.53 / 5.70 / 7.70 / 14.35 / 19.85 / 32.00 m).
 
 **Non-goals:** no per-club research (stays account-level per SECOND_LOCATION.md);
 no research that costs Legacy/Renown (Clout only). No save-shape change —
