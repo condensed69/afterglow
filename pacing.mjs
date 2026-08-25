@@ -355,7 +355,10 @@ function newGame() {
 // instead of sitting silent until the job's own timeout. PACING_BUDGET_MS
 // overrides the default.
 const RUN_BUDGET_MS = Number(process.env.PACING_BUDGET_MS) || 5 * 60 * 1000;
-const ENDGAME_BUDGET_MS = 7 * 60 * 1000;   // endgame probe sits ~1% under the 5-min default; give it headroom so a concurrent gate run can't false-positive exit 2
+// Endgame probe sits ~1% under the 5-min default; give it headroom so a
+// concurrent gate run can't false-positive exit 2. Honors PACING_BUDGET_MS
+// when it RAISES the floor; never lowers below 7m (review #110 nit).
+const ENDGAME_BUDGET_MS = Math.max(Number(process.env.PACING_BUDGET_MS) || 5 * 60 * 1000, 7 * 60 * 1000);
 
 // --fast (or PACING_FAST=1) skips the three full-cap scenarios — endgameProbe()
 // (unconditional 8h cap), renownRun() (franchise gate, ~5.6h sim), and
