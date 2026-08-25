@@ -852,8 +852,8 @@ class Game {
   // each adds +1% to all cash income (passive + active clicks), so the collection is a
   // real progression path, not a checklist. Counts UNIQUE ids (Set-deduped) and EXCLUDES
   // the 4 burst achievements (whale_1/whale_10/special_1/special_5 — driven by live-only
-  // counters), so the deterministic pacing bot sees a stable ceiling of 1.53x (53
-  // non-burst of 57 total). Applied everywhere via totalCashMult(g).
+  // counters), so the deterministic pacing bot sees a stable ceiling of 1.57x (57
+  // non-burst of 61 total). Applied everywhere via totalCashMult(g).
   achievementMult(g) {
     const owned = new Set(Array.isArray(g.achievements) ? g.achievements : []);
     const count = this.ACHIEVEMENTS.filter(a => !a.burst && owned.has(a.id)).length;
