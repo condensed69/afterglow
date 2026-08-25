@@ -343,9 +343,9 @@ test('achievementMult counts unique non-burst achievements (milk multiplier)', (
   const g = game.state.g;
   strictEqual(game.achievementMult(g), 1, '1.00x at 0 achievements');
   g.achievements = game.ACHIEVEMENTS.map(a => a.id);
-  ok(Math.abs(game.achievementMult(g) - 1.53) < 1e-9, '1.53x at all 57 (53 non-burst)');
+  ok(Math.abs(game.achievementMult(g) - 1.57) < 1e-9, '1.57x at all 61 (57 non-burst)');
   g.achievements = game.ACHIEVEMENTS.map(a => a.id).concat(['first_rail', 'first_rail']);
-  ok(Math.abs(game.achievementMult(g) - 1.53) < 1e-9, 'duplicate ids ignored');
+  ok(Math.abs(game.achievementMult(g) - 1.57) < 1e-9, 'duplicate ids ignored');
   g.achievements = ['whale_1', 'whale_10', 'special_1', 'special_5'];
   strictEqual(game.achievementMult(g), 1, 'burst achievements excluded');
 });
@@ -1141,11 +1141,11 @@ test('round_10 unlocks after 10 rounds', () => {
   ok(g.achievements.includes('round_10'), 'round_10 (Toast)');
 });
 
-test('achievement catalog is 57 entries with unique ids', () => {
+test('achievement catalog is 61 entries with unique ids', () => {
   const game = newGame();
   const ids = game.ACHIEVEMENTS.map(a => a.id);
-  strictEqual(ids.length, 57, 'catalog grew 53 → 57 (challenge-tier pass)');
-  strictEqual(new Set(ids).size, 57, 'ids unique');
+  strictEqual(ids.length, 61, 'catalog grew 57 → 61 (ultra-review mid-band pass)');
+  strictEqual(new Set(ids).size, 61, 'ids unique');
 });
 
 test('every new meta achievement is reachable (reachability sweep)', () => {
@@ -1160,14 +1160,15 @@ test('every new meta achievement is reachable (reachability sweep)', () => {
   g.challengesDone = ['tight', 'slim', 'dry', 'lean']; // challenge_1, challenge_all
   g.challengeTiers = { tight: 3, slim: 3, dry: 3, lean: 3 }; // challenge_t2_one/t3_one/t2_all/t3_all
   g.brandLevel = 50; // endorse_5, endorse_10, endorse_25, endorse_50
+  g.prestiges = 25; g.legacyTotal = 250; // prestige_15/25, legacy_125/250 (ultra-review mid-band pass; re-classified from 10/100 to keep 11-cycle renown run clean)
   game.checkAchievements(g);
-  const newIds = ['franchise_1', 'franchise_5', 'franchise_10', 'brand_1', 'brand_max', 'rooftop_1', 'heli_1', 'challenge_1', 'challenge_all', 'challenge_t2_one', 'challenge_t3_one', 'challenge_t2_all', 'challenge_t3_all', 'endorse_5', 'vista_1', 'heli_2', 'endorse_10', 'endorse_25', 'endorse_50'];
+  const newIds = ['franchise_1', 'franchise_5', 'franchise_10', 'brand_1', 'brand_max', 'rooftop_1', 'heli_1', 'challenge_1', 'challenge_all', 'challenge_t2_one', 'challenge_t3_one', 'challenge_t2_all', 'challenge_t3_all', 'endorse_5', 'vista_1', 'heli_2', 'endorse_10', 'endorse_25', 'endorse_50', 'prestige_15', 'prestige_25', 'legacy_125', 'legacy_250'];
   for (const id of newIds) {
     ok(g.achievements.includes(id), `${id} should unlock in reachability fixture`);
   }
   // Also verify the Legacy credits (dual-credit rule: legacy AND legacyTotal)
-  ok(g.legacy >= 73, 'spendable legacy from new achievements');
-  ok(g.legacyTotal >= 73, 'lifetime legacy from new achievements');
+  ok(g.legacy >= 94, 'spendable legacy from new achievements (73 + 21 mid-band)');
+  ok(g.legacyTotal >= 94, 'lifetime legacy from new achievements (73 + 21 mid-band)');
 });
 
 test('brand_max respects per-perk max (rooftop lease max:1)', () => {
