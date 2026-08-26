@@ -2145,9 +2145,7 @@ class Game {
   }
 
   // Weighted pick from SPECIAL_SHIFTS using each entry's `weight` (default 1).
-  // g is currently unused but kept for signature consistency with the other
-  // shift methods, and so future weighting can vary by state (e.g. night/regulars).
-  pickSpecialShift(g) {
+  pickSpecialShift() {
     const table = this.SPECIAL_SHIFTS;
     let total = 0;
     for (const s of table) total += (s.weight || 1);
@@ -2178,7 +2176,7 @@ class Game {
     // _live = false) rolled special shifts and made pacing.mjs seed-dependent.
     // Gating here keeps offline away-time on the base 4-shift rotation.
     if (!specialJustEnded && this._live && Math.random() < this.SPECIAL_CHANCE) {
-      c._specialShift = this.pickSpecialShift(g);
+      c._specialShift = this.pickSpecialShift();
       // 0.10.1: lifetime special-shift counter (drives special_1/special_5).
       g.specialsCount = (g.specialsCount || 0) + 1;
     }
