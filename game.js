@@ -789,6 +789,13 @@ class Game {
     return bonus;
   }
 
+  buildingName(id) {
+    if (!this._buildingMap) {
+      this._buildingMap = new Map(this.BUILDINGS.map(b => [b.id, b.name]));
+    }
+    return this._buildingMap.get(id) || id;
+  }
+
   // Human-readable modifier summary for a challenge card (tier-aware: shows
   // the mod the run would apply at that tier).
   challengeModDesc(d, tier = 1) {
@@ -797,7 +804,7 @@ class Game {
     if (typeof mod.startCash === 'number') parts.push('$' + mod.startCash + ' start');
     if (typeof mod.incomeMult === 'number') parts.push('income ×' + mod.incomeMult);
     if (Array.isArray(mod.locked) && mod.locked.length) {
-      parts.push('locked: ' + mod.locked.map(id => (this.BUILDINGS.find(b => b.id === id) || {}).name || id).join(', '));
+      parts.push('locked: ' + mod.locked.map(id => this.buildingName(id)).join(', '));
     }
     return parts.length ? parts.join(' · ') : 'modified run';
   }

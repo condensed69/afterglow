@@ -5029,6 +5029,13 @@ test('CHALLENGES table is well-formed; rewards never grant Clout', () => {
   }
 });
 
+test('buildingName resolves building names via map and falls back to id', () => {
+  const game = newGame();
+  strictEqual(game.buildingName('rail'), 'Tip Rail');
+  strictEqual(game.buildingName('bar'), 'Back Bar');
+  strictEqual(game.buildingName('unknown_building_id'), 'unknown_building_id');
+});
+
 test('startChallenge resets every club, re-locks the annex, preserves account meta', () => {
   const game = newGame(5000);
   const g = game.state.g;
