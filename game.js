@@ -948,6 +948,10 @@ class Game {
     { id: 'off', name: 'Off Shift', desc: 'No wage drain', prio: 99 }
   ];
 
+  // Pre-computed job eviction order arrays (least-valuable working roles first, prio asc).
+  EVICT_ORDER_WORKING = this.JOBS.filter(j => j.id !== 'off').sort((a, b) => a.prio - b.prio).map(j => j.id);
+  EVICT_ORDER_ALL = ['off'].concat(this.EVICT_ORDER_WORKING);
+
   state = {
     tab: 'club', showChangelog: false, showSettings: false, showPrestige: false, showOpenRoom: false, showFranchise: false, showAchievements: false, tick: 0, saveState: 'idle', resetArmed: false, challengeArmed: null, franchiseArmed: false,
     // Golden-ticket expanded state: badge is small by default; player taps to expand.
@@ -1230,10 +1234,7 @@ class Game {
     else if (jobSum > g.crew) {
       let over = jobSum - g.crew;
       // Evict from off first, then working roles least-valuable-first (prio asc).
-      const evictOrder = ['off'].concat(
-        this.JOBS.filter(j => j.id !== 'off').sort((a, b) => a.prio - b.prio).map(j => j.id)
-      );
-      for (const k of evictOrder) {
+      for (const k of this.EVICT_ORDER_ALL) {
         const take = Math.min(g.jobs[k] || 0, over);
         g.jobs[k] -= take;
         over -= take;
@@ -2795,10 +2796,7 @@ class Game {
     const working = g.crew - (g.jobs.off || 0);
     if (working > cap) {
       let excess = working - cap;
-      const evictOrder = this.JOBS.filter(j => j.id !== 'off')
-        .sort((a, b) => a.prio - b.prio)
-        .map(j => j.id);
-      for (const k of evictOrder) {
+      for (const k of this.EVICT_ORDER_WORKING) {
         const drop = Math.min(g.jobs[k] || 0, excess);
         g.jobs[k] -= drop;
         g.jobs.off = (g.jobs.off || 0) + drop;
