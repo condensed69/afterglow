@@ -684,14 +684,23 @@ class Game {
   // Look up building definition by id using a lazily-initialized Map for O(1) lookups.
   buildingDef(id) {
     if (!this._buildingMap) {
-      this._buildingMap = new Map(this.BUILDINGS.map(b => [b.id, b]));
+      const map = new Map(this.BUILDINGS.map(b => [b.id, b]));
+      if (this.LOCATION_EXTRAS) {
+        for (const loc of Object.keys(this.LOCATION_EXTRAS)) {
+          for (const x of this.extraBuildings(loc)) {
+            map.set(x.id, x);
+          }
+        }
+      }
+      this._buildingMap = map;
     }
     return this._buildingMap.get(id);
   }
 
   // Effective max Door Staff count (base 6 + doorPlus perk).
   doorMax(g) {
-    return (this.buildingDef('door').max || 6) + this.perk(g, 'doorPlus') + this.challengeBonus(g).doorMax;
+    const door = this.buildingDef('door');
+    return ((door && door.max) || 6) + this.perk(g, 'doorPlus') + this.challengeBonus(g).doorMax;
   }
 
   // All job ids in catalog order (off last — the residual pool).
@@ -3465,13 +3474,10 @@ class Game {
     } else if (this.state.tab === 'up') {
       tabHint = 'One-time purchases. Each unlocks once you own enough of the required structure.';
       // Location extras (REPLAY_ROADMAP.md §9) join the shared catalog per club.
-      const bMap = Object.create(null);
-      for (const b of this.BUILDINGS) bMap[b.id] = b.name;
-      for (const b of this.extraBuildings(g.activeClub)) bMap[b.id] = b.name;
       cards = this.UPGRADES.concat(this.extraUpgrades(g.activeClub)).map(d => {
         const reqId = Object.keys(d.req)[0], need = d.req[reqId];
         const have = c.b[reqId] >= need, bought = c.u[d.id], ok = !bought && have && c.cash >= d.cost;
-        const rn = bMap[reqId] || reqId;
+        const rn = (this.buildingDef(reqId) || {}).name || reqId;
         return { name: d.name, desc: d.desc, owned: bought ? 'owned' : '',
           btn: bought ? 'Installed' : 'Buy $' + this.fmt(d.cost),
           meta: bought ? '' : (have ? (ok ? 'affordable' : 'need $' + this.fmt(d.cost - c.cash)) : 'requires ' + rn + ' ×' + need),
@@ -3871,7 +3877,7 @@ class Game {
   }
 
   saveLook() {
-    try { localStorage.setItem(this.LOOK_KEY, JSON.stringify(this.look)); } catch (e) { /* private / quota */ }
+    try { localStorage.setItem(this.LOOK_KEY, JSON.stringify(this.look)); } catch (e) {}
   }
 
   applyLook() {
