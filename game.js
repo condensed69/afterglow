@@ -681,6 +681,14 @@ class Game {
     return this.locationExtras(loc).filter(x => x.kind === 'u');
   }
 
+  // Look up building definition by id using a lazily-initialized Map for O(1) lookups.
+  buildingDef(id) {
+    if (!this._buildingMap) {
+      this._buildingMap = new Map(this.BUILDINGS.map(b => [b.id, b]));
+    }
+    return this._buildingMap.get(id);
+  }
+
   // Effective max Door Staff count (base 6 + doorPlus perk).
   doorMax(g) {
     return (this.BUILDINGS.find(b => b.id === 'door').max || 6) + this.perk(g, 'doorPlus') + this.challengeBonus(g).doorMax;
@@ -2722,7 +2730,7 @@ class Game {
     for (const def of this.MANAGERS) {
       if (!g.managers[def.id]) continue;
       if (g.managerPaused && g.managerPaused[def.id]) continue;
-      const bdef = this.BUILDINGS.find(b => b.id === def.id);
+      const bdef = this.buildingDef(def.id);
       if (!bdef) continue;
       // Challenge lock (REPLAY_ROADMAP.md §6): an owned manager must not
       // auto-buy a structure the active challenge locks.
