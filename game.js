@@ -955,10 +955,6 @@ class Game {
     { id: 'off', name: 'Off Shift', desc: 'No wage drain', prio: 99 }
   ];
 
-  // Pre-computed job eviction order arrays (least-valuable working roles first, prio asc).
-  EVICT_ORDER_WORKING = this.JOBS.filter(j => j.id !== 'off').sort((a, b) => a.prio - b.prio).map(j => j.id);
-  EVICT_ORDER_ALL = ['off'].concat(this.EVICT_ORDER_WORKING);
-
   state = {
     tab: 'club', showChangelog: false, showSettings: false, showPrestige: false, showOpenRoom: false, showFranchise: false, showAchievements: false, tick: 0, saveState: 'idle', resetArmed: false, challengeArmed: null, franchiseArmed: false,
     // Golden-ticket expanded state: badge is small by default; player taps to expand.
@@ -1241,7 +1237,10 @@ class Game {
     else if (jobSum > g.crew) {
       let over = jobSum - g.crew;
       // Evict from off first, then working roles least-valuable-first (prio asc).
-      for (const k of this.EVICT_ORDER_ALL) {
+      const evictOrder = ['off'].concat(
+        this.JOBS.filter(j => j.id !== 'off').sort((a, b) => a.prio - b.prio).map(j => j.id)
+      );
+      for (const k of evictOrder) {
         const take = Math.min(g.jobs[k] || 0, over);
         g.jobs[k] -= take;
         over -= take;
@@ -2152,7 +2151,9 @@ class Game {
   }
 
   // Weighted pick from SPECIAL_SHIFTS using each entry's `weight` (default 1).
-  pickSpecialShift() {
+  // g is currently unused but kept for signature consistency with the other
+  // shift methods, and so future weighting can vary by state (e.g. night/regulars).
+  pickSpecialShift(g) {
     const table = this.SPECIAL_SHIFTS;
     let total = 0;
     for (const s of table) total += (s.weight || 1);
@@ -2183,7 +2184,7 @@ class Game {
     // _live = false) rolled special shifts and made pacing.mjs seed-dependent.
     // Gating here keeps offline away-time on the base 4-shift rotation.
     if (!specialJustEnded && this._live && Math.random() < this.SPECIAL_CHANCE) {
-      c._specialShift = this.pickSpecialShift();
+      c._specialShift = this.pickSpecialShift(g);
       // 0.10.1: lifetime special-shift counter (drives special_1/special_5).
       g.specialsCount = (g.specialsCount || 0) + 1;
     }
@@ -2803,7 +2804,10 @@ class Game {
     const working = g.crew - (g.jobs.off || 0);
     if (working > cap) {
       let excess = working - cap;
-      for (const k of this.EVICT_ORDER_WORKING) {
+      const evictOrder = this.JOBS.filter(j => j.id !== 'off')
+        .sort((a, b) => a.prio - b.prio)
+        .map(j => j.id);
+      for (const k of evictOrder) {
         const drop = Math.min(g.jobs[k] || 0, excess);
         g.jobs[k] -= drop;
         g.jobs.off = (g.jobs.off || 0) + drop;
@@ -3460,10 +3464,13 @@ class Game {
     } else if (this.state.tab === 'up') {
       tabHint = 'One-time purchases. Each unlocks once you own enough of the required structure.';
       // Location extras (REPLAY_ROADMAP.md §9) join the shared catalog per club.
+      const bMap = Object.create(null);
+      for (const b of this.BUILDINGS) bMap[b.id] = b.name;
+      for (const b of this.extraBuildings(g.activeClub)) bMap[b.id] = b.name;
       cards = this.UPGRADES.concat(this.extraUpgrades(g.activeClub)).map(d => {
         const reqId = Object.keys(d.req)[0], need = d.req[reqId];
         const have = c.b[reqId] >= need, bought = c.u[d.id], ok = !bought && have && c.cash >= d.cost;
-        const rn = (this.BUILDINGS.concat(this.extraBuildings(g.activeClub)).find(b => b.id === reqId) || {}).name || reqId;
+        const rn = bMap[reqId] || reqId;
         return { name: d.name, desc: d.desc, owned: bought ? 'owned' : '',
           btn: bought ? 'Installed' : 'Buy $' + this.fmt(d.cost),
           meta: bought ? '' : (have ? (ok ? 'affordable' : 'need $' + this.fmt(d.cost - c.cash)) : 'requires ' + rn + ' ×' + need),
