@@ -681,9 +681,26 @@ class Game {
     return this.locationExtras(loc).filter(x => x.kind === 'u');
   }
 
+  // Look up building definition by id using a lazily-initialized Map for O(1) lookups.
+  buildingDef(id) {
+    if (!this._buildingMap) {
+      const map = new Map(this.BUILDINGS.map(b => [b.id, b]));
+      if (this.LOCATION_EXTRAS) {
+        for (const loc of Object.keys(this.LOCATION_EXTRAS)) {
+          for (const x of this.extraBuildings(loc)) {
+            map.set(x.id, x);
+          }
+        }
+      }
+      this._buildingMap = map;
+    }
+    return this._buildingMap.get(id);
+  }
+
   // Effective max Door Staff count (base 6 + doorPlus perk).
   doorMax(g) {
-    return (this.BUILDINGS.find(b => b.id === 'door').max || 6) + this.perk(g, 'doorPlus') + this.challengeBonus(g).doorMax;
+    const door = this.buildingDef('door');
+    return ((door && door.max) || 6) + this.perk(g, 'doorPlus') + this.challengeBonus(g).doorMax;
   }
 
   // All job ids in catalog order (off last — the residual pool).
@@ -789,13 +806,6 @@ class Game {
     return bonus;
   }
 
-  buildingName(id) {
-    if (!this._buildingMap) {
-      this._buildingMap = new Map(this.BUILDINGS.map(b => [b.id, b.name]));
-    }
-    return this._buildingMap.get(id) || id;
-  }
-
   // Human-readable modifier summary for a challenge card (tier-aware: shows
   // the mod the run would apply at that tier).
   challengeModDesc(d, tier = 1) {
@@ -804,7 +814,7 @@ class Game {
     if (typeof mod.startCash === 'number') parts.push('$' + mod.startCash + ' start');
     if (typeof mod.incomeMult === 'number') parts.push('income ×' + mod.incomeMult);
     if (Array.isArray(mod.locked) && mod.locked.length) {
-      parts.push('locked: ' + mod.locked.map(id => this.buildingName(id)).join(', '));
+      parts.push('locked: ' + mod.locked.map(id => (this.buildingDef(id) || {}).name || id).join(', '));
     }
     return parts.length ? parts.join(' · ') : 'modified run';
   }
@@ -1049,7 +1059,7 @@ class Game {
         // Shift-click on building card = buy max
         if (e.shiftKey && el.dataset.buildingId) {
           e.preventDefault();
-          const def = this.BUILDINGS.find(b => b.id === el.dataset.buildingId);
+          const def = this.buildingDef(el.dataset.buildingId);
           if (def) this.buyBuildingMax(def);
         } else {
           fn(e);
@@ -2729,7 +2739,7 @@ class Game {
     for (const def of this.MANAGERS) {
       if (!g.managers[def.id]) continue;
       if (g.managerPaused && g.managerPaused[def.id]) continue;
-      const bdef = this.BUILDINGS.find(b => b.id === def.id);
+      const bdef = this.buildingDef(def.id);
       if (!bdef) continue;
       // Challenge lock (REPLAY_ROADMAP.md §6): an owned manager must not
       // auto-buy a structure the active challenge locks.
@@ -3464,13 +3474,10 @@ class Game {
     } else if (this.state.tab === 'up') {
       tabHint = 'One-time purchases. Each unlocks once you own enough of the required structure.';
       // Location extras (REPLAY_ROADMAP.md §9) join the shared catalog per club.
-      const bMap = Object.create(null);
-      for (const b of this.BUILDINGS) bMap[b.id] = b.name;
-      for (const b of this.extraBuildings(g.activeClub)) bMap[b.id] = b.name;
       cards = this.UPGRADES.concat(this.extraUpgrades(g.activeClub)).map(d => {
         const reqId = Object.keys(d.req)[0], need = d.req[reqId];
         const have = c.b[reqId] >= need, bought = c.u[d.id], ok = !bought && have && c.cash >= d.cost;
-        const rn = bMap[reqId] || reqId;
+        const rn = (this.buildingDef(reqId) || {}).name || reqId;
         return { name: d.name, desc: d.desc, owned: bought ? 'owned' : '',
           btn: bought ? 'Installed' : 'Buy $' + this.fmt(d.cost),
           meta: bought ? '' : (have ? (ok ? 'affordable' : 'need $' + this.fmt(d.cost - c.cash)) : 'requires ' + rn + ' ×' + need),
@@ -3497,7 +3504,7 @@ class Game {
         const paused = hired && g.managerPaused && g.managerPaused[d.id];
         const level = (g.managerLevels && g.managerLevels[d.id]) || 0;
         const maxed = level >= 3;
-        const bdef = this.BUILDINGS.find(b => b.id === d.id);
+        const bdef = this.buildingDef(d.id);
         const n = c.b[d.id];
         const price = bdef ? Math.floor(bdef.cost * Math.pow(bdef.growth, n)) : 0;
         const max = bdef && bdef.id === 'door' ? this.doorMax(g) : bdef ? bdef.max : null;
