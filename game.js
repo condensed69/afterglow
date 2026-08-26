@@ -668,6 +668,25 @@ class Game {
     return bonus;
   }
 
+  // Look up a building definition by id using a cached Map (O(1)).
+  buildingDef(id) {
+    if (!this._buildingMap) {
+      const map = new Map();
+      if (this.BUILDINGS) {
+        for (const b of this.BUILDINGS) map.set(b.id, b);
+      }
+      if (this.LOCATION_EXTRAS) {
+        for (const loc of Object.values(this.LOCATION_EXTRAS)) {
+          for (const x of loc) {
+            if (x.kind === 'b') map.set(x.id, x);
+          }
+        }
+      }
+      this._buildingMap = map;
+    }
+    return this._buildingMap.get(id);
+  }
+
   // Location-specific content for a club id (REPLAY_ROADMAP.md §9): the extras
   // array, its buildings, or its upgrades. Empty for unknown ids — the shared
   // catalog still applies everywhere.
