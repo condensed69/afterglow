@@ -144,7 +144,7 @@ function xfail(label, fn, reason) {
     console.error(`  FAIL  ${label} (expected to fail — ${reason || 'not yet implemented'})`);
     failed++;
   } catch (_) {
-    console.log(`  xfail ${label} # TODO (xfail): ${reason || 'not yet implemented'}`);
+    console.log(`  ok    ${label} # TODO (xfail): ${reason || 'not yet implemented'}`);
     skipped++;
   }
 }
@@ -5027,6 +5027,13 @@ test('CHALLENGES table is well-formed; rewards never grant Clout', () => {
     ok(!('clout' in c.reward), `${c.id} grants no Clout (Legacy-not-Clout rule)`);
     ok(!('legacy' in c.reward), `${c.id} grants no Legacy — derived bonuses only`);
   }
+});
+
+test('buildingName resolves building names via map and falls back to id', () => {
+  const game = newGame();
+  strictEqual(game.buildingName('rail'), 'Tip Rail');
+  strictEqual(game.buildingName('bar'), 'Back Bar');
+  strictEqual(game.buildingName('unknown_building_id'), 'unknown_building_id');
 });
 
 test('startChallenge resets every club, re-locks the annex, preserves account meta', () => {
