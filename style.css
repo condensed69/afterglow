@@ -265,8 +265,12 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
        this is a no-op on Android and modern iOS, but kept for older devices. */
     -webkit-overflow-scrolling: touch;
     /* Promote to compositor layer for smoother scroll (0.11.22). Offloads
-       scrolling to GPU, reducing main thread blocking during touch scroll. */
-    will-change: transform;
+       scrolling to GPU, reducing main thread blocking during touch scroll.
+       0.11.28: `transform` here established a containing block for fixed
+       descendants, so .stage-cta's position:fixed resolved against the shell
+       and scrolled away with content. `scroll-position` keeps the compositing
+       hint without creating a containing block. */
+    will-change: scroll-position;
   }
   .shell-grid > section,
   .shell-grid > aside {
