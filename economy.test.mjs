@@ -6312,6 +6312,18 @@ test('location extra buildings and upgrades affect rates/caps', () => {
   ok(hVista > hNo * 1.39 && hVista < hNo * 1.41, 'vista ×1.40 hype');
 });
 
+test('saveLook handles localStorage setItem failure gracefully', () => {
+  const game = newGame();
+  const origSet = localStorage.setItem;
+  localStorage.setItem = () => { throw new Error('QuotaExceededError'); };
+  try {
+    game.saveLook();
+    ok(true, 'saveLook handled setItem error without throwing');
+  } finally {
+    localStorage.setItem = origSet;
+  }
+});
+
 console.log(`Results: ${passed} passed, ${skipped} skipped, ${failed} failed`);
 console.log('───────────────────────────────────────\n');
 
