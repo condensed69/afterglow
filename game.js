@@ -691,7 +691,7 @@ class Game {
 
   // Effective max Door Staff count (base 6 + doorPlus perk).
   doorMax(g) {
-    return (this.BUILDINGS.find(b => b.id === 'door').max || 6) + this.perk(g, 'doorPlus') + this.challengeBonus(g).doorMax;
+    return (this.buildingDef('door').max || 6) + this.perk(g, 'doorPlus') + this.challengeBonus(g).doorMax;
   }
 
   // All job ids in catalog order (off last — the residual pool).
@@ -805,7 +805,7 @@ class Game {
     if (typeof mod.startCash === 'number') parts.push('$' + mod.startCash + ' start');
     if (typeof mod.incomeMult === 'number') parts.push('income ×' + mod.incomeMult);
     if (Array.isArray(mod.locked) && mod.locked.length) {
-      parts.push('locked: ' + mod.locked.map(id => (this.BUILDINGS.find(b => b.id === id) || {}).name || id).join(', '));
+      parts.push('locked: ' + mod.locked.map(id => (this.buildingDef(id) || {}).name || id).join(', '));
     }
     return parts.length ? parts.join(' · ') : 'modified run';
   }
@@ -1050,7 +1050,7 @@ class Game {
         // Shift-click on building card = buy max
         if (e.shiftKey && el.dataset.buildingId) {
           e.preventDefault();
-          const def = this.BUILDINGS.find(b => b.id === el.dataset.buildingId);
+          const def = this.buildingDef(el.dataset.buildingId);
           if (def) this.buyBuildingMax(def);
         } else {
           fn(e);
@@ -3495,7 +3495,7 @@ class Game {
         const paused = hired && g.managerPaused && g.managerPaused[d.id];
         const level = (g.managerLevels && g.managerLevels[d.id]) || 0;
         const maxed = level >= 3;
-        const bdef = this.BUILDINGS.find(b => b.id === d.id);
+        const bdef = this.buildingDef(d.id);
         const n = c.b[d.id];
         const price = bdef ? Math.floor(bdef.cost * Math.pow(bdef.growth, n)) : 0;
         const max = bdef && bdef.id === 'door' ? this.doorMax(g) : bdef ? bdef.max : null;
