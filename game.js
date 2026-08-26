@@ -4715,3 +4715,5 @@ const game = new Game(document.getElementById('app'));
 game.init();
 game.mountLook();
 game.mountFxLayer();
+
+// smoke test reusable workflow
