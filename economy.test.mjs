@@ -126,10 +126,22 @@ const Game = new Function(catSrc + '\n' + stripped + ';\nreturn Game;')();
 
 // ── Test Harness ─────────────────────────────────────────────────────────────
 let passed = 0, failed = 0, skipped = 0;
+const pendingTests = [];
 
 function test(label, fn) {
   try {
-    fn();
+    const res = fn();
+    if (res && typeof res.then === 'function') {
+      const p = res.then(() => {
+        passed++;
+      }).catch(e => {
+        console.error(`  FAIL  ${label}`);
+        console.error(`        ${e.message}`);
+        failed++;
+      });
+      pendingTests.push(p);
+      return p;
+    }
     passed++;
   } catch (e) {
     console.error(`  FAIL  ${label}`);
@@ -3050,6 +3062,63 @@ test('downloadSave sets saveState downloaded (Blob path)', () => {
   ok(typeof v.downloadSave === 'function', 'downloadSave handler present');
   v.downloadSave();
   strictEqual(game.state.saveState, 'downloaded');
+});
+
+test('exportSave writes clipboard payload and sets saveState copied', async () => {
+  const game = newGame(20);
+  let writtenText = null;
+  const origNav = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  Object.defineProperty(globalThis, 'navigator', {
+    value: {
+      clipboard: {
+        writeText: async (text) => {
+          writtenText = text;
+        }
+      }
+    },
+    configurable: true,
+    writable: true
+  });
+  try {
+    const v = game.renderVals();
+    ok(typeof v.exportSave === 'function', 'exportSave handler present');
+    await v.exportSave();
+    strictEqual(game.state.saveState, 'copied');
+    ok(writtenText != null, 'writeText received serialized save payload');
+    const parsed = JSON.parse(writtenText);
+    strictEqual(parsed.saveVer, game.SAVE_VER);
+    strictEqual(parsed.ver, game.VERSION.num);
+    strictEqual(parsed.build, game.VERSION.build);
+    strictEqual(parsed.g.clubs.main.cash, 20);
+  } finally {
+    if (origNav) Object.defineProperty(globalThis, 'navigator', origNav);
+    else delete globalThis.navigator;
+  }
+});
+
+test('exportSave handles clipboard error and sets saveState clipboard failed', async () => {
+  const game = newGame(20);
+  const origNav = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  Object.defineProperty(globalThis, 'navigator', {
+    value: {
+      clipboard: {
+        writeText: async () => {
+          throw new Error('Clipboard write permission denied');
+        }
+      }
+    },
+    configurable: true,
+    writable: true
+  });
+  try {
+    const v = game.renderVals();
+    ok(typeof v.exportSave === 'function', 'exportSave handler present');
+    await v.exportSave();
+    strictEqual(game.state.saveState, 'clipboard failed');
+  } finally {
+    if (origNav) Object.defineProperty(globalThis, 'navigator', origNav);
+    else delete globalThis.navigator;
+  }
 });
 
 test('importSaveFile routes FileReader text into importSaveFromText', () => {
@@ -6330,6 +6399,8 @@ test('saveLook handles localStorage setItem failure gracefully', () => {
     localStorage.setItem = origSet;
   }
 });
+
+if (pendingTests.length > 0) await Promise.all(pendingTests);
 
 console.log(`Results: ${passed} passed, ${skipped} skipped, ${failed} failed`);
 console.log('───────────────────────────────────────\n');
