@@ -955,6 +955,10 @@ class Game {
     { id: 'off', name: 'Off Shift', desc: 'No wage drain', prio: 99 }
   ];
 
+  // Pre-computed job eviction order arrays (least-valuable working roles first, prio asc).
+  EVICT_ORDER_WORKING = this.JOBS.filter(j => j.id !== 'off').sort((a, b) => a.prio - b.prio).map(j => j.id);
+  EVICT_ORDER_ALL = ['off'].concat(this.EVICT_ORDER_WORKING);
+
   state = {
     tab: 'club', showChangelog: false, showSettings: false, showPrestige: false, showOpenRoom: false, showFranchise: false, showAchievements: false, tick: 0, saveState: 'idle', resetArmed: false, challengeArmed: null, franchiseArmed: false,
     // Golden-ticket expanded state: badge is small by default; player taps to expand.
@@ -1237,10 +1241,7 @@ class Game {
     else if (jobSum > g.crew) {
       let over = jobSum - g.crew;
       // Evict from off first, then working roles least-valuable-first (prio asc).
-      const evictOrder = ['off'].concat(
-        this.JOBS.filter(j => j.id !== 'off').sort((a, b) => a.prio - b.prio).map(j => j.id)
-      );
-      for (const k of evictOrder) {
+      for (const k of this.EVICT_ORDER_ALL) {
         const take = Math.min(g.jobs[k] || 0, over);
         g.jobs[k] -= take;
         over -= take;
@@ -2151,9 +2152,7 @@ class Game {
   }
 
   // Weighted pick from SPECIAL_SHIFTS using each entry's `weight` (default 1).
-  // g is currently unused but kept for signature consistency with the other
-  // shift methods, and so future weighting can vary by state (e.g. night/regulars).
-  pickSpecialShift(g) {
+  pickSpecialShift() {
     const table = this.SPECIAL_SHIFTS;
     let total = 0;
     for (const s of table) total += (s.weight || 1);
@@ -2184,7 +2183,7 @@ class Game {
     // _live = false) rolled special shifts and made pacing.mjs seed-dependent.
     // Gating here keeps offline away-time on the base 4-shift rotation.
     if (!specialJustEnded && this._live && Math.random() < this.SPECIAL_CHANCE) {
-      c._specialShift = this.pickSpecialShift(g);
+      c._specialShift = this.pickSpecialShift();
       // 0.10.1: lifetime special-shift counter (drives special_1/special_5).
       g.specialsCount = (g.specialsCount || 0) + 1;
     }
@@ -2804,10 +2803,7 @@ class Game {
     const working = g.crew - (g.jobs.off || 0);
     if (working > cap) {
       let excess = working - cap;
-      const evictOrder = this.JOBS.filter(j => j.id !== 'off')
-        .sort((a, b) => a.prio - b.prio)
-        .map(j => j.id);
-      for (const k of evictOrder) {
+      for (const k of this.EVICT_ORDER_WORKING) {
         const drop = Math.min(g.jobs[k] || 0, excess);
         g.jobs[k] -= drop;
         g.jobs.off = (g.jobs.off || 0) + drop;

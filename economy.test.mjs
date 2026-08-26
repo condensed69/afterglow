@@ -4556,9 +4556,9 @@ test('weighted selection respects the no-repeat constraint', () => {
 test('pickSpecialShift is weighted by each entry weight field', () => {
   const game = newGame();
   // Total weight = 4+3+3 = 10. Roll 0.0 → first, 0.45 (=4.5) → second, 0.99 (=9.9) → third.
-  withRandom([0.0], () => strictEqual(game.pickSpecialShift(game.state.g), 0));
-  withRandom([0.45], () => strictEqual(game.pickSpecialShift(game.state.g), 1));
-  withRandom([0.99], () => strictEqual(game.pickSpecialShift(game.state.g), 2));
+  withRandom([0.0], () => strictEqual(game.pickSpecialShift(), 0));
+  withRandom([0.45], () => strictEqual(game.pickSpecialShift(), 1));
+  withRandom([0.99], () => strictEqual(game.pickSpecialShift(), 2));
 });
 
 test('special shifts work inside catchUp() (offline-progress slices)', () => {
