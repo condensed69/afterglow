@@ -272,7 +272,7 @@ const AfterglowCatalogs = {
     {
       id: 'rail', title: 'Brass brings tips',
       why: 'Patrons standing at a rail tip +$0.06/s each. Tips are your first real income.',
-      hint: 'Club tab → Tip Rail. Click "Work the room" to afford it.',
+      hint: 'Club tab → Tip Rail. Fund it by tapping Work the room — a long stretch of taps (the button shows each tap\'s pay), or let walk-ins fill the till slowly. Tips then pay +$0.06/s per patron.',
       reward: { cash: 12, clout: 0 },
       check: g => (g.b && g.b.rail || 0) >= 1,
       progress: null
@@ -280,7 +280,7 @@ const AfterglowCatalogs = {
     {
       id: 'word', title: 'Get the word out',
       why: 'Buzz is how strangers find the door. Without it the floor stays empty.',
-      hint: 'Club tab → Flyer Crew. Buzz ticks up on its own after that.',
+      hint: 'Club tab → Flyer Crew. Same funding grind — tap Work the room until it\'s in reach. Buzz then ticks up on its own.',
       reward: { cash: 15, clout: 0 },
       check: g => (g.b && g.b.flyers || 0) >= 1,
       progress: null
