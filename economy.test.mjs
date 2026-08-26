@@ -156,7 +156,7 @@ function xfail(label, fn, reason) {
     console.error(`  FAIL  ${label} (expected to fail — ${reason || 'not yet implemented'})`);
     failed++;
   } catch (_) {
-    console.log(`  ok    ${label} # TODO (xfail): ${reason || 'not yet implemented'}`);
+    console.log(`  xfail ${label} # TODO: ${reason || 'not yet implemented'}`);
     skipped++;
   }
 }
