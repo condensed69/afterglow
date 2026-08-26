@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.27', build: 240, channel: 'alpha', date: '2026-08-23', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.28', build: 241, channel: 'alpha', date: '2026-08-25', codename: 'Neon Zero' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -207,6 +207,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.11.28', date: '2026-08-25', codename: 'Neon Zero', notes: [
+        'MOBILE COLD-START LAYOUT (adversarial-UX follow-up): on phones the active goal now auto-scrolls its target card into view — Club-tab building goals (Tip Rail, Flyer Crew, VIP Booth, Dressing Room) bring the buy row to the visible band, clear of the pinned action bar, once per goal (transient UI state, never persisted). The stage action bar (Work the room / Buy a round) is now truly viewport-pinned: .shell-grid swaps will-change: transform for scroll-position, which keeps the 0.11.22 GPU-scroll promotion without creating the containing block that let the pinned bar scroll away with the shell content exactly when you scrolled down to buy something. CSS plus one guarded render hook — no save shape (SAVE_VER stays 13), no economy, pacing bands bit-identical.'
+      ] },
       { v: '0.11.27', date: '2026-08-23', codename: 'Neon Zero', notes: [
         'MID-BAND PROGRESSION (ultra-review W2): the achievement catalog grows 57 → 61 with four progression hooks for the 105m–311m dead zone (all-research owned → franchise gate). Franchise Habit (15 franchise deals) and Dynasty (25 deals) key on g.prestiges; Century Club (125 lifetime Legacy) and Old Money (250 lifetime Legacy) key on g.legacyTotal. The pacing bot\'s plain milestone run never prestiges, so it cannot advance these monotonic counters — every main milestone band stays bit-identical (1.53 / 5.70 / 7.70 / 14.35 / 19.85 / 32.00 / 105.18m). Re-classified from 10/100 to 15/125 after the 11-cycle renown run at 287.70m breached the mid-band ±5% band (296–327m): the low thresholds fired mid-run for +7 Legacy and +1% milk, accelerating the gate ~24m. At 15/125 the 11-cycle run stays clean and the band is green. All four reward Legacy only (crediting both g.legacy and g.legacyTotal per the 0.9.5 accounting rule). The milk multiplier ceiling expands +53% → +57% (57 non-burst of 61 total). SAVE_VER stays 13 — achievements are account-wide and already snapshot/restored in all three reset paths (confirmPrestige, startChallenge, confirmFranchiseSale); no save-shape change.'
       ] },
@@ -4670,6 +4673,29 @@ class Game {
       const saved = this.scrollSave[el.getAttribute('data-scroll')];
       if (saved) { el.scrollTop = saved[0]; el.scrollLeft = saved[1]; }
     });
+
+    // Cold-start guidance (0.11.28): on phones the active goal's target card can
+    // render below the shell's visible fold (the onboarding stack — goal banner,
+    // VISION block, tab hint — pushes the first building's buy row down). Scroll
+    // that card's buy row into the visible band once per goal, clear of the
+    // pinned stage-CTA. Transient UI state only; no-op under stub DOMs.
+    if (typeof window !== 'undefined' && window.innerWidth <= 900) {
+      const GOAL_BUILDING = { rail: 'rail', word: 'flyers', backstage: 'vip', roster: 'dress' };
+      const goal = this.activeGoal(this.state.g);
+      const bid = goal && GOAL_BUILDING[goal.id];
+      if (bid && this.state.tab === 'club' && this.state.autoScrolledGoal !== goal.id) {
+        const shell = this.root.querySelector('.shell-grid');
+        const btn = this.root.querySelector('[data-building-id="' + bid + '"]');
+        if (shell && btn) {
+          const sb = shell.getBoundingClientRect();
+          const bb = btn.getBoundingClientRect();
+          const cta = this.root.querySelector('.stage-cta');
+          const pad = cta ? cta.getBoundingClientRect().height + 10 : 0;
+          if (bb.bottom > sb.bottom - pad) shell.scrollTop += bb.bottom - (sb.bottom - pad);
+        }
+        this.state.autoScrolledGoal = goal.id;
+      }
+    }
     // Clicks are handled via delegation on this.root (see constructor).
     // data-h indices still index into this.handlers rebuilt each render.
   }
