@@ -2483,20 +2483,24 @@ class Game {
   checkAchievements(g) {
     if (!Array.isArray(g.achievements)) return;
     const c = this.club(g);
+    // Rewards credit c.cash / g.clout / g.legacy(Total) mid-pass, and legacy_50
+    // reads legacyTotal, so re-sync those primitives onto the single view after
+    // each credit to keep every check seeing the freshest value (one spread total).
+    const view = { ...g, ...c, b: c.b, u: c.u };
     for (const ach of this.ACHIEVEMENTS) {
-      // Fresh merged view per check: achievement rewards (Legacy → legacyTotal)
-      // credit DURING the pass, and later checks must see the updated values.
-      if (!g.achievements.includes(ach.id) && ach.check.call(this, this.clubView(g))) {
+      if (!g.achievements.includes(ach.id) && ach.check.call(this, view)) {
         g.achievements.push(ach.id);
         if (ach.reward) {
-          if (ach.reward.cash) c.cash = (c.cash || 0) + ach.reward.cash;
-          if (ach.reward.clout) g.clout = (g.clout || 0) + ach.reward.clout;
+          if (ach.reward.cash) { c.cash = (c.cash || 0) + ach.reward.cash; view.cash = c.cash; }
+          if (ach.reward.clout) { g.clout = (g.clout || 0) + ach.reward.clout; view.clout = g.clout; }
           if (ach.reward.legacy) {
             g.legacy = (g.legacy || 0) + ach.reward.legacy;
             // Achievement Legacy is earned Legacy: credit the lifetime counter too,
             // so legacy_50 (Legacy Builder) and the Perks tab "Total Legacy earned"
             // reflect achievement income, not just prestige gains.
             g.legacyTotal = (g.legacyTotal || 0) + ach.reward.legacy;
+            view.legacy = g.legacy;
+            view.legacyTotal = g.legacyTotal;
           }
         }
         this.push(g, 'Achievement: ' + ach.name + ' — ' + ach.desc, '#ffd700');
