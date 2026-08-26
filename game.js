@@ -3457,10 +3457,13 @@ class Game {
     } else if (this.state.tab === 'up') {
       tabHint = 'One-time purchases. Each unlocks once you own enough of the required structure.';
       // Location extras (REPLAY_ROADMAP.md §9) join the shared catalog per club.
+      const bMap = Object.create(null);
+      for (const b of this.BUILDINGS) bMap[b.id] = b.name;
+      for (const b of this.extraBuildings(g.activeClub)) bMap[b.id] = b.name;
       cards = this.UPGRADES.concat(this.extraUpgrades(g.activeClub)).map(d => {
         const reqId = Object.keys(d.req)[0], need = d.req[reqId];
         const have = c.b[reqId] >= need, bought = c.u[d.id], ok = !bought && have && c.cash >= d.cost;
-        const rn = (this.BUILDINGS.concat(this.extraBuildings(g.activeClub)).find(b => b.id === reqId) || {}).name || reqId;
+        const rn = bMap[reqId] || reqId;
         return { name: d.name, desc: d.desc, owned: bought ? 'owned' : '',
           btn: bought ? 'Installed' : 'Buy $' + this.fmt(d.cost),
           meta: bought ? '' : (have ? (ok ? 'affordable' : 'need $' + this.fmt(d.cost - c.cash)) : 'requires ' + rn + ' ×' + need),
