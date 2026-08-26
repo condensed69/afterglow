@@ -3877,7 +3877,7 @@ class Game {
   }
 
   saveLook() {
-    try { localStorage.setItem(this.LOOK_KEY, JSON.stringify(this.look)); } catch (e) {}
+    try { localStorage.setItem(this.LOOK_KEY, JSON.stringify(this.look)); } catch (e) { /* private / quota */ }
   }
 
   applyLook() {

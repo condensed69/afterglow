@@ -5029,6 +5029,13 @@ test('CHALLENGES table is well-formed; rewards never grant Clout', () => {
   }
 });
 
+test('buildingDef resolves building definitions via map and falls back to undefined', () => {
+  const game = newGame();
+  strictEqual(game.buildingDef('rail').name, 'Tip Rail');
+  strictEqual(game.buildingDef('bar').name, 'Back Bar');
+  strictEqual(game.buildingDef('unknown_building_id'), undefined);
+});
+
 test('startChallenge resets every club, re-locks the annex, preserves account meta', () => {
   const game = newGame(5000);
   const g = game.state.g;
@@ -6310,6 +6317,18 @@ test('location extra buildings and upgrades affect rates/caps', () => {
   rt.u.vista = true;
   const hVista = g3.rates(g3.state.g).hype;
   ok(hVista > hNo * 1.39 && hVista < hNo * 1.41, 'vista ×1.40 hype');
+});
+
+test('saveLook handles localStorage setItem failure gracefully', () => {
+  const game = newGame();
+  const origSet = localStorage.setItem;
+  localStorage.setItem = () => { throw new Error('QuotaExceededError'); };
+  try {
+    game.saveLook();
+    ok(true, 'saveLook handled setItem error without throwing');
+  } finally {
+    localStorage.setItem = origSet;
+  }
 });
 
 console.log(`Results: ${passed} passed, ${skipped} skipped, ${failed} failed`);
