@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.36', build: 249, channel: 'alpha', date: '2026-08-27', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.37', build: 250, channel: 'alpha', date: '2026-08-27', codename: 'Neon Zero' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -208,6 +208,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.11.37', date: '2026-08-27', codename: 'Neon Zero', notes: [
+        'CHALLENGE CHIP A11Y (a11y polish): the HUD chip End button now exposes title + aria-label "End challenge — no reward" so screen readers and hover match the Perks-card affordance. One attribute, no visual change, no save shape (SAVE_VER stays 13), pacing bit-identical.'
+      ] },
       { v: '0.11.36', date: '2026-08-27', codename: 'Neon Zero', notes: [
         'DOCS SWEEP 0.11.26→0.11.35 (no behavior change): DESIGN.md spec target, ancestry, achievement counts (57→61), z-index ladder (20/60/65/70), and ledger/chip copy updated to match shipped HUD chip (no "Challenge active:" prefix) and golden-over-modals. SAVE_VER stays 13, pacing bit-identical.'
       ] },
@@ -4546,7 +4549,7 @@ class Game {
     <span class="ticker-text" style="font-size:11px;color:#9c86ab;text-overflow:ellipsis;overflow:hidden">${v.ticker}</span>
   </div>
 
-  ${v.challengeChip ? `<div style="position:relative;z-index:65;display:flex;align-items:center;gap:10px;padding:6px 12px;background:#1a0d2e;border-bottom:1px solid #3a2350;flex-wrap:wrap"><span style="font-size:9px;letter-spacing:2.4px;text-transform:uppercase;color:#e879f9;font-weight:700">Challenge</span><span style="font-size:11px;color:#f3e2c2;flex:1;min-width:0">${v.challengeChip.label}</span><button data-h="${this.bind(v.challengeChip.endChallenge)}" style="flex:0 0 auto;min-height:44px;min-width:44px;background:#170e22;border:1px solid #3a2350;border-radius:6px;color:#e7d8f2;font-size:11px;font-weight:700;padding:8px 12px;cursor:pointer">End · no reward</button></div>` : ''}
+  ${v.challengeChip ? `<div style="position:relative;z-index:65;display:flex;align-items:center;gap:10px;padding:6px 12px;background:#1a0d2e;border-bottom:1px solid #3a2350;flex-wrap:wrap"><span style="font-size:9px;letter-spacing:2.4px;text-transform:uppercase;color:#e879f9;font-weight:700">Challenge</span><span style="font-size:11px;color:#f3e2c2;flex:1;min-width:0">${v.challengeChip.label}</span><button data-h="${this.bind(v.challengeChip.endChallenge)}" title="End challenge — no reward" aria-label="End challenge — no reward" style="flex:0 0 auto;min-height:44px;min-width:44px;background:#170e22;border:1px solid #3a2350;border-radius:6px;color:#e7d8f2;font-size:11px;font-weight:700;padding:8px 12px;cursor:pointer">End · no reward</button></div>` : ''}
 
   ${this.goldenTicketBanner(v)}
 
