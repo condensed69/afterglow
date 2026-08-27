@@ -540,6 +540,54 @@ test('session deltas frame stats since first render (no save field)', () => {
   strictEqual(JSON.stringify(g).includes('sessionSnap'), false, 'sessionSnap is not persisted');
 });
 
+test('session strip shows earned vs spent after a cash purchase (YELLOW-6)', () => {
+  const game = newGame(500);
+  const g = game.state.g;
+  const c = game.club(g);
+  game.renderVals(); // capture snap (cash 500)
+  const snapCash = c.cash;
+  // Buy a building: rail costs 140 at n=0, cash falls but earned/spent split shows.
+  const rail = game.BUILDINGS.find(b => b.id === 'rail');
+  game.buyBuilding(rail, 1);
+  ok(game.sessionSpent > 0, 'sessionSpent incremented after buyBuilding (' + game.sessionSpent + ')');
+  const v = game.renderVals();
+  const cash = v.sessionDeltas.find(d => d.label === 'Cash').val;
+  // Pin the exact display string: no income, 500 → 360 after 140 spend → +$0.00 · −$140
+  strictEqual(cash, '+$0.00 \u00b7 \u2212$140', 'exact cash delta string: ' + cash);
+  // Earned = cash - snap + spent must be >=0, spent is the price, so fake negative gone.
+  const spent = game.sessionSpent;
+  const earned = Math.max(0, c.cash - snapCash + spent);
+  ok(earned >= 0 && spent >= 0, 'earned/spent both non-negative (earned ' + earned + ', spent ' + spent + ')');
+  strictEqual(spent, 140, 'spent equals rail price 140');
+  // sessionSpent is transient, not persisted
+  strictEqual(JSON.stringify(g).includes('sessionSpent'), false, 'sessionSpent not persisted');
+  // When nothing spent, keep single-value format (covered by prior test) — and a second purchase cumulates
+  game.buyBuilding(rail, 1); // second rail price grows
+  ok(game.sessionSpent > 140, 'spent cumulates across buys (' + game.sessionSpent + ')');
+});
+
+test('session strip covers manager auto-buys after the snap — returning-player path (YELLOW-6)', () => {
+  const game = newGame(500);
+  const g = game.state.g;
+  const c = game.club(g);
+  game.renderVals(); // snap at 500
+  const snapCash = c.cash;
+  // Returning player: manager hired earlier, fires after snap with no income.
+  g.managers.rail = true;
+  g.managerLevels.rail = 0;
+  c.cash = 500;
+  c.b.rail = 0;
+  // Ensure no strike: non-crew income must cover wages; with 0 crew it never strikes.
+  const spentBefore = game.sessionSpent || 0;
+  game.autoBuyManagers(g, { log: false });
+  ok(game.sessionSpent > spentBefore, 'manager auto-buy increments sessionSpent (' + spentBefore + ' → ' + game.sessionSpent + ')');
+  const v = game.renderVals();
+  const cash = v.sessionDeltas.find(d => d.label === 'Cash').val;
+  // Exact string again: same math as manual buy — one rail for 140, no income
+  strictEqual(cash, '+$0.00 \u00b7 \u2212$140', 'manager path exact cash delta: ' + cash);
+  strictEqual(JSON.stringify(g).includes('sessionSpent'), false, 'sessionSpent still not persisted after manager buy');
+});
+
 test('clout25 multiplier scales rates().clout', () => {
   const game = newGame();
   const g = game.state.g;
