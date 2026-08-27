@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.35', build: 248, channel: 'alpha', date: '2026-08-27', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.36', build: 249, channel: 'alpha', date: '2026-08-27', codename: 'Neon Zero' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -208,6 +208,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.11.36', date: '2026-08-27', codename: 'Neon Zero', notes: [
+        'DOCS SWEEP 0.11.26→0.11.35 (no behavior change): DESIGN.md spec target, ancestry, achievement counts (57→61), z-index ladder (20/60/65/70), and ledger/chip copy updated to match shipped HUD chip (no "Challenge active:" prefix) and golden-over-modals. SAVE_VER stays 13, pacing bit-identical.'
+      ] },
       { v: '0.11.35', date: '2026-08-27', codename: 'Neon Zero', notes: [
         'GOLDEN TICKET ABOVE MODALS (YELLOW-8, CSS-only): the VIP badge/banner now sits at z-index 65 — above modal backdrops (60) and below the Look panel (70) — so a pending 30s offer stays visible and tappable even with Settings/Perks/Changelog open, instead of expiring unseen behind the backdrop. The badge keeps its compact non-blocking form. No save shape (SAVE_VER stays 13), pacing bit-identical (live-only, bot never drives golden).'
       ] },
