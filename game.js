@@ -3765,7 +3765,7 @@ class Game {
       prestigeNight,
       confirmPrestige: () => this.confirmPrestige(),
       // YELLOW-7: persistent challenge HUD chip (render-only, no save shape)
-      challengeChip: (() => { const def = this.activeChallenge(g); return def ? { label: `Challenge active: ${this.escapeHtml(def.name)} T${g.challengeTier || 1}`, endChallenge: () => this.endChallenge() } : null; })(),
+      challengeChip: (() => { const def = this.activeChallenge(g); return def ? { label: `${this.escapeHtml(def.name)} T${g.challengeTier || 1}`, endChallenge: () => this.endChallenge() } : null; })(),
       // Second prestige layer (REPLAY_ROADMAP.md §8): franchise sale gate +
       // Renown readout for the modal and the Perks panel.
       franchiseGate: this.franchiseGate(g),
@@ -4540,7 +4540,7 @@ class Game {
     <span class="ticker-text" style="font-size:11px;color:#9c86ab;text-overflow:ellipsis;overflow:hidden">${v.ticker}</span>
   </div>
 
-  ${v.challengeChip ? `<div style=\"display:flex;align-items:center;gap:10px;padding:6px 12px;background:#1a0d2e;border-bottom:1px solid #3a2350;flex-wrap:wrap\"><span style=\"font-size:9px;letter-spacing:2.4px;text-transform:uppercase;color:#e879f9;font-weight:700\">Challenge</span><span style=\"font-size:11px;color:#f3e2c2;flex:1;min-width:0\">${v.challengeChip.label}</span><button data-h=\"${this.bind(v.challengeChip.endChallenge)}\" style=\"flex:0 0 auto;min-height:44px;min-width:44px;background:#170e22;border:1px solid #3a2350;border-radius:6px;color:#e7d8f2;font-size:11px;font-weight:700;padding:8px 12px;cursor:pointer\">End</button></div>` : ''}
+  ${v.challengeChip ? `<div style=\"display:flex;align-items:center;gap:10px;padding:6px 12px;background:#1a0d2e;border-bottom:1px solid #3a2350;flex-wrap:wrap\"><span style=\"font-size:9px;letter-spacing:2.4px;text-transform:uppercase;color:#e879f9;font-weight:700\">Challenge</span><span style=\"font-size:11px;color:#f3e2c2;flex:1;min-width:0\">${v.challengeChip.label}</span><button data-h=\"${this.bind(v.challengeChip.endChallenge)}\" style=\"flex:0 0 auto;min-height:44px;min-width:44px;background:#170e22;border:1px solid #3a2350;border-radius:6px;color:#e7d8f2;font-size:11px;font-weight:700;padding:8px 12px;cursor:pointer\">End · no reward</button></div>` : ''}
 
   ${this.goldenTicketBanner(v)}
 
