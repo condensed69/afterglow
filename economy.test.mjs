@@ -540,6 +540,33 @@ test('session deltas frame stats since first render (no save field)', () => {
   strictEqual(JSON.stringify(g).includes('sessionSnap'), false, 'sessionSnap is not persisted');
 });
 
+test('session strip shows earned vs spent after a cash purchase (YELLOW-6)', () => {
+  const game = newGame(500);
+  const g = game.state.g;
+  const c = game.club(g);
+  game.renderVals(); // capture snap (cash 500)
+  const snapCash = c.cash;
+  // Buy a building: rail costs 140 at n=0, cash falls but earned/spent split shows.
+  const rail = game.BUILDINGS.find(b => b.id === 'rail');
+  game.buyBuilding(rail, 1);
+  ok(game.sessionSpent > 0, 'sessionSpent incremented after buyBuilding (' + game.sessionSpent + ')');
+  const v = game.renderVals();
+  const cash = v.sessionDeltas.find(d => d.label === 'Cash').val;
+  ok(cash.includes('·'), 'Cash delta splits into earned · spent: ' + cash);
+  ok(cash.startsWith('+$'), 'earned part is non-negative: ' + cash);
+  ok(/\u2212\$$/.test(cash) || cash.includes('\u2212$') || cash.includes('−$'), 'spent part present: ' + cash);
+  // Earned = cash - snap + spent must be >=0, spent is the price, so fake negative gone.
+  const spent = game.sessionSpent;
+  const earned = Math.max(0, c.cash - snapCash + spent);
+  ok(earned >= 0 && spent >= 0, 'earned/spent both non-negative (earned ' + earned + ', spent ' + spent + ')');
+  ok(spent === 140, 'spent equals rail price 140');
+  // sessionSpent is transient, not persisted
+  strictEqual(JSON.stringify(g).includes('sessionSpent'), false, 'sessionSpent not persisted');
+  // When nothing spent, keep single-value format (covered by prior test) — and a second purchase cumulates
+  game.buyBuilding(rail, 1); // second rail price grows
+  ok(game.sessionSpent > 140, 'spent cumulates across buys (' + game.sessionSpent + ')');
+});
+
 test('clout25 multiplier scales rates().clout', () => {
   const game = newGame();
   const g = game.state.g;

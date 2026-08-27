@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.32', build: 245, channel: 'alpha', date: '2026-08-27', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.33', build: 246, channel: 'alpha', date: '2026-08-27', codename: 'Neon Zero' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -73,6 +73,7 @@ class Game {
   // page load starts a fresh session. Populated in renderVals(), never init()
   // (init may still be restoring g from a save mid-load).
   sessionSnap = null;
+  sessionSpent = 0;
 
   // Max seconds of simulated time per catch-up slice (live tick and offline).
   // Re-reading rates() each slice keeps a resumed window from freezing rates
@@ -207,6 +208,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.11.33', date: '2026-08-27', codename: 'Neon Zero', notes: [
+        'SESSION STRIP EARNED VS SPENT (YELLOW-6): the Ledger strip no longer lies about cash — "This session Cash −$219K" was net of manager auto-buys. It now shows earned vs spent (+$X earned · −$Y spent, green/pink) derived from a transient sessionSpent counter fed at the five cash-spend sites (buyBuilding, buyUpgrade, autoBuyManagers, hireCrew, buyRound). When nothing spent, keeps the single-value format. No save shape (SAVE_VER stays 13), pacing bit-identical (render-only, bot does not read sessionDeltas).'
+      ] },
       { v: '0.11.32', date: '2026-08-27', codename: 'Neon Zero', notes: [
         'MANAGER LOG AGGREGATION (YELLOW-5): autoBuyManagers no longer floods the Night Log with one line per manager per 0.1s tick — purchases now aggregate to a single line per tick (\"Managers built N buildings for $X.\") regardless of how many manager types fired, so goals/achievements/away-report stay visible in the 40-entry log. Buy math is byte-identical; pacing bot never passes opts.log so all five bands stay bit-identical (no save shape, SAVE_VER stays 13).'
       ] },
@@ -2622,6 +2626,7 @@ class Game {
       const price = Math.floor(def.cost * Math.pow(def.growth, n));
       if (c.cash < price) break;
       c.cash -= price;
+      this.sessionSpent = (this.sessionSpent || 0) + price;
       c.b[def.id] = n + 1;
       bought++;
       lastPrice = price;
@@ -2667,6 +2672,7 @@ class Game {
     const reqId = Object.keys(def.req)[0];
     if (c.b[reqId] < def.req[reqId]) return;
     c.cash -= def.cost;
+    this.sessionSpent = (this.sessionSpent || 0) + def.cost;
     c.u[def.id] = true;
     this.push(g, 'Installed ' + def.name + '.', '#ffc94a');
     this.noteGoals(g);
@@ -2791,6 +2797,7 @@ class Game {
         bought++;
         here++;
         totalSpent += price;
+        this.sessionSpent = (this.sessionSpent || 0) + price;
       }
     }
     if (bought > 0 && opts.log) {
@@ -3105,6 +3112,7 @@ class Game {
     const price = Math.floor(280 * Math.pow(1.38, g.crew));
     if (c.cash < price) return;
     c.cash -= price;
+    this.sessionSpent = (this.sessionSpent || 0) + price;
     g.crew++;
     // New hires open on Main Stage so the room doesn't stay empty after a hire.
     g.jobs.stage++;
@@ -3383,11 +3391,14 @@ class Game {
     // Ledger strip. Render-only — nothing here feeds the economy or the save.
     if (!this.sessionSnap) {
       this.sessionSnap = { cash: c.cash, hype: c.hype, regulars: c.regulars, rounds: g.rounds || 0, clicks: g.clicks || 0 };
+      this.sessionSpent = 0;
     }
     const snap = this.sessionSnap;
+    const spent = this.sessionSpent || 0;
     const deltaFmt = (n, cash) => (n >= 0 ? '+' : '−') + (cash ? '$' : '') + (cash ? this.fmt(Math.abs(n)) : Math.floor(Math.abs(n)));
+    // ponytail: 6 spend sites feed `spent` (buyBuilding, buyUpgrade, autoBuyManagers, hireCrew, buyRound) so the strip never shows a fake loss — O(1) transient counter, no save shape.
     const sessionDeltas = [
-      { label: 'Cash', val: deltaFmt(c.cash - snap.cash, true) },
+      { label: 'Cash', val: spent === 0 ? deltaFmt(c.cash - snap.cash, true) : `+$${this.fmt(Math.max(0, c.cash - snap.cash + spent))} · −$${this.fmt(spent)}` },
       { label: 'Hype', val: deltaFmt(c.hype - snap.hype, false) },
       { label: 'Regulars', val: deltaFmt(c.regulars - snap.regulars, false) },
       { label: 'Rounds', val: deltaFmt((g.rounds || 0) - snap.rounds, false) },
@@ -3806,6 +3817,7 @@ class Game {
       buyRound: () => {
         if (this.state.tabStale || !roundOk) return;
         c.cash -= roundPrice;
+        this.sessionSpent = (this.sessionSpent || 0) + roundPrice;
         c.hype = Math.max(0, Math.min(cap.hype, c.hype + 14));
         g.rounds = (g.rounds || 0) + 1;
         this.push(g, 'Bought the room a round. +' + this.fmt(roundGain) + ' Hype.', '#ffc94a');
@@ -4542,7 +4554,13 @@ class Game {
         <div class="session-strip" style="border:1px solid #221434;border-radius:7px;background:#0f0a18;padding:8px 10px;margin-bottom:12px">
           <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700;margin-bottom:5px">This session</div>
           <div style="display:flex;flex-wrap:wrap;gap:5px 14px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#9c86ab">
-            ${v.sessionDeltas.map(d => `<span>${d.label} <span style="font-weight:600;color:${d.val[0] === '+' ? '#4ade80' : '#ff7aa8'}">${d.val}</span></span>`).join('')}
+            ${v.sessionDeltas.map(d => {
+              if (d.label === 'Cash' && d.val.includes('·')) {
+                const [earned, spent] = d.val.split(' · ');
+                return `<span>${d.label} <span style="font-weight:600;color:#4ade80">${earned}</span> <span style="color:#6f5885">·</span> <span style="font-weight:600;color:#ff7aa8">${spent}</span></span>`;
+              }
+              return `<span>${d.label} <span style="font-weight:600;color:${d.val[0] === '+' ? '#4ade80' : '#ff7aa8'}">${d.val}</span></span>`;
+            }).join('')}
           </div>
         </div>
         ${v.houseChips.length ? `
