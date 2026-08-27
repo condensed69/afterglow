@@ -420,8 +420,8 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
      keeps the last Night-log lines and Systems cards from hiding behind it.
      At 390px the two buttons wrap (240px + 190px + 10px gap > 364px
      content), making the bar ~116px tall (44+44+10+24 padding) — reserve
-     two rows plus a little headroom. z-index 20 sits under modals (60)
-     and Look panel (70), on par with the header. */
+     two rows plus a little headroom. z-index 20 sits under modals (60),
+     golden/challenge banners (65), and Look panel (70), on par with the header. */
   .stage-cta {
     position: fixed;
     left: 0;
