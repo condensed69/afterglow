@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.34', build: 247, channel: 'alpha', date: '2026-08-27', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.35', build: 248, channel: 'alpha', date: '2026-08-27', codename: 'Neon Zero' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -208,6 +208,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.11.35', date: '2026-08-27', codename: 'Neon Zero', notes: [
+        'GOLDEN TICKET ABOVE MODALS (YELLOW-8, CSS-only): the VIP badge/banner now sits at z-index 65 — above modal backdrops (60) and below the Look panel (70) — so a pending 30s offer stays visible and tappable even with Settings/Perks/Changelog open, instead of expiring unseen behind the backdrop. The badge keeps its compact non-blocking form. No save shape (SAVE_VER stays 13), pacing bit-identical (live-only, bot never drives golden).'
+      ] },
       { v: '0.11.34', date: '2026-08-27', codename: 'Neon Zero', notes: [
         'CHALLENGE HUD CHIP (YELLOW-7): an active challenge now has a persistent HUD chip — "Challenge active: <name> T<n>" with an End affordance — rendered as a pinned banner between the ticker and the stage so it never scrolls away and needs no modal. The only prior trace was one log line. The chip reads g.challenge + g.challengeTier via the existing activeChallenge() helper and calls the existing endChallenge() (no new state, no save shape, SAVE_VER stays 13, pacing bot never starts challenges so all five bands stay bit-identical).'
       ] },
@@ -4192,7 +4195,7 @@ class Game {
   goldenTicketBanner(v) {
     if (!v.golden) return '';
     if (v.goldenOpen) {
-      return `<div id="golden-banner" style="flex-wrap:wrap;gap:8px;padding:8px 12px;background:#1a0d2e;border-bottom:1px solid #3a2350;align-items:center">
+      return `<div id="golden-banner" style="position:relative;z-index:65;flex-wrap:wrap;gap:8px;padding:8px 12px;background:#1a0d2e;border-bottom:1px solid #3a2350;align-items:center">
         <span style="font-size:9px;letter-spacing:2.4px;text-transform:uppercase;color:#ffc94a;font-weight:700">Golden ticket</span>
         <span style="font-size:11px;color:#f3e2c2;flex:1;min-width:0">VIP booked the booth.</span>
         <button data-h="${this.bind(v.takeGoldenCash)}" ${v.golden.locked ? 'disabled' : ''} style="flex:0 0 auto;min-height:44px;min-width:44px;background:${v.golden.locked ? '#2a1d0a' : 'linear-gradient(180deg,#ffc94a,#b8860b)'};border:0;border-radius:6px;color:${v.golden.locked ? '#6b5212' : '#1c1105'};font-weight:700;font-size:10px;padding:8px 12px;cursor:${v.golden.locked ? 'not-allowed' : 'pointer'}">+$${this.fmt(v.golden.cashAmount)}</button>
@@ -4200,7 +4203,7 @@ class Game {
         <button data-h="${this.bind(v.closeGolden)}" style="flex:0 0 auto;min-height:44px;min-width:44px;background:transparent;border:0;color:#8b7355;font-size:16px;line-height:1;cursor:pointer;padding:4px 8px">✕</button>
       </div>`;
     }
-    return `<div id="golden-banner" style="flex-wrap:wrap;gap:8px;padding:8px 12px;background:#1a0d2e;border-bottom:1px solid #3a2350;align-items:center">
+    return `<div id="golden-banner" style="position:relative;z-index:65;flex-wrap:wrap;gap:8px;padding:8px 12px;background:#1a0d2e;border-bottom:1px solid #3a2350;align-items:center">
       <span style="font-size:9px;letter-spacing:2.4px;text-transform:uppercase;color:#ffc94a;font-weight:700">Golden ticket</span>
       <span style="font-size:11px;color:#f3e2c2;flex:1;min-width:0">VIP booked the booth.</span>
       <button data-h="${this.bind(v.openGolden)}" style="flex:0 0 auto;min-height:44px;min-width:44px;background:linear-gradient(180deg,#ffc94a,#b8860b);border:0;border-radius:20px;padding:8px 12px;box-shadow:0 0 18px rgba(255,201,74,.45);display:flex;align-items:center;gap:6px;cursor:pointer;animation:pulseDot 1.6s ease-in-out infinite">
@@ -4540,7 +4543,7 @@ class Game {
     <span class="ticker-text" style="font-size:11px;color:#9c86ab;text-overflow:ellipsis;overflow:hidden">${v.ticker}</span>
   </div>
 
-  ${v.challengeChip ? `<div style=\"display:flex;align-items:center;gap:10px;padding:6px 12px;background:#1a0d2e;border-bottom:1px solid #3a2350;flex-wrap:wrap\"><span style=\"font-size:9px;letter-spacing:2.4px;text-transform:uppercase;color:#e879f9;font-weight:700\">Challenge</span><span style=\"font-size:11px;color:#f3e2c2;flex:1;min-width:0\">${v.challengeChip.label}</span><button data-h=\"${this.bind(v.challengeChip.endChallenge)}\" style=\"flex:0 0 auto;min-height:44px;min-width:44px;background:#170e22;border:1px solid #3a2350;border-radius:6px;color:#e7d8f2;font-size:11px;font-weight:700;padding:8px 12px;cursor:pointer\">End · no reward</button></div>` : ''}
+  ${v.challengeChip ? `<div style="position:relative;z-index:65;display:flex;align-items:center;gap:10px;padding:6px 12px;background:#1a0d2e;border-bottom:1px solid #3a2350;flex-wrap:wrap"><span style="font-size:9px;letter-spacing:2.4px;text-transform:uppercase;color:#e879f9;font-weight:700">Challenge</span><span style="font-size:11px;color:#f3e2c2;flex:1;min-width:0">${v.challengeChip.label}</span><button data-h="${this.bind(v.challengeChip.endChallenge)}" style="flex:0 0 auto;min-height:44px;min-width:44px;background:#170e22;border:1px solid #3a2350;border-radius:6px;color:#e7d8f2;font-size:11px;font-weight:700;padding:8px 12px;cursor:pointer">End · no reward</button></div>` : ''}
 
   ${this.goldenTicketBanner(v)}
 
@@ -4629,7 +4632,7 @@ class Game {
         </div>
 
         ${v.golden ? `
-        <div style="position:absolute;right:10px;top:10px;z-index:5;display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+        <div style="position:absolute;right:10px;top:10px;z-index:65;display:flex;flex-direction:column;align-items:flex-end;gap:6px">
           ${v.goldenOpen ? `
           <div style="background:linear-gradient(180deg,#38260a,#1c1105);border:1px solid #ffc94a;border-radius:10px;padding:10px 12px;text-align:left;box-shadow:0 0 28px rgba(255,201,74,.35);min-width:170px;max-width:220px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
