@@ -2638,7 +2638,7 @@ class Game {
       const price = Math.floor(def.cost * Math.pow(def.growth, n));
       if (c.cash < price) break;
       c.cash -= price;
-      this.sessionSpent = (this.sessionSpent || 0) + price;
+      this.sessionSpent += price;
       c.b[def.id] = n + 1;
       bought++;
       lastPrice = price;
@@ -2684,7 +2684,7 @@ class Game {
     const reqId = Object.keys(def.req)[0];
     if (c.b[reqId] < def.req[reqId]) return;
     c.cash -= def.cost;
-    this.sessionSpent = (this.sessionSpent || 0) + def.cost;
+    this.sessionSpent += def.cost;
     c.u[def.id] = true;
     this.push(g, 'Installed ' + def.name + '.', '#ffc94a');
     this.noteGoals(g);
@@ -2809,7 +2809,7 @@ class Game {
         bought++;
         here++;
         totalSpent += price;
-        this.sessionSpent = (this.sessionSpent || 0) + price;
+        this.sessionSpent += price;
       }
     }
     if (bought > 0 && opts.log) {
@@ -3124,7 +3124,7 @@ class Game {
     const price = Math.floor(280 * Math.pow(1.38, g.crew));
     if (c.cash < price) return;
     c.cash -= price;
-    this.sessionSpent = (this.sessionSpent || 0) + price;
+    this.sessionSpent += price;
     g.crew++;
     // New hires open on Main Stage so the room doesn't stay empty after a hire.
     g.jobs.stage++;
@@ -3410,7 +3410,7 @@ class Game {
     const deltaFmt = (n, cash) => (n >= 0 ? '+' : '−') + (cash ? '$' : '') + (cash ? this.fmt(Math.abs(n)) : Math.floor(Math.abs(n)));
     // ponytail: 5 spend sites feed `spent` (buyBuilding, buyUpgrade, autoBuyManagers, hireCrew, buyRound) so the strip never shows a fake loss — O(1) transient counter, no save shape.
     const sessionDeltas = [
-      { label: 'Cash', val: spent === 0 ? deltaFmt(c.cash - snap.cash, true) : `+$${this.fmt(Math.max(0, c.cash - snap.cash + spent))} · −$${this.fmt(spent)}` },
+      { label: 'Cash', val: spent === 0 ? deltaFmt(c.cash - snap.cash, true) : deltaFmt(Math.max(0, c.cash - snap.cash + spent), true) + ' · ' + deltaFmt(-spent, true) },
       { label: 'Hype', val: deltaFmt(c.hype - snap.hype, false) },
       { label: 'Regulars', val: deltaFmt(c.regulars - snap.regulars, false) },
       { label: 'Rounds', val: deltaFmt((g.rounds || 0) - snap.rounds, false) },
@@ -3777,8 +3777,7 @@ class Game {
       challengeChip: (() => { const def = this.activeChallenge(g); return def ? { label: `${this.escapeHtml(def.name)} T${g.challengeTier || 1}`, endChallenge: () => this.endChallenge() } : null; })(),
       // Second prestige layer (REPLAY_ROADMAP.md §8): franchise sale gate +
       // Renown readout for the modal and the Perks panel.
-      franchiseGate: this.franchiseGate(g),
-      franchiseGain: this.franchiseGate(g) ? this.renownGain(g) : 0,
+      ...(() => { const fg = this.franchiseGate(g); return { franchiseGate: fg, franchiseGain: fg ? this.renownGain(g) : 0 }; })(),
       renown: Math.floor(g.renown || 0),
       renownTotal: Math.floor(g.renownTotal || 0),
       confirmFranchiseSale: () => this.confirmFranchiseSale(),
@@ -3831,7 +3830,7 @@ class Game {
       buyRound: () => {
         if (this.state.tabStale || !roundOk) return;
         c.cash -= roundPrice;
-        this.sessionSpent = (this.sessionSpent || 0) + roundPrice;
+        this.sessionSpent += roundPrice;
         c.hype = Math.max(0, Math.min(cap.hype, c.hype + 14));
         g.rounds = (g.rounds || 0) + 1;
         this.push(g, 'Bought the room a round. +' + this.fmt(roundGain) + ' Hype.', '#ffc94a');
