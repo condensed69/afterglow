@@ -6617,6 +6617,26 @@ test('saveLook handles localStorage setItem failure gracefully', () => {
   }
 });
 
+test('challenge HUD chip shows when g.challenge is active and End is invocable (YELLOW-7)', () => {
+  const game = newGame();
+  const g = game.state.g;
+  // No challenge → no chip
+  let v = game.renderVals();
+  strictEqual(v.challengeChip, null, 'no chip when no challenge');
+  // Start challenge via state (bypass 2-click arm for test)
+  g.challenge = 'tight';
+  g.challengeTier = 2;
+  v = game.renderVals();
+  ok(v.challengeChip, 'chip present when challenge active');
+  ok(v.challengeChip.label.includes('Tight Till') && v.challengeChip.label.includes('T2'), 'label: ' + v.challengeChip.label);
+  ok(typeof v.challengeChip.endChallenge === 'function', 'End handler is a function');
+  // End via the chip's handler — same path as the banner button
+  v.challengeChip.endChallenge();
+  strictEqual(g.challenge, null, 'challenge cleared after End');
+  v = game.renderVals();
+  strictEqual(v.challengeChip, null, 'chip gone after End');
+});
+
 if (pendingTests.length > 0) await Promise.all(pendingTests);
 
 console.log(`Results: ${passed} passed, ${skipped} skipped, ${failed} failed`);

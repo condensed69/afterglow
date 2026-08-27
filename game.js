@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.33', build: 246, channel: 'alpha', date: '2026-08-27', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.34', build: 247, channel: 'alpha', date: '2026-08-27', codename: 'Neon Zero' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -208,6 +208,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.11.34', date: '2026-08-27', codename: 'Neon Zero', notes: [
+        'CHALLENGE HUD CHIP (YELLOW-7): an active challenge now has a persistent HUD chip — "Challenge active: <name> T<n>" with an End affordance — rendered as a pinned banner between the ticker and the stage so it never scrolls away and needs no modal. The only prior trace was one log line. The chip reads g.challenge + g.challengeTier via the existing activeChallenge() helper and calls the existing endChallenge() (no new state, no save shape, SAVE_VER stays 13, pacing bot never starts challenges so all five bands stay bit-identical).'
+      ] },
       { v: '0.11.33', date: '2026-08-27', codename: 'Neon Zero', notes: [
         'SESSION STRIP EARNED VS SPENT (YELLOW-6): the Ledger strip no longer lies about cash — "This session Cash −$219K" was net of manager auto-buys. It now shows earned vs spent (+$X earned · −$Y spent, green/pink) derived from a transient sessionSpent counter fed at the five cash-spend sites (buyBuilding, buyUpgrade, autoBuyManagers, hireCrew, buyRound). When nothing spent, keeps the single-value format. No save shape (SAVE_VER stays 13), pacing bit-identical (render-only, bot does not read sessionDeltas).'
       ] },
@@ -3761,6 +3764,8 @@ class Game {
       prestigeRegulars,
       prestigeNight,
       confirmPrestige: () => this.confirmPrestige(),
+      // YELLOW-7: persistent challenge HUD chip (render-only, no save shape)
+      challengeChip: (() => { const def = this.activeChallenge(g); return def ? { label: `Challenge active: ${this.escapeHtml(def.name)} T${g.challengeTier || 1}`, endChallenge: () => this.endChallenge() } : null; })(),
       // Second prestige layer (REPLAY_ROADMAP.md §8): franchise sale gate +
       // Renown readout for the modal and the Perks panel.
       franchiseGate: this.franchiseGate(g),
@@ -4534,6 +4539,8 @@ class Game {
     <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:2px;color:#ff2d78;font-weight:700;flex-shrink:0">TODAY</span>
     <span class="ticker-text" style="font-size:11px;color:#9c86ab;text-overflow:ellipsis;overflow:hidden">${v.ticker}</span>
   </div>
+
+  ${v.challengeChip ? `<div style=\"display:flex;align-items:center;gap:10px;padding:6px 12px;background:#1a0d2e;border-bottom:1px solid #3a2350;flex-wrap:wrap\"><span style=\"font-size:9px;letter-spacing:2.4px;text-transform:uppercase;color:#e879f9;font-weight:700\">Challenge</span><span style=\"font-size:11px;color:#f3e2c2;flex:1;min-width:0\">${v.challengeChip.label}</span><button data-h=\"${this.bind(v.challengeChip.endChallenge)}\" style=\"flex:0 0 auto;min-height:44px;min-width:44px;background:#170e22;border:1px solid #3a2350;border-radius:6px;color:#e7d8f2;font-size:11px;font-weight:700;padding:8px 12px;cursor:pointer\">End</button></div>` : ''}
 
   ${this.goldenTicketBanner(v)}
 
