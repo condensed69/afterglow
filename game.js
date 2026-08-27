@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.31', build: 244, channel: 'alpha', date: '2026-08-27', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.32', build: 245, channel: 'alpha', date: '2026-08-27', codename: 'Neon Zero' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -207,6 +207,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.11.32', date: '2026-08-27', codename: 'Neon Zero', notes: [
+        'MANAGER LOG AGGREGATION (YELLOW-5): autoBuyManagers no longer floods the Night Log with one line per manager per 0.1s tick — purchases now aggregate to a single line per tick (\"Managers built N buildings for $X.\") regardless of how many manager types fired, so goals/achievements/away-report stay visible in the 40-entry log. Buy math is byte-identical; pacing bot never passes opts.log so all five bands stay bit-identical (no save shape, SAVE_VER stays 13).'
+      ] },
       { v: '0.11.31', date: '2026-08-27', codename: 'Neon Zero', notes: [
         'MOBILE LEDGER + TAB BAR STAY IN REACH (RED-3 + YELLOW-4, CSS-only): expanding the Ledger no longer buries the play surface — on phones .ledger-detail caps at min(45vh, 420px) with its own scroll, so the tab row and Systems cards never leave the viewport (the max-height collapse animation is untouched, just capped). The tab bar is now sticky (top:0, z-index:10) inside the mobile shell scroller — long tabs no longer scroll the tabs away mid-session. Purely CSS in the mobile media block — no JS, no save shape (SAVE_VER stays 13), pacing bit-identical.'
       ] },
@@ -2764,6 +2767,7 @@ class Game {
     const strike = opts.strike != null ? opts.strike : this.rates(g).strike;
     if (c.cash <= 0 && strike) return 0;
     let bought = 0;
+    let totalSpent = 0;
     for (const def of this.MANAGERS) {
       if (!g.managers[def.id]) continue;
       if (g.managerPaused && g.managerPaused[def.id]) continue;
@@ -2776,7 +2780,6 @@ class Game {
       const level = (g.managerLevels && g.managerLevels[def.id]) || 0;
       const qtyCap = level >= 3 ? Infinity : (level >= 2 ? 5 : 1);
       let here = 0;
-      let lastPrice = 0;
       while (here < qtyCap) {
         const n = c.b[def.id];
         const max = def.id === 'door' ? this.doorMax(g) : bdef.max;
@@ -2787,13 +2790,11 @@ class Game {
         c.b[def.id] = n + 1;
         bought++;
         here++;
-        lastPrice = price;
+        totalSpent += price;
       }
-      if (here > 0 && opts.log) {
-        this.push(g, here === 1
-          ? 'Manager built ' + bdef.name + ' #' + c.b[def.id] + ' for $' + this.fmt(lastPrice) + '.'
-          : 'Manager built ' + bdef.name + ' ×' + here + ' for $' + this.fmt(lastPrice) + '.', '#a855f7');
-      }
+    }
+    if (bought > 0 && opts.log) {
+      this.push(g, 'Managers built ' + bought + ' building' + (bought === 1 ? '' : 's') + ' for $' + this.fmt(totalSpent) + '.', '#a855f7');
     }
     return bought;
   }

@@ -4553,6 +4553,64 @@ test('autoBuyManagers skips a paused manager even with cash available', () => {
   strictEqual(g.b.rail, before, 'building count unchanged while paused');
 });
 
+test('autoBuyManagers aggregates to one Night Log line per call when log:true (YELLOW-5)', () => {
+  const game = newGame(0);
+  const g = game.state.g;
+  g.legacy = 10;
+  const railMgr = game.MANAGERS.find(m => m.id === 'rail');
+  game.buyManager(railMgr);
+  // Lv2 manager buys up to 5 per tick — set level 2 directly.
+  g.managerLevels.rail = 2;
+  g.cash = 99999;
+  g.b.rail = 0;
+  const beforeLen = g.log.length;
+  const bought = game.autoBuyManagers(g, { log: true });
+  ok(bought > 1, 'Lv2 manager bought multiple buildings (' + bought + ')');
+  strictEqual(g.log.length - beforeLen, 1, 'exactly one log line regardless of count');
+  ok(/Managers built \d+ buildings for \$/.test(g.log[0].msg), 'aggregated message shape: ' + g.log[0].msg);
+  // No stale per-manager wording.
+  ok(!/Manager built /.test(g.log[0].msg), 'no per-manager line: ' + g.log[0].msg);
+});
+
+test('autoBuyManagers log aggregation: two managers still one line, paused manager adds no line', () => {
+  const game = newGame(0);
+  const g = game.state.g;
+  g.legacy = 20;
+  const railMgr = game.MANAGERS.find(m => m.id === 'rail');
+  const barMgr = game.MANAGERS.find(m => m.id === 'bar');
+  game.buyManager(railMgr);
+  game.buyManager(barMgr);
+  g.cash = 99999;
+  g.b.rail = 0;
+  g.b.bar = 0;
+  const beforeLen = g.log.length;
+  const bought = game.autoBuyManagers(g, { log: true });
+  ok(bought >= 2, 'two managers bought at least 2 buildings (' + bought + ')');
+  strictEqual(g.log.length - beforeLen, 1, 'two managers still aggregate to one line');
+  // Paused: the paused manager must not contribute.
+  game.toggleManager(barMgr); // pause bar
+  g.cash = 99999;
+  const len2 = g.log.length;
+  const bought2 = game.autoBuyManagers(g, { log: true });
+  ok(bought2 > 0, 'unpaused manager still buys (' + bought2 + ')');
+  strictEqual(g.log.length - len2, 1, 'paused manager adds no extra line, still one line');
+  ok(/Managers built \d+ building/.test(g.log[0].msg), 'still aggregated after pause: ' + g.log[0].msg);
+});
+
+test('autoBuyManagers with log:true and paused manager produces no line when nothing bought', () => {
+  const game = newGame(0);
+  const g = game.state.g;
+  g.legacy = 10;
+  const railMgr = game.MANAGERS.find(m => m.id === 'rail');
+  game.buyManager(railMgr);
+  game.toggleManager(railMgr); // pause
+  g.cash = 99999;
+  const beforeLen = g.log.length;
+  const bought = game.autoBuyManagers(g, { log: true });
+  strictEqual(bought, 0, 'paused manager buys nothing');
+  strictEqual(g.log.length - beforeLen, 0, 'no log line when paused manager buys nothing');
+});
+
 test('fresh() includes managerPaused map with all false', () => {
   const game = newGame();
   const g = game.fresh();
