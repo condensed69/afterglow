@@ -492,6 +492,29 @@ test('House strip renders only when a derived chip is present', () => {
   strictEqual(JSON.stringify(g).includes('houseChips'), false, 'House chips are not persisted');
 });
 
+test('buy-a-round view model: disabled reason vs enabled (RED-2)', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  const c = game.club(g);
+  // Cash-short: till below roundPrice (fresh: $50 at 0 patrons).
+  c.cash = 0;
+  let v = game.renderVals();
+  ok(v.roundLocked, 'round locked with no cash');
+  ok(v.roundReason && v.roundReason.includes('Need $50'), 'cash-short reason names the shortfall (got: ' + v.roundReason + ')');
+  // Hype-capped: full room energy even with cash in hand.
+  c.cash = 5000;
+  c.hype = game.caps(g).hype;
+  v = game.renderVals();
+  ok(v.roundLocked, 'round locked at full hype');
+  strictEqual(v.roundReason, 'Room energy is full', 'hype-cap reason explains the dead button');
+  // Enabled: affordable and the room has headroom → no reason, no lock.
+  c.hype = 0;
+  c.patrons = 0;
+  v = game.renderVals();
+  strictEqual(v.roundLocked, false, 'round enabled with cash + hype headroom');
+  strictEqual(v.roundReason, null, 'no reason when enabled');
+});
+
 test('session deltas frame stats since first render (no save field)', () => {
   const game = newGame(100);
   const g = game.state.g;
