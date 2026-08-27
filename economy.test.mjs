@@ -5133,6 +5133,94 @@ test('startChallenge resets every club, re-locks the annex, preserves account me
   ok(next.achievements.includes('first_rail'), 'achievements preserved');
 });
 
+test('startChallenge preserves spendable + lifetime Renown', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.regulars = 30; g.night = 10;
+  g.legacy = 8; g.legacyTotal = 20; g.prestiges = 2;
+  g.renown = 7; g.renownTotal = 42;
+  // Pre-record the renown milestone achievements so the post-start
+  // checkAchievements credits nothing new (franchise_1/5 fire at Total 1/30).
+  g.achievements = ['franchise_1', 'franchise_5'];
+  const tight = game.CHALLENGES.find(c => c.id === 'tight');
+  game.startChallenge(tight); // arms
+  game.startChallenge(tight); // confirms
+  const next = game.state.g;
+  strictEqual(next.challenge, 'tight', 'challenge active');
+  strictEqual(next.renown, 7, 'spendable Renown preserved through challenge start');
+  strictEqual(next.renownTotal, 42, 'lifetime Renown preserved through challenge start');
+  const disk = JSON.parse(localStorage.getItem(game.KEY));
+  strictEqual(disk.g.renown, 7, 'disk matches memory renown');
+  strictEqual(disk.g.renownTotal, 42, 'disk matches memory renownTotal');
+});
+
+test('Renown survives a mid-challenge reload', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.regulars = 30; g.night = 10;
+  g.legacy = 8; g.legacyTotal = 20; g.prestiges = 2;
+  g.renown = 3; g.renownTotal = 15;
+  g.achievements = ['franchise_1'];
+  const tight = game.CHALLENGES.find(c => c.id === 'tight');
+  game.startChallenge(tight); game.startChallenge(tight); // arm + confirm (persists)
+  const game2 = new Game(root);
+  game2.forceUpdate = () => {};
+  game2.init();
+  if (game2.timer) clearInterval(game2.timer);
+  if (game2.saver) clearInterval(game2.saver);
+  strictEqual(game2.state.g.challenge, 'tight', 'challenge still active after reload');
+  strictEqual(game2.state.g.renown, 3, 'spendable Renown survives reload');
+  strictEqual(game2.state.g.renownTotal, 15, 'lifetime Renown survives reload');
+});
+
+test('ordinary prestige preserves Renown (spare + lifetime unchanged)', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.regulars = 30; g.night = 10;
+  g.renown = 3; g.renownTotal = 30;
+  game.confirmPrestige();
+  const next = game.state.g;
+  strictEqual(next.prestiges, 1, 'prestige ran');
+  strictEqual(next.renown, 3, 'spendable Renown survives prestige (no gain — Legacy is the prestige grant)');
+  strictEqual(next.renownTotal, 30, 'lifetime Renown survives prestige');
+});
+
+test('franchise-sale → challenge → prestige chain keeps renownTotal monotonic', () => {
+  const game = newGame(5000);
+  const g = gateMetGame(game);
+  g.renown = 1; g.renownTotal = 10;
+  const gain = game.renownGain(g); // sqrt(105)+15/3 = 10+5 = 15
+  game.openFranchise();
+  game.confirmFranchiseSale(); // arms
+  game.confirmFranchiseSale(); // sells
+  const sold = game.state.g;
+  strictEqual(sold.renown, 1 + gain, 'sale grants into preserved spare');
+  strictEqual(sold.renownTotal, 10 + gain, 'sale grants into preserved lifetime');
+  const tight = game.CHALLENGES.find(c => c.id === 'tight');
+  game.startChallenge(tight); game.startChallenge(tight); // arm + confirm
+  const challenged = game.state.g;
+  strictEqual(challenged.renown, 1 + gain, 'challenge start preserves post-sale spare');
+  strictEqual(challenged.renownTotal, 10 + gain, 'challenge start preserves post-sale lifetime');
+  game.club(challenged).regulars = 30; challenged.night = 10;
+  game.confirmPrestige();
+  const prestiged = game.state.g;
+  strictEqual(prestiged.renownTotal, 10 + gain, 'prestige preserves the lifetime counter (monotonic across the whole chain)');
+  strictEqual(prestiged.renown, 1 + gain, 'prestige preserves spendable renown');
+});
+
+test('Perks stays reachable after a challenge start post-sale (metaUnlocked)', () => {
+  const game = newGame(5000);
+  const g = gateMetGame(game);
+  g.renown = 1; g.renownTotal = 10;
+  game.openFranchise();
+  game.confirmFranchiseSale(); // arms
+  game.confirmFranchiseSale(); // sells
+  const tight = game.CHALLENGES.find(c => c.id === 'tight');
+  game.startChallenge(tight); game.startChallenge(tight); // arm + confirm
+  const v = game.renderVals();
+  ok(v.resources.some(r => r.name.startsWith('Legacy')), 'Legacy/meta row present — Perks panel reachable (metaUnlocked stayed true)');
+});
+
 test('challenge incomeMult modifier hits passive AND active clicks', () => {
   const game = newGame(5000);
   const g = game.state.g;

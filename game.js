@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.28', build: 241, channel: 'alpha', date: '2026-08-25', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.29', build: 242, channel: 'alpha', date: '2026-08-27', codename: 'Neon Zero' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -207,6 +207,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.11.29', date: '2026-08-27', codename: 'Neon Zero', notes: [
+        'CHALLENGE START PRESERVES RENOWN (RED-1, currency-loss fix): startChallenge now snapshots and restores g.renown + g.renownTotal like every other account-meta field — previously a challenge start silently zeroed both (fresh() defaults), wiping spendable Renown and the lifetime counter the sale preview promises \'never wipes\' (\'Renown is the brand\'s national footprint — it never wipes.\'), and dropping renownTotal to 0 hid the Perks panel entirely (metaUnlocked keys on it). Ordinary prestige had the same omission and now preserves both counters too (prestige grants Legacy, not Renown — nothing added). No save-shape change (SAVE_VER stays 13), no economy math touched; the pacing bot never holds Renown outside the franchise sale (sales grant it, and the bot\'s prestige loop runs at renown 0), so all five scenario bands stay bit-identical.'
+      ] },
       { v: '0.11.28', date: '2026-08-25', codename: 'Neon Zero', notes: [
         'MOBILE COLD-START LAYOUT (adversarial-UX follow-up): on phones the active goal now auto-scrolls its target card into view — Club-tab building goals (Tip Rail, Flyer Crew, VIP Booth, Dressing Room) bring the buy row to the visible band, clear of the pinned action bar, once per goal (transient UI state, never persisted). The stage action bar (Work the room / Buy a round) is now truly viewport-pinned: .shell-grid swaps will-change: transform for scroll-position, which keeps the 0.11.22 GPU-scroll promotion without creating the containing block that let the pinned bar scroll away with the shell content exactly when you scrolled down to buy something. CSS plus one guarded render hook — no save shape (SAVE_VER stays 13), no economy, pacing bands bit-identical.'
       ] },
@@ -2874,6 +2877,10 @@ class Game {
       managerLevels: {},
       brand: {},
       brandLevel: this.brandLevel(g),
+      // Renown (PR 6) is account meta — spendable + lifetime survive ordinary
+      // prestige unchanged (only the franchise sale re-grants them).
+      renown: (g.renown || 0),
+      renownTotal: (g.renownTotal || 0),
       challengeTiers: {},
       lifetimeEarned: this.lifetimeEarned(g)
     };
@@ -2928,6 +2935,10 @@ class Game {
     // Brand Endorsement level (next-roadmap PR 1) survives too — the repeatable
     // Renown sink is account meta, same class as the ranks.
     next.brandLevel = snapshot.brandLevel;
+    // Renown (PR 6) survives ordinary prestige — prestige grants Legacy, not
+    // Renown; the spare + lifetime counters ride through unchanged.
+    next.renown = snapshot.renown;
+    next.renownTotal = snapshot.renownTotal;
     // Completed challenge tiers (next-roadmap PR 2) survive prestige — the
     // active challenge ends (fresh() clears it), but earned tiers persist.
     for (const ch of this.CHALLENGES) snapshot.challengeTiers[ch.id] = this.challengeTier(g, ch.id);
@@ -3119,6 +3130,10 @@ class Game {
       legacy: (g.legacy || 0), legacyTotal: (g.legacyTotal || 0),
       perks: {}, prestiges: (g.prestiges || 0), managers: {}, managerPaused: {}, managerLevels: {},
       brand: {}, brandLevel: this.brandLevel(g),
+      // Renown (PR 6) is account meta — the sale preview promises it "never
+      // wipes"; a challenge start must restore it like brand ranks, not
+      // inherit fresh()'s zeros (RED-1: it silently zeroed both before).
+      renown: (g.renown || 0), renownTotal: (g.renownTotal || 0),
       challengeTiers: {},
       lifetimeEarned: this.lifetimeEarned(g)
     };
@@ -3156,6 +3171,10 @@ class Game {
     // Brand Endorsement level (next-roadmap PR 1) — same class as the ranks:
     // the repeatable Renown sink must not wipe on a challenge start either.
     next.brandLevel = snapshot.brandLevel;
+    // Renown (PR 6) — spare + lifetime survive a challenge start (RED-1): the
+    // challenge handicaps the run; it does not erase the brand's Renown.
+    next.renown = snapshot.renown;
+    next.renownTotal = snapshot.renownTotal;
     // Lifetime value (next-roadmap PR 4) — survives every reset, challenge
     // starts included: the challenge tests skill under a handicap, it does not
     // erase the brand's cumulative footprint.
