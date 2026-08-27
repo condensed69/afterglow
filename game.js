@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.30', build: 243, channel: 'alpha', date: '2026-08-27', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.31', build: 244, channel: 'alpha', date: '2026-08-27', codename: 'Neon Zero' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -207,6 +207,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.11.31', date: '2026-08-27', codename: 'Neon Zero', notes: [
+        'MOBILE LEDGER + TAB BAR STAY IN REACH (RED-3 + YELLOW-4, CSS-only): expanding the Ledger no longer buries the play surface — on phones .ledger-detail caps at min(45vh, 420px) with its own scroll, so the tab row and Systems cards never leave the viewport (the max-height collapse animation is untouched, just capped). The tab bar is now sticky (top:0, z-index:10) inside the mobile shell scroller — long tabs no longer scroll the tabs away mid-session. Purely CSS in the mobile media block — no JS, no save shape (SAVE_VER stays 13), pacing bit-identical.'
+      ] },
       { v: '0.11.30', date: '2026-08-27', codename: 'Neon Zero', notes: [
         'BUY-A-ROUND DISABLED FEEDBACK (RED-2): a disabled "Buy a round" now explains itself — a muted reason line under the button and a title/aria-label on the button itself: "Need $X more" when the till is short, "Room energy is full" when Hype is capped (previously cash-short and hype-cap rendered identically dead, and a tap during the 10Hz affordability flicker was a silent no-op). Render-only — roundPrice/roundOk math untouched, no save shape (SAVE_VER stays 13), pacing bot reads roundPrice directly so all five bands stay bit-identical.'
       ] },

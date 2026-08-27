@@ -343,8 +343,8 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
     justify-content: center;
   }
   .ledger-detail {
-    max-height: 700px;
-    overflow: hidden;
+    max-height: min(45vh, 420px);
+    overflow-y: auto;
     transition: max-height 0.25s ease, opacity 0.2s ease;
   }
   .ledger-collapsed .ledger-detail {
@@ -530,7 +530,9 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
     margin-right: auto;
   }
   .tab-bar-wrap {
-    position: relative;
+    position: sticky;
+    top: 0;
+    z-index: 10;
   }
   .tab-bar-wrap::after {
     content: '';
