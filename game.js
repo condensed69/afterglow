@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.29', build: 242, channel: 'alpha', date: '2026-08-27', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.30', build: 243, channel: 'alpha', date: '2026-08-27', codename: 'Neon Zero' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -207,6 +207,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.11.30', date: '2026-08-27', codename: 'Neon Zero', notes: [
+        'BUY-A-ROUND DISABLED FEEDBACK (RED-2): a disabled "Buy a round" now explains itself — a muted reason line under the button and a title/aria-label on the button itself: "Need $X more" when the till is short, "Room energy is full" when Hype is capped (previously cash-short and hype-cap rendered identically dead, and a tap during the 10Hz affordability flicker was a silent no-op). Render-only — roundPrice/roundOk math untouched, no save shape (SAVE_VER stays 13), pacing bot reads roundPrice directly so all five bands stay bit-identical.'
+      ] },
       { v: '0.11.29', date: '2026-08-27', codename: 'Neon Zero', notes: [
         'CHALLENGE START PRESERVES RENOWN (RED-1, currency-loss fix): startChallenge now snapshots and restores g.renown + g.renownTotal like every other account-meta field — previously a challenge start silently zeroed both (fresh() defaults), wiping spendable Renown and the lifetime counter the sale preview promises \'never wipes\' (\'Renown is the brand\'s national footprint — it never wipes.\'), and dropping renownTotal to 0 hid the Perks panel entirely (metaUnlocked keys on it). Ordinary prestige had the same omission and now preserves both counters too (prestige grants Legacy, not Renown — nothing added). No save-shape change (SAVE_VER stays 13), no economy math touched; the pacing bot never holds Renown outside the franchise sale (sales grant it, and the bot\'s prestige loop runs at renown 0), so all five scenario bands stay bit-identical.'
       ] },
@@ -3705,6 +3708,12 @@ class Game {
     const hypeRoom = Math.max(0, cap.hype - c.hype);
     const roundGain = Math.min(14, hypeRoom);
     const roundOk = c.cash >= roundPrice && roundGain > 0;
+    // Disabled-state feedback (RED-2): cash-short and hype-cap look identical
+    // on a dead button. Hype cap first — with money in hand a full room reads
+    // as "broken forever", not capped; shortfall is visible in the price label.
+    const roundReason = roundGain <= 0 ? 'Room energy is full'
+      : c.cash < roundPrice ? 'Need $' + this.fmt(roundPrice - c.cash) + ' more'
+      : null;
 
     // Prestige gate and preview data.
     const prestigeGate = (c.regulars || 0) >= 25;
@@ -3784,6 +3793,7 @@ class Game {
       },
       roundLabel: 'Buy a round $' + this.fmt(roundPrice),
       roundLocked: !roundOk || this.state.tabStale,
+      roundReason,
       roundStyle: {
         background: roundOk && !this.state.tabStale ? '#170e22' : '#120c1c', border: '1px solid ' + (roundOk && !this.state.tabStale ? '#3a2350' : '#1f1430'),
         borderRadius: '8px', color: roundOk && !this.state.tabStale ? '#e7d8f2' : '#4a3860', padding: '13px 16px',
@@ -4612,7 +4622,8 @@ class Game {
 
       <div class="stage-cta" style="display:flex;flex-wrap:wrap;gap:10px;padding:12px 14px;background:#0b0712;border-bottom:1px solid #2a1738;align-items:center">
         <button data-h="${this.bind(v.workCrowd)}" class="cta" style="flex:1 1 240px;background:linear-gradient(180deg,#ff3d85,#d81259);border:0;border-radius:8px;color:#fff;font-weight:700;font-size:13px;letter-spacing:1.2px;text-transform:uppercase;padding:13px 16px;cursor:pointer;box-shadow:0 0 22px rgba(255,45,120,.35)">Work the room <span style="font-family:'IBM Plex Mono',monospace;opacity:.85;text-transform:none;letter-spacing:0">+${v.clickValue}</span></button>
-        <button data-h="${this.bind(v.buyRound)}" ${v.roundLocked ? 'disabled' : ''} style="${css(v.roundStyle)}">${v.roundLabel}</button>
+        <button data-h="${this.bind(v.buyRound)}" ${v.roundLocked ? 'disabled' : ''} title="${v.roundReason || v.roundLabel}" aria-label="${v.roundReason || v.roundLabel}" style="${css(v.roundStyle)}">${v.roundLabel}</button>
+        ${v.roundReason ? `<div class="round-reason">${v.roundReason}</div>` : ''}
       </div>
 
       <div data-scroll="log" style="background:#080510;overflow-y:auto;padding:10px 14px">

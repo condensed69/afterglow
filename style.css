@@ -245,6 +245,16 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
 #stage-line-energy-banner {
   display: none;
 }
+/* Buy-a-round disabled feedback (RED-2): the reason line under the disabled
+   button — cash-short vs hype-cap look identical otherwise. Full-width child
+   of the flex .stage-cta so it lands on its own row under the buttons. */
+.round-reason {
+  flex: 1 1 100%;
+  font-size: 11px;
+  color: #9c86ab;
+  letter-spacing: 0.3px;
+  text-align: center;
+}
 @media (max-width: 900px) {
   .shell-grid {
     grid-template-columns: 1fr;
