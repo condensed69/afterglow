@@ -18,12 +18,18 @@ Two tickets, one mobile media block, one CSS-only PR:
    gets its own scroll, and the toggle stays in the ledger header row
    (order:-1). At 390×844 the cap is 380px — the tab row and first System
    cards stay in the viewport.
-2. **`.tab-bar-wrap`** → `position: sticky; top: 0; z-index: 10`. Mobile is a
-   single scroller (`.shell-grid` carries `data-scroll="main"` and is the only
-   scroll container below 900px), so sticky resolves against the page scroller.
-   `z-index: 10` sits under `.stage-cta` (20) and modal backdrops (60) —
-   correct: the pinned action bar and modals still win. The `::after` edge
-   fade rides along (absolute inside a positioned ancestor).
+2. **`.tab-bar-wrap`** → `position: sticky !important; top: 0; z-index: 10`.
+   The `!important` is load-bearing: game.js bakes an inline
+   `position:relative` into the `.tab-bar-wrap` div, which beats any plain
+   stylesheet rule — the same override pattern as the 0.11.18 CTA-glow rule
+   in this media block. Mobile is a single scroller (`.shell-grid` carries
+   `data-scroll="main"` and is the only scroll container below 900px), so
+   sticky resolves against the page scroller. `z-index: 10` sits under
+   `.stage-cta` (20) and modal backdrops (60) — correct: the pinned action
+   bar and modals still win. The `::after` edge fade rides along (absolute
+   inside a positioned ancestor). Desktop (≥901px) is untouched — the rule
+   lives in the mobile block and the inline `position:relative` still
+   applies there.
 
 No JS, no template, no palette/type change — the neon is untouched. No save
 shape (**SAVE_VER stays 13**).

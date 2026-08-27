@@ -530,7 +530,9 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
     margin-right: auto;
   }
   .tab-bar-wrap {
-    position: sticky;
+    /* !important beats the inline position:relative game.js bakes into the
+       tab-bar-wrap div (same pattern as the 0.11.18 CTA-glow override). */
+    position: sticky !important;
     top: 0;
     z-index: 10;
   }
