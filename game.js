@@ -3406,7 +3406,7 @@ class Game {
       this.sessionSpent = 0;
     }
     const snap = this.sessionSnap;
-    const spent = this.sessionSpent || 0;
+    const spent = this.sessionSpent;
     const deltaFmt = (n, cash) => (n >= 0 ? '+' : '−') + (cash ? '$' : '') + (cash ? this.fmt(Math.abs(n)) : Math.floor(Math.abs(n)));
     // ponytail: 5 spend sites feed `spent` (buyBuilding, buyUpgrade, autoBuyManagers, hireCrew, buyRound) so the strip never shows a fake loss — O(1) transient counter, no save shape.
     const sessionDeltas = [
