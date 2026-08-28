@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.37', build: 250, channel: 'alpha', date: '2026-08-27', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.38', build: 251, channel: 'alpha', date: '2026-08-28', codename: 'Neon Zero' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -208,6 +208,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.11.38', date: '2026-08-28', codename: 'Neon Zero', notes: [
+        'MOBILE CONTRAST PASS (audit YELLOWs 2–4): the three dimmest text colors move to one readable tone — night-log timestamps, locked/disabled control labels (crew steppers, Buy-a-round, tab hints, requirement lines), and the section micro-labels (Ledger / Shift / House / Room energy / assignments) all go from ~1.9–3.7:1 contrast to #8f6f9c (4.75:1 on the page background, 4.49:1 on control backgrounds — WCAG AA for their sizes). The mobile-only 8px header labels (wordmark sub-line, version button sub-text) rise to 9px. Pure color/size swaps in the render layer — no layout, no save shape (SAVE_VER stays 13), no economy, pacing bands bit-identical.'
+      ] },
       { v: '0.11.37', date: '2026-08-27', codename: 'Neon Zero', notes: [
         'CHALLENGE CHIP A11Y (a11y polish): the HUD chip End button now exposes title + aria-label "End challenge — no reward" so screen readers and hover match the Perks-card affordance. One attribute, no visual change, no save shape (SAVE_VER stays 13), pacing bit-identical.'
       ] },
@@ -3484,7 +3487,7 @@ class Game {
       style: {
         flex: '1 0 auto', padding: '11px 12px', background: this.state.tab === t.id ? '#170e22' : 'transparent',
         border: 0, borderBottom: '2px solid ' + (this.state.tab === t.id ? '#ff2d78' : 'transparent'),
-        color: this.state.tab === t.id ? '#fff' : '#7b5f90', cursor: 'pointer',
+        color: this.state.tab === t.id ? '#fff' : '#8f6f9c', cursor: 'pointer',
         fontSize: '11px', fontWeight: 700, letterSpacing: '1.4px', textTransform: 'uppercase',
         scrollSnapAlign: 'start', whiteSpace: 'nowrap'
       }
@@ -3721,7 +3724,7 @@ class Game {
         decLocked: g.jobs[j.id] < 1,
         decLabel: `Remove crew from ${j.name}`,
         incLabel: `Assign crew to ${j.name}`,
-        stepStyle: (locked) => ({ width: '26px', height: '26px', border: '1px solid ' + (locked ? '#1f1430' : '#3a2350'), borderRadius: '5px', background: locked ? '#120c1c' : '#170e22', color: locked ? '#4a3860' : '#e7d8f2', cursor: locked ? 'not-allowed' : 'pointer', fontSize: '14px', lineHeight: 1 })
+        stepStyle: (locked) => ({ width: '26px', height: '26px', border: '1px solid ' + (locked ? '#1f1430' : '#3a2350'), borderRadius: '5px', background: locked ? '#120c1c' : '#170e22', color: locked ? '#8f6f9c' : '#e7d8f2', cursor: locked ? 'not-allowed' : 'pointer', fontSize: '14px', lineHeight: 1 })
       };
     });
 
@@ -3824,7 +3827,7 @@ class Game {
       roundReason,
       roundStyle: {
         background: roundOk && !this.state.tabStale ? '#170e22' : '#120c1c', border: '1px solid ' + (roundOk && !this.state.tabStale ? '#3a2350' : '#1f1430'),
-        borderRadius: '8px', color: roundOk && !this.state.tabStale ? '#e7d8f2' : '#4a3860', padding: '13px 16px',
+        borderRadius: '8px', color: roundOk && !this.state.tabStale ? '#e7d8f2' : '#8f6f9c', padding: '13px 16px',
         cursor: roundOk && !this.state.tabStale ? 'pointer' : 'not-allowed', fontSize: '12px', fontWeight: 700, minWidth: '190px'
       },
       buyRound: () => {
@@ -4028,11 +4031,11 @@ class Game {
         'white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + lab + '</button>';
     }).join('');
     const label = (t, v, out) => '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">' +
-      '<span style="font-size:9px;letter-spacing:2.6px;text-transform:uppercase;color:#7b5f90;font-weight:700">' + t + '</span>' +
-      '<span ' + (out ? 'data-lk-out="' + out + '" ' : '') + 'style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#6f5885">' + v + '</span></div>';
+      '<span style="font-size:9px;letter-spacing:2.6px;text-transform:uppercase;color:#8f6f9c;font-weight:700">' + t + '</span>' +
+      '<span ' + (out ? 'data-lk-out="' + out + '" ' : '') + 'style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#8f6f9c">' + v + '</span></div>';
     this.lookPanel.innerHTML =
       '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #241536">' +
-        '<span style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700">Look</span>' +
+        '<span style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700">Look</span>' +
         '<button data-lk="close:1" style="width:24px;height:24px;border:1px solid #3a2350;border-radius:5px;background:#160d22;color:#9c86ab;cursor:pointer;font-size:12px;font-family:inherit">✕</button>' +
       '</div>' +
       '<div style="padding:13px 14px;display:flex;flex-direction:column;gap:15px">' +
@@ -4224,7 +4227,7 @@ class Game {
     return `<div id="stage-line-energy-banner" style="flex-wrap:wrap;gap:10px;padding:8px 12px;background:#12081c;border-bottom:1px solid #2a1738;align-items:center;justify-content:space-between">
       ${v.stageLineAct ? `<button data-h="${this.bind(v.stageLineAct)}" class="hv-pink" style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#ff2d78;background:transparent;border:0;padding:0;cursor:pointer;text-decoration:underline;text-underline-offset:3px;min-height:44px">${v.stageLine}</button>` : `<div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#ff2d78;min-height:44px;display:flex;align-items:center">${v.stageLine}</div>`}
       <div style="text-align:right;min-height:44px;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;gap:2px">
-        <span style="font-size:9px;letter-spacing:2.6px;text-transform:uppercase;color:#7b5f90;font-weight:700">Room energy</span>
+        <span style="font-size:9px;letter-spacing:2.6px;text-transform:uppercase;color:#8f6f9c;font-weight:700">Room energy</span>
         <span style="font-family:'IBM Plex Mono',monospace;font-size:22px;color:#ffc94a;font-weight:600;line-height:1.1">${v.energyPct}</span>
       </div>
     </div>`;
@@ -4253,7 +4256,7 @@ class Game {
           <div style="flex:1;height:4px;background:#1c1129;border-radius:3px;overflow:hidden">
             <div style="${css(r.barStyle)}"></div>
           </div>
-          <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6f5885;min-width:56px;text-align:right">${r.rate}</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8f6f9c;min-width:56px;text-align:right">${r.rate}</span>
         </div>
         <div style="font-size:10px;color:#9c86ab;margin-top:3px">${r.note}</div>
       </div>`;
@@ -4270,7 +4273,7 @@ class Game {
 
     const logRows = v.log.map(l => `
       <div style="display:flex;gap:9px;font-size:11.5px;line-height:1.5">
-        <span style="font-family:'IBM Plex Mono',monospace;color:#4a3860;min-width:46px">${l.t}</span>
+        <span style="font-family:'IBM Plex Mono',monospace;color:#8f6f9c;min-width:46px">${l.t}</span>
         <span style="${css(l.style)}">${l.msg}</span>
       </div>`).join('');
 
@@ -4286,7 +4289,7 @@ class Game {
         <div style="font-size:11px;color:#8b76a0;line-height:1.45;margin:4px 0 8px">${cd.desc}</div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           ${cd.reqLocked
-            ? `<span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#6f5885;font-weight:600;min-width:104px;text-align:center;padding:8px 12px">requires ${cd.reqName}</span>`
+            ? `<span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#8f6f9c;font-weight:600;min-width:104px;text-align:center;padding:8px 12px">requires ${cd.reqName}</span>`
             : cd.multi && !cd.multi.maxed
               ? `<div style="display:flex;gap:6px;align-items:center">
                   <button data-h="${this.bind(cd.multi.x1.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.multi.x1.locked ? 'disabled' : ''} aria-label="Buy 1 ${this.escapeHtml(cd.name)} (Shift-click for max)" title="Buy 1 — Shift-click/max button for maximum affordable" style="${css({ ...cd.multi.x1.style, minWidth: '40px', padding: '8px 6px' })}">×1</button>
@@ -4296,7 +4299,7 @@ class Game {
                 </div>`
               : `<button data-h="${this.bind(cd.act)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} ${cd.locked ? 'disabled' : ''} title="${cd.buildingId ? 'Buy 1 — Shift-click/max button for maximum affordable' : (cd.btnTooltip || '')}" style="${css(cd.btnStyle)}">${cd.btn}</button>
         ${cd.subAct ? `<button data-h="${this.bind(cd.subAct)}" ${cd.subLocked ? 'disabled' : ''} style="${css(cd.subStyle)}">${cd.subBtn}</button>` : ''}`}
-          <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#6f5885;text-align:right;flex:1">${cd.meta}</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#8f6f9c;text-align:right;flex:1">${cd.meta}</span>
         </div>
       </div>`).join('');
 
@@ -4306,15 +4309,15 @@ class Game {
           <div style="font-size:12px;font-weight:700;color:#9c86ab">${j.name}</div>
           <div style="font-size:10px;color:#9c86ab">${j.desc}</div>
         </div>
-        <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#6f5885;min-width:20px;text-align:center;font-weight:600">${j.n}</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#8f6f9c;min-width:20px;text-align:center;font-weight:600">${j.n}</span>
       </div>` : `
       <div style="display:flex;align-items:center;gap:9px;border:1px solid #221434;border-radius:7px;background:#0f0a18;padding:8px 9px">
         <div style="flex:1;min-width:0">
           <div style="font-size:12px;font-weight:700;color:#e7d8f2">${j.name}</div>
-          <div style="font-size:10px;color:#6f5885">${j.desc}</div>
+          <div style="font-size:10px;color:#8f6f9c">${j.desc}</div>
         </div>
         ${j.locked
-          ? `<span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#6f5885;font-weight:600;text-align:right">requires ${j.unlockName}</span>`
+          ? `<span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#8f6f9c;font-weight:600;text-align:right">requires ${j.unlockName}</span>`
           : `<button data-h="${this.bind(j.dec)}" ${j.decLocked ? 'disabled' : ''} aria-label="${this.escapeHtml(j.decLocked ? 'No crew assigned here' : j.decLabel)}" title="${this.escapeHtml(j.decLocked ? 'No crew assigned here' : j.decLabel)}" style="${css(j.stepStyle(j.decLocked))}">−</button>
         <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#ffc94a;min-width:48px;text-align:center;font-weight:600">${j.n}</span>
         <button data-h="${this.bind(j.inc)}" ${j.incLocked ? 'disabled' : ''} aria-label="${this.escapeHtml(j.incLocked ? 'No free crew available' : j.incLabel)}" title="${this.escapeHtml(j.incLocked ? 'No free crew available' : j.incLabel)}" style="${css(j.stepStyle(j.incLocked))}">+</button>`}
@@ -4322,7 +4325,7 @@ class Game {
 
     const assignments = v.crewOpen ? `
       <div style="margin-top:14px;border-top:1px solid #221434;padding-top:12px">
-        <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700;margin-bottom:9px">Assignments</div>
+        <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700;margin-bottom:9px">Assignments</div>
         <div style="display:flex;flex-direction:column;gap:7px">${jobRows}</div>
       </div>` : '';
 
@@ -4331,7 +4334,7 @@ class Game {
         <div style="width:560px;max-width:calc(100vw - 24px);max-height:78vh;overflow-y:auto;background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #241536;position:sticky;top:0;background:#0e0918">
             <div>
-              <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700">Version history</div>
+              <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700">Version history</div>
               <div style="font-family:'IBM Plex Mono',monospace;font-size:15px;color:#ffc94a;font-weight:600">${v.verFull}</div>
             </div>
             <button data-h="${this.bind(v.toggleChangelog)}" class="hv-pink" style="width:30px;height:30px;border:1px solid #3a2350;border-radius:6px;background:#160d22;color:#9c86ab;cursor:pointer;font-size:14px">✕</button>
@@ -4342,7 +4345,7 @@ class Game {
                 <div style="display:flex;align-items:baseline;gap:9px;margin-bottom:6px">
                   <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;color:#ff2d78">v${c.v}</span>
                   <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#9c86ab">${c.date}</span>
-                  <span style="font-size:10px;letter-spacing:1.6px;text-transform:uppercase;color:#7b5f90;font-weight:700">${c.codename}</span>
+                  <span style="font-size:10px;letter-spacing:1.6px;text-transform:uppercase;color:#8f6f9c;font-weight:700">${c.codename}</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:4px">
                   ${c.notes.map(n => `
@@ -4360,7 +4363,7 @@ class Game {
       <div style="position:fixed;inset:0;background:rgba(5,3,9,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:32px">
         <div style="width:480px;max-width:calc(100vw - 24px);background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #241536">
-            <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700">Franchise offer</div>
+            <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700">Franchise offer</div>
             <button data-h="${this.bind(v.togglePrestige)}" class="hv-pink" style="width:30px;height:30px;border:1px solid #3a2350;border-radius:6px;background:#160d22;color:#9c86ab;cursor:pointer;font-size:14px">✕</button>
           </div>
           <div style="padding:16px 18px;display:flex;flex-direction:column;gap:12px">
@@ -4378,7 +4381,7 @@ class Game {
                 <span style="font-size:11px;color:#9c86ab">You reset</span>
                 <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#e7d8f2">cash, room, buildings, upgrades, research, crew, goals</span>
               </div>
-              <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6f5885;margin-top:2px">regulars ${v.prestigeRegulars} · night ${v.prestigeNight}</div>
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8f6f9c;margin-top:2px">regulars ${v.prestigeRegulars} · night ${v.prestigeNight}</div>
             </div>
             <button data-h="${this.bind(v.confirmPrestige)}" ${v.tabStale ? 'disabled' : ''} style="background:${v.tabStale ? '#1a1226' : 'linear-gradient(180deg,#ff3d85,#d81259)'};border:0;border-radius:8px;color:${v.tabStale ? '#9c86ab' : '#fff'};font-weight:700;font-size:13px;letter-spacing:1px;text-transform:uppercase;padding:13px 16px;cursor:${v.tabStale ? 'not-allowed' : 'pointer'}">${v.tabStale ? 'Reload to adopt fresh save before signing' : 'Sign the deal'}</button>
             <button data-h="${this.bind(v.togglePrestige)}" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700">Not yet</button>
@@ -4419,7 +4422,7 @@ class Game {
       <div style="position:fixed;inset:0;background:rgba(5,3,9,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:32px">
         <div style="width:480px;max-width:calc(100vw - 24px);background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #241536">
-            <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700">Open second room</div>
+            <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700">Open second room</div>
             <button data-h="${this.bind(v.closeOpenRoom)}" class="hv-pink" style="width:30px;height:30px;border:1px solid #3a2350;border-radius:6px;background:#160d22;color:#9c86ab;cursor:pointer;font-size:14px">✕</button>
           </div>
           <div style="padding:16px 18px;display:flex;flex-direction:column;gap:12px">
@@ -4448,7 +4451,7 @@ class Game {
       <div style="position:fixed;inset:0;background:rgba(5,3,9,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:32px">
         <div style="width:420px;max-width:calc(100vw - 24px);max-height:78vh;overflow-y:auto;background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #241536">
-            <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700">Settings</div>
+            <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700">Settings</div>
             <button data-h="${this.bind(v.toggleSettings)}" class="hv-pink" style="width:30px;height:30px;border:1px solid #3a2350;border-radius:6px;background:#160d22;color:#9c86ab;cursor:pointer;font-size:14px">✕</button>
           </div>
           <div style="padding:16px 18px;display:flex;flex-direction:column;gap:10px">
@@ -4457,8 +4460,8 @@ class Game {
             <button data-h="${this.bind(v.importSaveFile)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Load save from file…</button>
             <button data-h="${this.bind(v.exportSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Copy save to clipboard</button>
             <button data-h="${this.bind(v.importSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Restore save from clipboard</button>
-            <button data-h="${this.bind(v.openLook)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Look & feel…  <span style="color:#6f5885;font-weight:400">(L)</span></button>
-            <button data-h="${this.bind(v.toggleAchievements)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Achievements… <span style="color:#6f5885;font-weight:400">${v.achievements.filter(a => a.unlocked).length}/${v.achievements.length}</span></button>
+            <button data-h="${this.bind(v.openLook)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Look & feel…  <span style="color:#8f6f9c;font-weight:400">(L)</span></button>
+            <button data-h="${this.bind(v.toggleAchievements)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Achievements… <span style="color:#8f6f9c;font-weight:400">${v.achievements.filter(a => a.unlocked).length}/${v.achievements.length}</span></button>
             <button data-h="${this.bind(v.hardReset)}" style="${css(v.resetStyle)}">${v.resetLabel}</button>
             <div style="font-size:10.5px;color:#9c86ab;line-height:1.5;font-family:'IBM Plex Mono',monospace">${v.resetHint} Files and clipboard saves are the same format — either restores either way. ${v.verFull} · save format v${v.saveVer}</div>
           </div>
@@ -4469,7 +4472,7 @@ class Game {
       <div style="position:fixed;inset:0;background:rgba(5,3,9,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:32px">
         <div style="width:560px;max-width:calc(100vw - 24px);max-height:78vh;overflow-y:auto;background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #241536;position:sticky;top:0;background:#0e0918">
-            <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700">Achievements</div>
+            <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700">Achievements</div>
             <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#ffd700">${v.achievements.filter(a => a.unlocked).length} / ${v.achievements.length}</div>
             <button data-h="${this.bind(v.toggleAchievements)}" class="hv-pink" style="width:30px;height:30px;border:1px solid #3a2350;border-radius:6px;background:#160d22;color:#9c86ab;cursor:pointer;font-size:14px">✕</button>
           </div>
@@ -4479,7 +4482,7 @@ class Game {
                 <span style="font-size:20px">${a.unlocked ? '🏆' : '🔒'}</span>
                 <div style="flex:1;min-width:0">
                   <div style="font-size:12px;font-weight:700;color:${a.unlocked ? '#ffd700' : '#9c86ab'}">${a.name}</div>
-                  <div style="font-size:10.5px;color:#6f5885">${a.desc}</div>
+                  <div style="font-size:10.5px;color:#8f6f9c">${a.desc}</div>
                   ${a.reward ? `<div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#ffc94a;margin-top:2px">${a.reward}</div>` : ''}
                 </div>
               </div>
@@ -4494,7 +4497,7 @@ class Game {
   <header style="display:flex;align-items:center;gap:20px;padding:0 18px;height:62px;border-bottom:1px solid #2a1738;background:linear-gradient(180deg,#140b1f,#0b0712);position:relative;z-index:20">
     <div class="brand" style="display:flex;align-items:baseline;gap:12px">
       <span style="font-family:'Monoton',cursive;font-size:24px;color:#ff2d78;letter-spacing:1px;text-shadow:0 0 12px rgba(255,45,120,.75),0 0 34px rgba(255,45,120,.35);animation:neonFlicker 7s infinite">Afterglow</span>
-      <span style="font-size:10px;letter-spacing:3.5px;text-transform:uppercase;color:#7b5f90;font-weight:700">Club Idle</span>
+      <span style="font-size:10px;letter-spacing:3.5px;text-transform:uppercase;color:#8f6f9c;font-weight:700">Club Idle</span>
     </div>
 
     <button data-h="${this.bind(v.toggleChangelog)}" title="Version history" class="hv-pink" style="display:flex;align-items:center;gap:9px;background:#170e22;border:1px solid #3a2350;border-radius:6px;padding:6px 11px;cursor:pointer;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#d6c2e6">
@@ -4522,12 +4525,12 @@ class Game {
 
     ${v.clubSwitcher.length > 1 ? `
     <div style="display:flex;gap:6px">
-      ${v.clubSwitcher.map(cl => `<button data-h="${this.bind(cl.go)}" aria-label="${this.escapeHtml(cl.label)} club" title="${this.escapeHtml(cl.label)}" style="background:${cl.active ? '#170e22' : 'transparent'};border:1px solid ${cl.active ? '#ff2d78' : '#2f1c42'};border-radius:6px;padding:7px 12px;cursor:pointer;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:${cl.active ? '#fff' : '#7b5f90'}">${cl.label}</button>`).join('')}
+      ${v.clubSwitcher.map(cl => `<button data-h="${this.bind(cl.go)}" aria-label="${this.escapeHtml(cl.label)} club" title="${this.escapeHtml(cl.label)}" style="background:${cl.active ? '#170e22' : 'transparent'};border:1px solid ${cl.active ? '#ff2d78' : '#2f1c42'};border-radius:6px;padding:7px 12px;cursor:pointer;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:${cl.active ? '#fff' : '#8f6f9c'}">${cl.label}</button>`).join('')}
     </div>` : ''}
 
     <div style="display:flex;align-items:center;gap:14px">
       <div style="text-align:right;line-height:1.15">
-        <div style="font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:#7b5f90;font-weight:700">Shift</div>
+        <div style="font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:#8f6f9c;font-weight:700">Shift</div>
         <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#22d3ee;font-weight:600">${v.shiftName}</div>
       </div>
       <div style="width:112px;height:34px;border:1px solid #2f1c42;border-radius:6px;background:#100a19;padding:4px;display:flex;flex-direction:column;justify-content:space-between">
@@ -4558,7 +4561,7 @@ class Game {
 
     <aside data-scroll="ledger" class="${v.ledgerOpen ? '' : 'ledger-collapsed'}" style="border-right:1px solid #2a1738;background:#0a0611;overflow-y:auto;padding:14px 12px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700">Ledger</div>
+        <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700">Ledger</div>
         <div style="display:flex;align-items:center;gap:8px">
           <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#22d3ee;font-weight:700;letter-spacing:1px;text-transform:uppercase">${v.activeClubLabel}</span>
           <button data-h="${this.bind(v.toggleLedger)}" class="ledger-toggle hv-pink" title="${v.ledgerOpen ? 'Collapse ledger' : 'Expand ledger'}" style="width:44px;height:44px;border:1px solid #2f1c42;border-radius:8px;background:#100a19;color:#9c86ab;cursor:pointer;font-size:16px;line-height:1">${v.ledgerOpen ? '▾' : '▸'}</button>
@@ -4567,12 +4570,12 @@ class Game {
       <div class="ledger-cash" style="display:flex;flex-direction:column;gap:9px">${cashRow}</div>
       <div class="ledger-detail">
         <div class="session-strip" style="border:1px solid #221434;border-radius:7px;background:#0f0a18;padding:8px 10px;margin-bottom:12px">
-          <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700;margin-bottom:5px">This session</div>
+          <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700;margin-bottom:5px">This session</div>
           <div style="display:flex;flex-wrap:wrap;gap:5px 14px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#9c86ab">
             ${v.sessionDeltas.map(d => {
               if (d.label === 'Cash' && d.val.includes('·')) {
                 const [earned, spent] = d.val.split(' · ');
-                return `<span>${d.label} <span style="font-weight:600;color:#4ade80">${earned}</span> <span style="color:#6f5885">·</span> <span style="font-weight:600;color:#ff7aa8">${spent}</span></span>`;
+                return `<span>${d.label} <span style="font-weight:600;color:#4ade80">${earned}</span> <span style="color:#8f6f9c">·</span> <span style="font-weight:600;color:#ff7aa8">${spent}</span></span>`;
               }
               return `<span>${d.label} <span style="font-weight:600;color:${d.val[0] === '+' ? '#4ade80' : '#ff7aa8'}">${d.val}</span></span>`;
             }).join('')}
@@ -4580,11 +4583,11 @@ class Game {
         </div>
         ${v.houseChips.length ? `
         <div class="house-strip" style="border:1px solid #221434;border-radius:7px;background:#0f0a18;padding:8px 10px;margin-bottom:12px">
-          <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700;margin-bottom:5px">House</div>
+          <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700;margin-bottom:5px">House</div>
           <div style="display:flex;flex-wrap:wrap;gap:5px 14px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#9c86ab">${v.houseChips.join('')}</div>
         </div>` : ''}
         <div style="display:flex;flex-direction:column;gap:9px">${ledgerDetailRows}</div>
-        <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700;margin:18px 0 8px">Floor</div>
+        <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700;margin:18px 0 8px">Floor</div>
         <div style="border:1px solid #221434;border-radius:7px;background:#0f0a18;padding:9px">${statRows}</div>
       </div>
     </aside>
@@ -4625,14 +4628,14 @@ class Game {
         </div>
 
         <div style="position:absolute;left:14px;top:14px;display:flex;flex-direction:column;gap:5px">
-          <div style="font-size:9px;letter-spacing:2.6px;text-transform:uppercase;color:#7b5f90;font-weight:700">Main Stage</div>
+          <div style="font-size:9px;letter-spacing:2.6px;text-transform:uppercase;color:#8f6f9c;font-weight:700">Main Stage</div>
           ${v.stageLineAct
             ? `<button data-h="${this.bind(v.stageLineAct)}" class="hv-pink" title="${v.stageLineTooltip || 'Open Crew tab'}" style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#ff2d78;background:transparent;border:0;padding:0;cursor:pointer;text-align:left;text-decoration:underline;text-underline-offset:3px">${v.stageLine}</button>`
             : `<div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#ff2d78">${v.stageLine}</div>`}
         </div>
 
         <div style="position:absolute;right:14px;top:14px;text-align:right">
-          <div style="font-size:9px;letter-spacing:2.6px;text-transform:uppercase;color:#7b5f90;font-weight:700">Room energy</div>
+          <div style="font-size:9px;letter-spacing:2.6px;text-transform:uppercase;color:#8f6f9c;font-weight:700">Room energy</div>
           <div style="font-family:'IBM Plex Mono',monospace;font-size:26px;color:#ffc94a;font-weight:600;line-height:1.1">${v.energyPct}</div>
         </div>
 
@@ -4664,7 +4667,7 @@ class Game {
       </div>
 
       <div data-scroll="log" style="background:#080510;overflow-y:auto;padding:10px 14px">
-        <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#7b5f90;font-weight:700;margin-bottom:7px">Night log</div>
+        <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700;margin-bottom:7px">Night log</div>
         <div style="display:flex;flex-direction:column;gap:3px">${logRows}</div>
       </div>
     </section>
@@ -4676,7 +4679,7 @@ class Game {
         const ol = v.ownersList;
         const prog = ol.progress
           ? `<div style="margin-top:7px">
-              <div style="display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6f5885;margin-bottom:3px">
+              <div style="display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8f6f9c;margin-bottom:3px">
                 <span>${this.fmt(ol.progress.cur)} / ${this.fmt(ol.progress.max)}</span>
                 <span>${Math.floor(ol.progress.pct)}%</span>
               </div>
@@ -4693,7 +4696,7 @@ class Game {
               <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#ffc94a;font-weight:700;letter-spacing:.3px">
                 Goal ${ol.goalIdx + 1} of ${ol.totalGoals}
               </span>
-              <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6f5885">
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8f6f9c">
                 ${ol.n} of ${ol.total} goals complete
               </span>
             </div>
@@ -4709,7 +4712,7 @@ class Game {
               ${ol.reward ? `<span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#ffc94a;font-weight:600">${ol.reward}</span>` : ''}
             </div>
           </div>
-          <div style="font-size:10.5px;color:#6f5885;font-style:italic;line-height:1.4;margin-bottom:4px">${ol.why}</div>
+          <div style="font-size:10.5px;color:#8f6f9c;font-style:italic;line-height:1.4;margin-bottom:4px">${ol.why}</div>
           <div style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#22d3ee;line-height:1.4">${ol.hint}</div>
           ${prog}
           ${(() => {
@@ -4728,7 +4731,7 @@ class Game {
               : `Lifetime value ${this.fmt(h.earned)} / ${this.fmt(h.target)} · next ★ at ${this.fmt(h.next)} (+${Math.round(this.VISION_TIERS[h.stars].bonus * 100)}% all cash)`;
             return `<div style="margin-top:9px;padding-top:8px;border-top:1px dashed #2a1738">
               <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px">
-                <span style="font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:#7b5f90;font-weight:700">Vision — the long game</span>
+                <span style="font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:#8f6f9c;font-weight:700">Vision — the long game</span>
                 <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:2px">${stars}</span>
               </div>
               <div style="display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#c4a8e0;margin-bottom:3px">
@@ -4745,7 +4748,7 @@ class Game {
       })() : ''}
 
       <div data-scroll="sys_${this.state.tab}" style="overflow-y:auto;padding:12px">
-        <div style="font-size:10.5px;color:#6f5885;line-height:1.5;margin-bottom:11px">${v.tabHint}</div>
+        <div style="font-size:10.5px;color:#8f6f9c;line-height:1.5;margin-bottom:11px">${v.tabHint}</div>
 
         <div style="display:flex;flex-direction:column;gap:8px">${cardRows}</div>
 
