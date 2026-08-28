@@ -471,7 +471,7 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
     font-size: 18px !important;
   }
   header .brand span:last-child {
-    font-size: 8px !important;
+    font-size: 9px !important;
     letter-spacing: 2px !important;
   }
   header button[title="Version history"] {
@@ -503,7 +503,7 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
     width: 80px !important;
   }
   header > div[style*="display:flex;align-items:center;gap:14px"] > div[style*="width:112px"] > div:last-child {
-    font-size: 8px !important;
+    font-size: 9px !important;
   }
 
   /* Touch affordances (v0.12): larger slider thumb + stepper/affordance fixes */
