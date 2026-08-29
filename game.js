@@ -1134,21 +1134,23 @@ class Game {
     // Defer renders while scrolling, then catch up after scroll stops.
     this.scrolling = false;
     this.scrollTimer = null;
-    const shell = this.root.querySelector('.shell-grid');
-    if (shell) {
-      const onScroll = () => {
-        this.scrolling = true;
-        if (this.scrollTimer) clearTimeout(this.scrollTimer);
-        this.scrollTimer = setTimeout(() => {
-          this.scrolling = false;
-          if (this.needsRender) {
-            this.needsRender = false;
-            this.render();
-          }
-        }, 150);
-      };
-      shell.addEventListener('scroll', onScroll, { passive: true });
-    }
+    // On the persistent mount node, capture phase: render() replaces
+    // this.root.innerHTML (incl. .shell-grid) every frame, so a listener on
+    // .shell-grid dies after the first render and never defers again — that is
+    // the "drag does nothing / rubber-bands" mobile bug. Scroll doesn't bubble
+    // but ancestors catch it in capture, so root+capture survives every render.
+    const onScroll = () => {
+      this.scrolling = true;
+      if (this.scrollTimer) clearTimeout(this.scrollTimer);
+      this.scrollTimer = setTimeout(() => {
+        this.scrolling = false;
+        if (this.needsRender) {
+          this.needsRender = false;
+          this.render();
+        }
+      }, 150);
+    };
+    this.root.addEventListener('scroll', onScroll, { passive: true, capture: true });
   }
 
   fresh() {
