@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.38', build: 251, channel: 'alpha', date: '2026-08-28', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.39', build: 252, channel: 'alpha', date: '2026-08-29', codename: 'Neon Zero' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -208,6 +208,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.11.39', date: '2026-08-29', codename: 'Neon Zero', notes: [
+        'MOBILE SCROLL RENDER-DEFER FIX (drag dead / rubber-band): the 0.11.22 pause-render-during-scroll guard was attached once at init to the transient .shell-grid node, but render() replaces this.root.innerHTML (incl. .shell-grid) every frame — so after the first render the listener was detached, this.scrolling stayed false, and forceUpdate() never deferred. Mid-gesture innerHTML replacement detached the element under the finger (drag does nothing) and scrollSave snapped it back (rubber-band). The listener now attaches to the stable this.root in the capture phase (scroll does not bubble, but ancestors catch it in capture), so it survives every render. Passive, no preventDefault — desktop unchanged. No save shape (SAVE_VER stays 13), pacing bit-identical.'
+      ] },
       { v: '0.11.38', date: '2026-08-28', codename: 'Neon Zero', notes: [
         'MOBILE CONTRAST PASS (audit YELLOWs 2–4): the three dimmest text colors move to one readable tone — night-log timestamps, locked/disabled control labels (crew steppers, Buy-a-round, tab hints, requirement lines), and the section micro-labels (Ledger / Shift / House / Room energy / assignments) all go from ~1.9–3.7:1 contrast to #8f6f9c (4.75:1 on the page background, 4.49:1 on control backgrounds — WCAG AA for their sizes). The mobile-only 8px header labels (wordmark sub-line, version button sub-text) rise to 9px. Pure color/size swaps in the render layer — no layout, no save shape (SAVE_VER stays 13), no economy, pacing bands bit-identical.'
       ] },
@@ -1134,21 +1137,23 @@ class Game {
     // Defer renders while scrolling, then catch up after scroll stops.
     this.scrolling = false;
     this.scrollTimer = null;
-    const shell = this.root.querySelector('.shell-grid');
-    if (shell) {
-      const onScroll = () => {
-        this.scrolling = true;
-        if (this.scrollTimer) clearTimeout(this.scrollTimer);
-        this.scrollTimer = setTimeout(() => {
-          this.scrolling = false;
-          if (this.needsRender) {
-            this.needsRender = false;
-            this.render();
-          }
-        }, 150);
-      };
-      shell.addEventListener('scroll', onScroll, { passive: true });
-    }
+    // On the persistent mount node, capture phase: render() replaces
+    // this.root.innerHTML (incl. .shell-grid) every frame, so a listener on
+    // .shell-grid dies after the first render and never defers again — that is
+    // the "drag does nothing / rubber-bands" mobile bug. Scroll doesn't bubble
+    // but ancestors catch it in capture, so root+capture survives every render.
+    const onScroll = () => {
+      this.scrolling = true;
+      if (this.scrollTimer) clearTimeout(this.scrollTimer);
+      this.scrollTimer = setTimeout(() => {
+        this.scrolling = false;
+        if (this.needsRender) {
+          this.needsRender = false;
+          this.render();
+        }
+      }, 150);
+    };
+    this.root.addEventListener('scroll', onScroll, { passive: true, capture: true });
   }
 
   fresh() {
