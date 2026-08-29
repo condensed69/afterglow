@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.40', build: 253, channel: 'alpha', date: '2026-08-29', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.41', build: 254, channel: 'alpha', date: '2026-08-29', codename: 'Neon Zero' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -208,6 +208,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.11.41', date: '2026-08-29', codename: 'Neon Zero', notes: [
+        'Plain-English tooltips for Clout / Regulars (GREEN-10, copy-only): the Ledger `?`-tooltips for Clout and Regulars now read as plain speech instead of a glossary \u2014 customers, not patrons; money, not currency; each one says who earns it and what it buys. No state, no save shape (SAVE_VER stays 13), pacing bit-identical.'
+      ] },
       { v: '0.11.40', date: '2026-08-29', codename: 'Neon Zero', notes: [
         'COLD-START CLOUT PIPELINE HINT (YELLOW-9, copy-only): a fresh save no longer dead-ends on a REGULARS row that says unlock Reputation Loop with no source named, nor on Clout-short Research rows that never say where Clout comes from. The Ledger Regulars note now reads made by Tip Rails + VIP Booths instead, and the Research tab hint names the whole chain: Clout comes from Regulars, and Regulars are made at Tip Rails and VIP Booths. Render-layer copy only; no state, no save shape (SAVE_VER stays 13), pacing bit-identical.'
       ] },
@@ -3458,8 +3461,8 @@ class Game {
       { name: 'Buzz' + this.helpIcon('Buzz', 'Street awareness. Converts into patrons entering the club. Marquee Signs and Flyer Crews generate it.'), val: this.fmt(c.buzz), rate: sign(r.buzz - r.buzzSpent), pct: c.buzz / cap.buzz * 100, color: '#22d3ee', note: 'cap ' + cap.buzz + ' · pulls patrons in' },
       // Display whole people; sim keeps fractional c.patrons (PLAN §2.4).
       { name: 'Patrons' + this.helpIcon('Patrons', 'Bodies on the floor. They pay cover at the door ($0.02/head), tip at Tip Rails, and slowly become Regulars. Cap grows with structures.'), val: this.fmt(Math.floor(c.patrons)), rate: sign(r.patrons), pct: c.patrons / cap.patrons * 100, color: '#a855f7', note: 'floor cap ' + cap.patrons },
-      { name: 'Regulars' + this.helpIcon('Regulars', 'Loyal patrons who never leave. Each one generates Clout over time. With Reputation Loop, they also pay $0.04/s cash.'), val: this.fmt(c.regulars), rate: sign(r.regulars), pct: Math.min(100, c.regulars), color: '#4ade80', note: regularsNote },
-      { name: 'Clout' + this.helpIcon('Clout', 'Research currency. Earned from Regulars. Spent permanently on the Research tab for global upgrades.'), val: this.fmt(g.clout), rate: sign(r.clout), pct: Math.min(100, g.clout * 2), color: '#e879f9', note: 'spent on research' }
+      { name: 'Regulars' + this.helpIcon('Regulars', 'Customers who come back every night and never leave. Each one slowly builds your Clout. With the Reputation Loop upgrade, they also pay $0.04/s cash.'), val: this.fmt(c.regulars), rate: sign(r.regulars), pct: Math.min(100, c.regulars), color: '#4ade80', note: regularsNote },
+      { name: 'Clout' + this.helpIcon('Clout', 'Money for Research. Regulars earn it for you over time. Spent permanently on the Research tab for upgrades that help the whole club.'), val: this.fmt(g.clout), rate: sign(r.clout), pct: Math.min(100, g.clout * 2), color: '#e879f9', note: 'spent on research' }
     ];
     // Legacy appears in the ledger only once meta is unlocked (first prestige or any lifetime Legacy).
     const metaUnlocked = (g.prestiges || 0) > 0 || (g.legacyTotal || 0) > 0 || Object.values(g.perks || {}).some(r => r > 0) || (g.renownTotal || 0) > 0;
