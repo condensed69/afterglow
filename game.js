@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.39', build: 252, channel: 'alpha', date: '2026-08-29', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.40', build: 253, channel: 'alpha', date: '2026-08-29', codename: 'Neon Zero' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -208,6 +208,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.11.40', date: '2026-08-29', codename: 'Neon Zero', notes: [
+        'COLD-START CLOUT PIPELINE HINT (YELLOW-9, copy-only): a fresh save no longer dead-ends on a REGULARS row that says unlock Reputation Loop with no source named, nor on Clout-short Research rows that never say where Clout comes from. The Ledger Regulars note now reads made by Tip Rails + VIP Booths instead, and the Research tab hint names the whole chain: Clout comes from Regulars, and Regulars are made at Tip Rails and VIP Booths. Render-layer copy only; no state, no save shape (SAVE_VER stays 13), pacing bit-identical.'
+      ] },
       { v: '0.11.39', date: '2026-08-29', codename: 'Neon Zero', notes: [
         'MOBILE SCROLL RENDER-DEFER FIX (drag dead / rubber-band): the 0.11.22 pause-render-during-scroll guard was attached once at init to the transient .shell-grid node, but render() replaces this.root.innerHTML (incl. .shell-grid) every frame — so after the first render the listener was detached, this.scrolling stayed false, and forceUpdate() never deferred. Mid-gesture innerHTML replacement detached the element under the finger (drag does nothing) and scrollSave snapped it back (rubber-band). The listener now attaches to the stable this.root in the capture phase (scroll does not bubble, but ancestors catch it in capture), so it survives every render. Passive, no preventDefault — desktop unchanged. No save shape (SAVE_VER stays 13), pacing bit-identical.'
       ] },
@@ -3433,7 +3436,7 @@ class Game {
     // Regulars ledger note: featured name when available, loop suffix when owned.
     const regularsNote = g.r.loop
       ? (regName ? regName + ' is a regular · $0.04/s each' : '$0.04/s each')
-      : (regName ? regName + ' is a regular' : 'unlock Reputation Loop');
+      : (regName ? regName + ' is a regular' : 'made by Tip Rails + VIP Booths');
     // Post-polish PR 5 (flavor v2): back-half derivations — house reputation
     // (rounds bought), special-shift record, and weekend energy (nights elapsed).
     // All read existing counters in renderVals only; no save field, no pacing impact.
@@ -3696,7 +3699,7 @@ class Game {
       }
       cards = cards.concat(brandCards);
     } else {
-      tabHint = 'Research is paid in Clout, which accrues slowly from Regulars. Permanent, global effects.';
+      tabHint = 'Research is paid in Clout. Clout comes from Regulars. Regulars are made at Tip Rails and VIP Booths. Permanent, global effects.';
       cards = this.RESEARCH.map(d => {
         const bought = g.r[d.id];
         const cost = this.researchCost(g, d);
