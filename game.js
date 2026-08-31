@@ -1070,15 +1070,26 @@ class Game {
     return clubProxy(g);
   }
 
+  generateTabToken() {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      const hex = [...bytes].map(b => b.toString(16).padStart(2, '0')).join('');
+      return String(Date.now()) + '-' + hex;
+    }
+    return String(Date.now()) + '-' + Math.random().toString(36).slice(2, 10);
+  }
+
   constructor(root) {
     this.root = root;
     this.state.g = this.wrapState(this.fresh());
     this.handlers = [];
     // Unique per page context — not copied across tab duplicates the way a
     // sessionStorage boolean is. Paired with OWNER_KEY / RELOAD_KEY for claim.
-    this.tabToken = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
-      ? crypto.randomUUID()
-      : String(Date.now()) + '-' + Math.random().toString(36).slice(2, 10);
+    this.tabToken = this.generateTabToken();
     // In-memory ownership (sessionStorage can fail in private mode). Autosave
     // and save('auto') require this; set by markTabOwner after a successful claim/write.
     this._ownsSave = false;
