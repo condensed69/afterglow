@@ -271,6 +271,13 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
        panels at their real heights. min-content refuses to shrink below
        content, which is the whole point when the shell is the scroller. */
     grid-auto-rows: min-content;
+    /* No scroll chaining / pull-to-refresh at the edges (0.11.19, restored
+       0.11.42). The shell is the only scroller below 900px; without containment,
+       reaching the top or bottom hands the gesture to the browser (page refresh
+       on Android, rubber-band on iOS). contain keeps the gesture inside the
+       shell. 0.11.21's button-transition edit rewrote the comment above and
+       accidentally deleted the declaration — this restores it verbatim. */
+    overscroll-behavior-y: contain;
     /* Legacy iOS momentum scrolling (0.11.19). Modern iOS has momentum by default;
        this is a no-op on Android and modern iOS, but kept for older devices. */
     -webkit-overflow-scrolling: touch;
@@ -345,6 +352,9 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
   .ledger-detail {
     max-height: min(45vh, 420px);
     overflow-y: auto;
+    /* Nested scroller (0.11.42); hitting its bottom must not chain the gesture
+       into the shell. */
+    overscroll-behavior-y: contain;
     transition: max-height 0.25s ease, opacity 0.2s ease;
   }
   .ledger-collapsed .ledger-detail {

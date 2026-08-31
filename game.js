@@ -36,7 +36,7 @@ function clubProxy(g) {
 }
 
 class Game {
-  VERSION = { num: '0.11.41', build: 254, channel: 'alpha', date: '2026-08-29', codename: 'Neon Zero' };
+  VERSION = { num: '0.11.42', build: 255, channel: 'alpha', date: '2026-08-30', codename: 'Neon Zero' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -208,6 +208,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.11.42', date: '2026-08-30', codename: 'Neon Zero', notes: [
+        'MOBILE RUBBER-BAND FIX (overscroll containment restored): the 0.11.21 button-transition CSS edit rewrote the .shell-grid comment block and accidentally deleted the 0.11.19 overscroll-behavior-y:contain declaration, so touch gestures at the scroll edges handed off to the browser again (rubber-band on iOS, pull-to-refresh hand-off on Android). Restored verbatim, and the expanded-Ledger nested scroller (.ledger-detail) now contains its own overscroll too. Purely CSS — no behavior or save change (SAVE_VER stays 13), pacing bit-identical.'
+      ] },
       { v: '0.11.41', date: '2026-08-29', codename: 'Neon Zero', notes: [
         'Plain-English tooltips for Clout / Regulars (GREEN-10, copy-only): the Ledger `?`-tooltips for Clout and Regulars now read as plain speech instead of a glossary \u2014 customers, not patrons; money, not currency; each one says who earns it and what it buys. No state, no save shape (SAVE_VER stays 13), pacing bit-identical.'
       ] },
