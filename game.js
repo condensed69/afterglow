@@ -1322,10 +1322,12 @@ class Game {
     else if (jobSum > g.crew) {
       let over = jobSum - g.crew;
       // Evict from off first, then working roles least-valuable-first (prio asc).
-      const evictOrder = ['off'].concat(
-        this.JOBS.filter(j => j.id !== 'off').sort((a, b) => a.prio - b.prio).map(j => j.id)
-      );
-      for (const k of evictOrder) {
+      if (!this._evictOrder) {
+        this._evictOrder = ['off'].concat(
+          this.JOBS.filter(j => j.id !== 'off').sort((a, b) => a.prio - b.prio).map(j => j.id)
+        );
+      }
+      for (const k of this._evictOrder) {
         const take = Math.min(g.jobs[k] || 0, over);
         g.jobs[k] -= take;
         over -= take;
