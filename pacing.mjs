@@ -388,6 +388,7 @@ function withBudget(name, ms, fn) {
 function simulate(game, stopCondition, maxSec = SIM_HOURS * 3600, opts = {}) {
   const stopOnMilestones = opts.stopOnMilestones !== false;
   const hit = Object.create(null);
+  let hitCount = 0;
   for (const m of MILESTONES) hit[m.id] = null;
 
   // Progress heartbeat (issue #92): a long sim has no lower-level output, so
@@ -424,6 +425,7 @@ function simulate(game, stopCondition, maxSec = SIM_HOURS * 3600, opts = {}) {
     for (const m of MILESTONES) {
       if (hit[m.id] == null && m.check(g)) {
         hit[m.id] = wall;
+        hitCount++;
         // Per-milestone liveness (issue #92): surface each hit as it lands, not
         // only inside reportMilestones() after the whole sim returns — so run()
         // shows progress instead of sitting silent until its first full sim ends.
@@ -431,7 +433,7 @@ function simulate(game, stopCondition, maxSec = SIM_HOURS * 3600, opts = {}) {
       }
     }
     if (stopCondition && stopCondition(g, wall)) break;
-    if (stopOnMilestones && MILESTONES.every((m) => hit[m.id] != null)) break;
+    if (stopOnMilestones && hitCount === MILESTONES.length) break;
   }
   return { wall, hit, g: game.state.g };
 }
