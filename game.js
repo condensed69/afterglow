@@ -1028,8 +1028,8 @@ class Game {
   ];
 
   // Pre-computed eviction orders to avoid re-sorting on every operation
-  WORKING_EVICT_ORDER = this.JOBS.filter(j => j.id !== 'off').sort((a, b) => a.prio - b.prio).map(j => j.id);
-  EVICT_ORDER = ['off'].concat(this.WORKING_EVICT_ORDER);
+  WORKING_EVICT_ORDER = Object.freeze(this.JOBS.filter(j => j.id !== 'off').sort((a, b) => a.prio - b.prio).map(j => j.id));
+  EVICT_ORDER = Object.freeze(['off'].concat(this.WORKING_EVICT_ORDER));
 
   state = {
     tab: 'club', showChangelog: false, showSettings: false, showPrestige: false, showOpenRoom: false, showFranchise: false, showAchievements: false, tick: 0, saveState: 'idle', resetArmed: false, challengeArmed: null, franchiseArmed: false,
