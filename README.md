@@ -1,4 +1,4 @@
-# stripper-dance
+# Afterglow
 A neon-noir nightclub-management idle game. Run the room, build the club,
 and grow a franchise.
 

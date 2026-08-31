@@ -1,6 +1,6 @@
 # DESIGN.md — Afterglow Club Idle
 
-**Game:** Afterglow Club Idle (repo: stripper-dance)  
+**Game:** Afterglow Club Idle (repo: afterglow)  
 **Spec target:** all shipped systems through 0.11.41 — file save, Owner's List, balance + `pacing.mjs`, prestige, achievements, managers, special shifts, whales, multi-tab ownership, second room + rooftop, research tree, challenge tiers, manager levels, Renown/Brand perks/Endorsement, Vision ladder, location extras, ledger session strip (earned vs spent), challenge HUD chip, golden-over-modals, back-half flavor, contrast floor (`game.js` v0.11.38, SAVE_VER 13)  
 **Source of truth for numbers:** `game.js` (`caps()`, `rates()`, constant tables) — re-diff this file when those change  
 **Related:** `PRESTIGE.md` (prestige deep design, shipped 0.8.0), `PLAN.md` (logic-fix predecessor, shipped), `AGENTS.md` (repo gates). Workstream sequencing lived in a local orchestrator plan (not published in the repo tree).  

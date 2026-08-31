@@ -1,4 +1,4 @@
-repo: condensed69/stripper-dance
+repo: condensed69/afterglow
 branch: main
 path: (repo root — index.html + style.css + game.js)
 
