@@ -1078,7 +1078,9 @@ class Game {
     // sessionStorage boolean is. Paired with OWNER_KEY / RELOAD_KEY for claim.
     this.tabToken = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
       ? crypto.randomUUID()
-      : String(Date.now()) + '-' + Math.random().toString(36).slice(2, 10);
+      : (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function')
+        ? String(Date.now()) + '-' + crypto.getRandomValues(new Uint32Array(1))[0].toString(36)
+        : String(Date.now()) + '-' + Math.random().toString(36).slice(2, 10);
     // In-memory ownership (sessionStorage can fail in private mode). Autosave
     // and save('auto') require this; set by markTabOwner after a successful claim/write.
     this._ownsSave = false;
