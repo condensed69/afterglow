@@ -35,6 +35,9 @@ function clubProxy(g) {
   });
 }
 
+const FLAT_RUN_FIELDS = Object.freeze(['cash', 'hype', 'buzz', 'patrons', 'regulars', 'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown']);
+const STRAY_FIELDS = Object.freeze(['cash', 'hype', 'buzz', 'patrons', 'regulars', 'b', 'u', 'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown']);
+
 class Game {
   VERSION = { num: '0.11.42', build: 255, channel: 'alpha', date: '2026-08-30', codename: 'Neon Zero' };
   SAVE_VER = 13;
@@ -1529,7 +1532,7 @@ class Game {
     if (!g.clubs || typeof g.clubs !== 'object' || Array.isArray(g.clubs)) {
       if (typeof g.cash !== 'number') return false;
       const main = {};
-      for (const k of ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown']) {
+      for (const k of FLAT_RUN_FIELDS) {
         if (g[k] !== undefined) main[k] = g[k];
         delete g[k];
       }
@@ -1544,10 +1547,7 @@ class Game {
     } else {
       // A v9 body must not ALSO carry flat leftovers — hybrid shapes are malformed
       // (fail closed) rather than silently preferring one level.
-      const stray = ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'b', 'u',
-        'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown']
-        .filter(k => g[k] !== undefined);
-      if (stray.length) return false;
+      if (STRAY_FIELDS.some(k => g[k] !== undefined)) return false;
       // A v9 body with an EMPTY clubs map performs zero validations and then
       // makes club(g) fall back to the account object (missing c.b) — abort
       // startup instead of crashing in the first caps()/render.
