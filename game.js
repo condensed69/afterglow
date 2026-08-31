@@ -2577,9 +2577,11 @@ class Game {
     // reads legacyTotal, so re-sync those primitives onto the single view after
     // each credit to keep every check seeing the freshest value (one spread total).
     const view = { ...g, ...c, b: c.b, u: c.u };
+    const completed = new Set(g.achievements);
     for (const ach of this.ACHIEVEMENTS) {
-      if (!g.achievements.includes(ach.id) && ach.check.call(this, view)) {
+      if (!completed.has(ach.id) && ach.check.call(this, view)) {
         g.achievements.push(ach.id);
+        completed.add(ach.id);
         if (ach.reward) {
           if (ach.reward.cash) { c.cash = (c.cash || 0) + ach.reward.cash; view.cash = c.cash; }
           if (ach.reward.clout) { g.clout = (g.clout || 0) + ach.reward.clout; view.clout = g.clout; }
