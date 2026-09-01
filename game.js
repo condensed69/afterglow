@@ -1828,6 +1828,20 @@ class Game {
     }
   }
 
+  tryMigrateSave(p) {
+    if (p.saveVer === this.SAVE_VER && p.g && typeof p.g === 'object') {
+      return { g: p.g, upgraded: false, wiped: false };
+    }
+    if (p.g && typeof p.g === 'object' && typeof p.saveVer === 'number' && p.saveVer < this.SAVE_VER) {
+      // Upgrade path: apply MIGRATIONS chain; wipe only if a step is missing.
+      if (this.migrateFrom(p.g, p.saveVer)) {
+        return { g: p.g, upgraded: true, wiped: false };
+      }
+    }
+    // Future saveVer, missing g, or non-numeric version — no path.
+    return { g: null, upgraded: false, wiped: true };
+  }
+
   init() {
     let g = null, wiped = false, upgraded = false, prevVer = null, fromSaveVer = null, lastAutoSave = null;
     try {
@@ -1837,20 +1851,10 @@ class Game {
         prevVer = p.ver || null;
         fromSaveVer = p.saveVer;
         if (typeof p.lastAutoSave === 'number') lastAutoSave = p.lastAutoSave;
-        if (p.saveVer === this.SAVE_VER && p.g && typeof p.g === 'object') {
-          g = p.g;
-        } else if (p.g && typeof p.g === 'object' && typeof p.saveVer === 'number' && p.saveVer < this.SAVE_VER) {
-          // Upgrade path: apply MIGRATIONS chain; wipe only if a step is missing.
-          if (this.migrateFrom(p.g, p.saveVer)) {
-            g = p.g;
-            upgraded = true;
-          } else {
-            wiped = true;
-          }
-        } else {
-          // Future saveVer, missing g, or non-numeric version — no path.
-          wiped = true;
-        }
+        const res = this.tryMigrateSave(p);
+        g = res.g;
+        upgraded = res.upgraded;
+        wiped = res.wiped;
       }
     } catch (e) { wiped = true; }
     // Recover safely from a previously persisted malformed clipboard import.
