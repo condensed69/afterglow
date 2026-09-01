@@ -3393,10 +3393,11 @@ class Game {
         try {
           if (navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
             text = await navigator.clipboard.readText();
-          } else {
-            text = window.prompt('Paste save JSON to restore:') || '';
           }
         } catch (e) {
+          // Ignore error and fall back to prompt
+        }
+        if (!text) {
           text = window.prompt('Paste save JSON to restore:') || '';
         }
         if (!text || !String(text).trim()) {
