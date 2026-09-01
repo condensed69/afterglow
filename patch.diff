@@ -1,0 +1,20 @@
+--- game.js
++++ game.js
+@@ -3392,11 +3392,10 @@
+         let text;
+         try {
+           if (navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
+             text = await navigator.clipboard.readText();
+-          } else {
+-            text = window.prompt('Paste save JSON to restore:') || '';
+           }
+         } catch (e) {
+-          text = window.prompt('Paste save JSON to restore:') || '';
++          // Ignore error and fall back to prompt
+         }
++        if (!text) {
++          text = window.prompt('Paste save JSON to restore:') || '';
++        }
+         if (!text || !String(text).trim()) {
+           return;
+         }
