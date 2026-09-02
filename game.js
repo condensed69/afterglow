@@ -35,11 +35,11 @@ function clubProxy(g) {
   });
 }
 
-const FLAT_RUN_FIELDS = Object.freeze(['cash', 'hype', 'buzz', 'patrons', 'regulars', 'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown']);
-const STRAY_FIELDS = Object.freeze(['cash', 'hype', 'buzz', 'patrons', 'regulars', 'b', 'u', 'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown']);
+const FLAT_RUN_FIELDS = Object.freeze(['cash', 'hype', 'buzz', 'patrons', 'regulars', 'heat', 'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown']);
+const STRAY_FIELDS = Object.freeze(['cash', 'hype', 'buzz', 'patrons', 'regulars', 'heat', 'b', 'u', 'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown']);
 
 class Game {
-  VERSION = { num: '0.12.2', build: 258, channel: 'alpha', date: '2026-09-02', codename: 'Neon Syndicate' };
+  VERSION = { num: '0.12.3', build: 259, channel: 'alpha', date: '2026-09-02', codename: 'Neon Syndicate' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -211,6 +211,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.12.3', date: '2026-09-02', codename: 'Neon Syndicate', notes: [
+        '4-PHASE OPERATIONAL SHIFTS & POLICE HEAT ENGINE (PR 4 of Afterglow 2.0): integrated dynamic 4-phase shift cycles with shift-specific Heat generation rates (Early Doors, Peak Hours, Last Call, After Hours) and door security mitigation. Introduced Police Heat & Bribe mechanic with live incident triggers (Bar Fights, Noise Complaints, Fire Marshal checks), heat HUD indicators, and Chief bribery. SAVE_VER stays 13, pacing bit-identical.'
+      ] },
       { v: '0.12.2', date: '2026-09-02', codename: 'Neon Syndicate', notes: [
         'CANVAS FLOORBOARD & WEB AUDIO SYNTHESIZER (PR 3 of Afterglow 2.0): replaced static stage art with an interactive 60 FPS HTML5 Canvas floorboard (src/ui/floorboard.js) featuring perspective neon floor grid, responsive crowd particles, dynamic sweeping spotlights, and click ripples. Integrated a zero-asset procedural Web Audio API synthwave rhythm & SFX generator (src/core/audio.js) with 4-on-the-floor kick, hi-hat, and hype-modulated synth bass. Auto-pauses on document visibility hide. SAVE_VER stays 13, pacing bit-identical.'
       ] },
@@ -1254,7 +1257,7 @@ class Game {
       else u[x.id] = false;
     }
     return {
-      cash: (this.props && this.props.startingCash) ?? 20, hype: 0, buzz: 0, patrons: 0, regulars: 0,
+      cash: (this.props && this.props.startingCash) ?? 20, hype: 0, buzz: 0, patrons: 0, regulars: 0, heat: 0,
       b, u, elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0,
       _specialShift: null, _whaleCooldown: 0
     };
@@ -1343,7 +1346,7 @@ class Game {
     // migration, or hand-edited payloads) before normalizing per-club fields.
     if (!g.clubs || typeof g.clubs !== 'object' || Array.isArray(g.clubs)) {
       const main = {};
-      const clubFields = ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'b', 'u',
+      const clubFields = ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'heat', 'b', 'u',
         'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown'];
       for (const k of clubFields) {
         main[k] = g[k];
@@ -1356,10 +1359,11 @@ class Game {
     for (const clubId of Object.keys(g.clubs)) {
       const c = g.clubs[clubId];
       if (!c || typeof c !== 'object') { g.clubs[clubId] = this.club(this.fresh()); continue; }
-      for (const k of ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'elapsed', 'night', 'shiftT']) {
+      for (const k of ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'heat', 'elapsed', 'night', 'shiftT']) {
         if (typeof c[k] !== 'number' || !Number.isFinite(c[k])) c[k] = 0;
-        if (k === 'cash' || k === 'hype' || k === 'buzz' || k === 'patrons' || k === 'regulars') c[k] = Math.max(0, c[k]);
+        if (k === 'cash' || k === 'hype' || k === 'buzz' || k === 'patrons' || k === 'regulars' || k === 'heat') c[k] = Math.max(0, c[k]);
       }
+      if (c.heat > 100) c.heat = 100;
       if (c.night < 1) c.night = 1;
       if (!c.b || typeof c.b !== 'object' || Array.isArray(c.b)) c.b = {};
       for (const def of this.BUILDINGS) {
@@ -2353,7 +2357,15 @@ class Game {
     // Regulars / Clout paced for first-research ~25 min under the §C reference bot.
     const regulars = c.patrons * 0.00045 * (1 + c.b.vip * 0.18) * sm * (g.r.playbook ? 1.25 : 1);
     const clout = c.regulars * 0.0011 * (1 + 0.25 * this.perk(g, 'clout25')) * (g.r.network ? 1.25 : 1);
-    return { cash, hype, buzz, patrons, regulars, clout, wage, cap, shift, sm, pull, buzzSpent, strike };
+
+    // Police Heat Engine (PR 4)
+    const shiftHeatMap = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.HEAT) ? AfterglowCatalogs.HEAT.SHIFT_BASE : [0.02, 0.08, 0.05, 0.12];
+    const baseHeat = shiftHeatMap[c.shiftIdx] ?? 0.05;
+    const doorSec = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.HEAT) ? AfterglowCatalogs.HEAT.DOOR_SECURITY : 0.015;
+    const securityScore = (c.b.door || 0) * doorSec;
+    const heatRate = Math.max(-0.04, baseHeat - securityScore);
+
+    return { cash, hype, buzz, patrons, regulars, clout, wage, cap, shift, sm, pull, buzzSpent, strike, heatRate, heat: c.heat || 0 };
   }
 
   // Edge-triggered strike log: one line on onset, not per tick.
@@ -2411,6 +2423,8 @@ class Game {
       c.patrons = Math.max(0, Math.min(cap.patrons, c.patrons + rates.patrons * dt));
       c.regulars = Math.max(0, c.regulars + rates.regulars * dt);
       g.clout = Math.max(0, g.clout + rates.clout * dt);
+      // Offline heat only decays via security suppression, never increases while away
+      if (rates.heatRate < 0) c.heat = Math.max(0, (c.heat || 0) + rates.heatRate * dt);
       c.shiftT += wall;
       c.elapsed += wall;
       remaining -= wall;
@@ -2443,6 +2457,27 @@ class Game {
         const hypeRatio = cap.hype > 0 ? (c.hype / cap.hype) : 0.5;
         this.audio.tickRhythm(hypeRatio);
       }
+      // Police Raid check if heat reached 100%
+      const c = this.club(g);
+      if ((c.heat || 0) >= 100) {
+        const fine = Math.min(c.cash, Math.floor(20 + (c.night || 1) * 5));
+        c.cash = Math.max(0, c.cash - fine);
+        c.heat = 45;
+        if (fine > 0) {
+          this.push(g, '🚨 Police Raid! Fined $' + this.fmt(fine) + '. Heat cooled to 45.', '#ff2d78');
+        } else {
+          this.push(g, '🚨 Police Raid! Warning issued (till empty). Heat cooled to 45.', '#ff2d78');
+        }
+        this.forceUpdate();
+      } else if (Math.random() < 0.0015 && (c.heat || 0) < 85 && typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.INCIDENTS) {
+        const incs = AfterglowCatalogs.INCIDENTS;
+        const inc = incs[Math.floor(Math.random() * incs.length)];
+        if (inc) {
+          c.heat = Math.min(100, (c.heat || 0) + inc.heat);
+          this.push(g, '⚠️ ' + inc.text, '#ffc94a');
+          this.forceUpdate();
+        }
+      }
     } finally {
       this._live = false;
     }
@@ -2474,6 +2509,7 @@ class Game {
       c.patrons = Math.max(0, Math.min(cap.patrons, c.patrons + r.patrons * chunk));
       c.regulars += r.regulars * chunk;
       g.clout += r.clout * chunk;
+      c.heat = Math.max(0, Math.min(100, (c.heat || 0) + (r.heatRate || 0) * chunk));
       c.elapsed += chunk;
       c.shiftT += chunk;
       remaining -= chunk;
@@ -2919,6 +2955,27 @@ class Game {
       this.setState({ tab: 'club' });
       return;
     }
+    this.forceUpdate();
+  }
+
+  // Police Heat Engine (PR 4) — Bribe Chief cost calculation helper
+  bribeCost(g) {
+    const c = this.club(g);
+    return Math.max(25, Math.floor(30 + (c.night || 1) * 4));
+  }
+
+  // Police Heat Engine (PR 4) — Bribe Chief action to clear 35 Heat
+  bribePolice() {
+    const g = this.state.g;
+    if (!g || this.state.tabStale) return;
+    const c = this.club(g);
+    const cost = this.bribeCost(g);
+    if (c.cash < cost || (c.heat || 0) <= 0) return;
+    c.cash -= cost;
+    this.sessionSpent += cost;
+    const reduction = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.HEAT && AfterglowCatalogs.HEAT.BRIBE_REDUCTION) || 35;
+    c.heat = Math.max(0, (c.heat || 0) - reduction);
+    this.push(g, 'Greased the Chief. -' + reduction + ' Heat.', '#22d3ee');
     this.forceUpdate();
   }
 
@@ -3847,6 +3904,13 @@ class Game {
       beamOpacity: (0.25 + 0.55 * Math.min(1, c.hype / cap.hype)).toFixed(2),
       spotOpacity: (0.14 + 0.46 * Math.min(1, c.hype / cap.hype)).toFixed(2),
       signLit: g.jobs.stage > 0,
+      heat: Math.round(c.heat || 0),
+      heatVal: Number((c.heat || 0).toFixed(1)),
+      heatRate: (r.heatRate > 0 ? '+' : '') + r.heatRate.toFixed(2) + '/s',
+      heatColor: (c.heat || 0) >= 70 ? '#ff2d78' : ((c.heat || 0) >= 40 ? '#ffc94a' : '#4ade80'),
+      bribeCost: this.bribeCost(g),
+      canBribe: c.cash >= this.bribeCost(g) && (c.heat || 0) > 0 && !this.state.tabStale,
+      bribePolice: () => this.bribePolice(),
       soundEnabled: Boolean(this.audio && this.audio.enabled),
       toggleSound: () => {
         if (this.audio) {
@@ -4677,6 +4741,10 @@ class Game {
           <span id="header-shift-mult" style="color:#ffc94a">${v.shiftMultLabel}</span>
         </div>
       </div>
+      <button id="header-heat-meter" data-h="${this.bind(v.bribePolice)}" class="hv-pink" aria-label="Police Heat ${v.heat}% - Tap to bribe Chief" title="Police Heat: ${v.heat}% (${v.heatRate}) — tap to bribe Chief ($${v.bribeCost})" style="display:flex;align-items:center;gap:5px;height:34px;padding:0 8px;border:1px solid #2f1c42;border-radius:6px;background:#100a19;cursor:pointer">
+        <span style="font-size:12px">🚨</span>
+        <span id="header-heat-val" style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:${v.heatColor};font-weight:700">${v.heat}%</span>
+      </button>
       <button id="header-sound-btn" data-h="${this.bind(v.toggleSound)}" class="hv-pink" aria-label="Toggle sound and procedural synthwave" title="${v.soundEnabled ? 'Mute sound & procedural synth' : 'Enable sound & procedural synth'}" style="width:34px;height:34px;border:1px solid #2f1c42;border-radius:6px;background:#100a19;color:${v.soundEnabled ? '#ffc94a' : '#8f6f9c'};cursor:pointer;font-size:15px">${v.soundEnabled ? '🔊' : '🔇'}</button>
       <button id="header-settings-btn" data-h="${this.bind(v.toggleSettings)}" class="hv-pink" style="width:34px;height:34px;border:1px solid #2f1c42;border-radius:6px;background:#100a19;color:#9c86ab;cursor:pointer;font-size:15px">☰</button>
     </div>
@@ -4937,14 +5005,21 @@ class Game {
     if (nno && nno.textContent !== 'night ' + v.nightNo) nno.textContent = 'night ' + v.nightNo;
     const sm = this.dom('#header-shift-mult');
     if (sm && sm.textContent !== v.shiftMultLabel) sm.textContent = v.shiftMultLabel;
+    const hm = this.dom('#header-heat-val');
+    if (hm) {
+      if (hm.textContent !== v.heat + '%') hm.textContent = v.heat + '%';
+      hm.style.color = v.heatColor;
+    }
+    const hwrap = this.dom('#header-heat-meter');
+    if (hwrap) {
+      hwrap.title = `Police Heat: ${v.heat}% (${v.heatRate}) — tap to bribe Chief ($${v.bribeCost})`;
+    }
     const sndBtn = this.dom('#header-sound-btn');
     if (sndBtn) {
       sndBtn.textContent = v.soundEnabled ? '🔊' : '🔇';
       sndBtn.title = v.soundEnabled ? 'Mute sound & procedural synth' : 'Enable sound & procedural synth';
       sndBtn.style.color = v.soundEnabled ? '#ffc94a' : '#8f6f9c';
     }
-    const setBtn = this.dom('#header-settings-btn');
-    if (setBtn) setBtn.setAttribute('data-h', String(this.bind(v.toggleSettings)));
 
     // 2. Ticker
     const tt = this.dom('.ticker-text');
