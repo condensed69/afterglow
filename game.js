@@ -35,11 +35,11 @@ function clubProxy(g) {
   });
 }
 
-const FLAT_RUN_FIELDS = Object.freeze(['cash', 'hype', 'buzz', 'patrons', 'regulars', 'heat', 'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown']);
-const STRAY_FIELDS = Object.freeze(['cash', 'hype', 'buzz', 'patrons', 'regulars', 'heat', 'b', 'u', 'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown']);
+const FLAT_RUN_FIELDS = Object.freeze(['cash', 'hype', 'buzz', 'patrons', 'regulars', 'heat', 'barStock', 'barTier', 'djTrack', '_frenzyT', '_beatCooldown', 'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown']);
+const STRAY_FIELDS = Object.freeze(['cash', 'hype', 'buzz', 'patrons', 'regulars', 'heat', 'barStock', 'barTier', 'djTrack', '_frenzyT', '_beatCooldown', 'b', 'u', 'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown']);
 
 class Game {
-  VERSION = { num: '0.12.3', build: 259, channel: 'alpha', date: '2026-09-02', codename: 'Neon Syndicate' };
+  VERSION = { num: '0.12.4', build: 260, channel: 'alpha', date: '2026-09-02', codename: 'Station Subsystems' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -211,6 +211,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.12.4', date: '2026-09-02', codename: 'Station Subsystems', notes: [
+        'STATION SUBSYSTEMS (MIXOLOGY BAR INVENTORY & DJ BEAT-SYNC) (PR 5 of Afterglow 2.0): introduced active station mechanics for bar and stage. Mixology inventory system (Well Spirits, Craft Cocktails, Top-Shelf Champagne) supplies bar stock to boost drink revenue by up to 1.60x when stocked. DJ Beat-Sync minigame allows triggering rhythmic Beat Sync Frenzies (+25% hype, +15% cash) during live play with synth audio pulse and floorboard particle bursts. Auto-restock supported via bar automation. SAVE_VER stays 13, pacing bit-identical.'
+      ] },
       { v: '0.12.3', date: '2026-09-02', codename: 'Neon Syndicate', notes: [
         '4-PHASE OPERATIONAL SHIFTS & POLICE HEAT ENGINE (PR 4 of Afterglow 2.0): integrated dynamic 4-phase shift cycles with shift-specific Heat generation rates (Early Doors, Peak Hours, Last Call, After Hours) and door security mitigation. Introduced Police Heat & Bribe mechanic with live incident triggers (Bar Fights, Noise Complaints, Fire Marshal checks), heat HUD indicators, and Chief bribery. SAVE_VER stays 13, pacing bit-identical.'
       ] },
@@ -1258,6 +1261,7 @@ class Game {
     }
     return {
       cash: (this.props && this.props.startingCash) ?? 20, hype: 0, buzz: 0, patrons: 0, regulars: 0, heat: 0,
+      barStock: 0, barTier: 0, djTrack: 0, _frenzyT: 0, _beatCooldown: 0,
       b, u, elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0,
       _specialShift: null, _whaleCooldown: 0
     };
@@ -1346,7 +1350,7 @@ class Game {
     // migration, or hand-edited payloads) before normalizing per-club fields.
     if (!g.clubs || typeof g.clubs !== 'object' || Array.isArray(g.clubs)) {
       const main = {};
-      const clubFields = ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'heat', 'b', 'u',
+      const clubFields = ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'heat', 'barStock', 'barTier', 'djTrack', '_frenzyT', '_beatCooldown', 'b', 'u',
         'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown'];
       for (const k of clubFields) {
         main[k] = g[k];
@@ -1359,11 +1363,13 @@ class Game {
     for (const clubId of Object.keys(g.clubs)) {
       const c = g.clubs[clubId];
       if (!c || typeof c !== 'object') { g.clubs[clubId] = this.club(this.fresh()); continue; }
-      for (const k of ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'heat', 'elapsed', 'night', 'shiftT']) {
+      for (const k of ['cash', 'hype', 'buzz', 'patrons', 'regulars', 'heat', 'barStock', 'barTier', 'djTrack', '_frenzyT', '_beatCooldown', 'elapsed', 'night', 'shiftT']) {
         if (typeof c[k] !== 'number' || !Number.isFinite(c[k])) c[k] = 0;
-        if (k === 'cash' || k === 'hype' || k === 'buzz' || k === 'patrons' || k === 'regulars' || k === 'heat') c[k] = Math.max(0, c[k]);
+        if (k === 'cash' || k === 'hype' || k === 'buzz' || k === 'patrons' || k === 'regulars' || k === 'heat' || k === 'barStock' || k === '_frenzyT' || k === '_beatCooldown') c[k] = Math.max(0, c[k]);
       }
       if (c.heat > 100) c.heat = 100;
+      c.barTier = Math.max(0, Math.min(2, Math.floor(c.barTier || 0)));
+      c.djTrack = Math.max(0, Math.min(2, Math.floor(c.djTrack || 0)));
       if (c.night < 1) c.night = 1;
       if (!c.b || typeof c.b !== 'object' || Array.isArray(c.b)) c.b = {};
       for (const def of this.BUILDINGS) {
@@ -2295,9 +2301,20 @@ class Game {
     // Research tree (REPLAY_ROADMAP.md §5): school boosts all crew output. Brand
     // is folded into totalCashMult — the single all-cash composition point — so
     // it covers passive income AND clicks/whale/golden (see totalCashMult()).
+    // Station Subsystems (PR 5): DJ Beat-Sync Frenzy
+    const frenzyCashMult = (c._frenzyT || 0) > 0 ? 1.15 : 1.0;
+    const frenzyHypeGain = (c._frenzyT || 0) > 0 ? 1.25 : 1.0;
+
     const crewMult = (c.u.residency ? 1.4 : 1) * (g.r.school ? 1.15 : 1) * (1 + this.challengeBonus(g).crewOut);
-    const cashMult = (c.u.twodrink ? 1.35 : 1) * hypeMult * sm * (c.u.skyline ? 1.25 : 1);
+    const cashMult = (c.u.twodrink ? 1.35 : 1) * hypeMult * sm * (c.u.skyline ? 1.25 : 1) * frenzyCashMult;
     const bottle = c.u.bottle ? 2.2 : 1;
+
+    // Station Subsystems (PR 5): Bar Stocking & Beverage Tiers
+    let barMult = 1.0;
+    if ((c.barStock || 0) > 0 && typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.BEVERAGES) {
+      const bev = AfterglowCatalogs.BEVERAGES[c.barTier || 0];
+      if (bev) barMult = bev.revMult;
+    }
 
     const railCap = c.b.rail * 6;
     // Non-crew cash: door cover + tip rail + bar + VIP rooms + regulars loop.
@@ -2310,7 +2327,7 @@ class Game {
     // rail (PLAN §1.6). House cut prestige perk multiplies all cash income.
     const houseCut = this.totalCashMult(g);
     const coverRate = g.r.cover ? 0.03 : 0.02;
-    let nonCrewCash = (c.patrons * coverRate + Math.min(c.patrons, railCap) * 0.06 + c.b.bar * 0.45) * cashMult * houseCut;
+    let nonCrewCash = (c.patrons * coverRate + Math.min(c.patrons, railCap) * 0.06 + c.b.bar * 0.45 * barMult) * cashMult * houseCut;
     nonCrewCash += c.b.vip * 1.25 * (g.r.concierge ? 1.5 : 1) * bottle * cashMult * houseCut;
     // Location extras (REPLAY_ROADMAP.md §9): per-location cash buildings.
     nonCrewCash += ((c.b.pool || 0) * 0.60 + (c.b.roofbar || 0) * 0.90 + (c.b.heli || 0) * 1.50) * cashMult * houseCut;
@@ -2335,7 +2352,7 @@ class Game {
 
     const cash = nonCrewCash + vipCrewCash - wage;
 
-    const hypeGain = (c.b.dj * 0.10 + stageHype) * (c.u.led ? 1.3 : 1) * (c.u.vista ? 1.4 : 1);
+    const hypeGain = (c.b.dj * 0.10 + stageHype) * (c.u.led ? 1.3 : 1) * (c.u.vista ? 1.4 : 1) * frenzyHypeGain;
     const decay = c.hype * 0.014 * Math.max(0.25, 1 - c.b.door * 0.12);
     const hype = hypeGain - decay;
 
@@ -2423,6 +2440,8 @@ class Game {
       c.patrons = Math.max(0, Math.min(cap.patrons, c.patrons + rates.patrons * dt));
       c.regulars = Math.max(0, c.regulars + rates.regulars * dt);
       g.clout = Math.max(0, g.clout + rates.clout * dt);
+      // Station Subsystems (PR 5): Bar Stocking consumption
+      if ((c.barStock || 0) > 0) c.barStock = Math.max(0, c.barStock - (c.b.bar || 0) * 0.05 * dt);
       // Offline heat only decays via security suppression, never increases while away
       if (rates.heatRate < 0) c.heat = Math.max(0, (c.heat || 0) + rates.heatRate * dt);
       c.shiftT += wall;
@@ -2510,6 +2529,10 @@ class Game {
       c.regulars += r.regulars * chunk;
       g.clout += r.clout * chunk;
       c.heat = Math.max(0, Math.min(100, (c.heat || 0) + (r.heatRate || 0) * chunk));
+      // Station Subsystems (PR 5): Bar Stocking consumption & DJ Frenzy duration
+      if ((c.barStock || 0) > 0) c.barStock = Math.max(0, c.barStock - (c.b.bar || 0) * 0.05 * chunk);
+      if ((c._frenzyT || 0) > 0) c._frenzyT = Math.max(0, c._frenzyT - chunk);
+      if ((c._beatCooldown || 0) > 0) c._beatCooldown = Math.max(0, c._beatCooldown - chunk);
       c.elapsed += chunk;
       c.shiftT += chunk;
       remaining -= chunk;
@@ -2976,6 +2999,71 @@ class Game {
     const reduction = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.HEAT && AfterglowCatalogs.HEAT.BRIBE_REDUCTION) || 35;
     c.heat = Math.max(0, (c.heat || 0) - reduction);
     this.push(g, 'Greased the Chief. -' + reduction + ' Heat.', '#22d3ee');
+    this.forceUpdate();
+  }
+
+  // Station Subsystems (PR 5): Mixology Bar Restocking
+  restockBar() {
+    const g = this.state.g;
+    if (!g || this.state.tabStale) return;
+    const c = this.club(g);
+    const bevs = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.BEVERAGES) ? AfterglowCatalogs.BEVERAGES : [];
+    const bev = bevs[c.barTier || 0] || { batchCost: 15, batchSize: 50, name: 'Well Spirits' };
+    if (c.cash < bev.batchCost) return;
+    c.cash -= bev.batchCost;
+    this.sessionSpent += bev.batchCost;
+    c.barStock = (c.barStock || 0) + bev.batchSize;
+    this.push(g, 'Restocked ' + bev.name + ' (+' + bev.batchSize + ' stock).', '#4ade80');
+    this.forceUpdate();
+  }
+
+  setBarTier(idx) {
+    const g = this.state.g;
+    if (!g || this.state.tabStale) return;
+    const c = this.club(g);
+    const bevs = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.BEVERAGES) ? AfterglowCatalogs.BEVERAGES : [];
+    const bev = bevs[idx];
+    if (!bev || (c.b.bar || 0) < (bev.reqBar || 1)) return;
+    c.barTier = idx;
+    this.forceUpdate();
+  }
+
+  // Station Subsystems (PR 5): DJ Beat-Sync Frenzy
+  djBeatSync(e) {
+    const g = this.state.g;
+    if (!g || this.state.tabStale) return;
+    const c = this.club(g);
+    if ((c._beatCooldown || 0) > 0 || (c.b.dj || 0) < 1) return;
+    c._frenzyT = 6;
+    c._beatCooldown = 15;
+    if (this.audio) this.audio.playChime();
+    if (this.floorboard) {
+      if (e && typeof e.clientX === 'number') {
+        const canvas = this.dom('#stage-canvas');
+        if (canvas && canvas.getBoundingClientRect) {
+          const rect = canvas.getBoundingClientRect();
+          this.floorboard.triggerPulse(e.clientX - rect.left, e.clientY - rect.top, '#22d3ee');
+        } else {
+          this.floorboard.triggerPulse();
+        }
+      } else {
+        this.floorboard.triggerPulse();
+      }
+    }
+    const tracks = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.DJ_TRACKS) ? AfterglowCatalogs.DJ_TRACKS : [];
+    const trk = tracks[c.djTrack || 0] || { name: 'Neon Pulse' };
+    this.push(g, '🎵 Beat-Sync Frenzy on ' + trk.name + '! +25% Hype, +15% Cash.', '#e879f9');
+    this.forceUpdate();
+  }
+
+  selectDjTrack(idx) {
+    const g = this.state.g;
+    if (!g || this.state.tabStale) return;
+    const c = this.club(g);
+    const tracks = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.DJ_TRACKS) ? AfterglowCatalogs.DJ_TRACKS : [];
+    const trk = tracks[idx];
+    if (!trk || (c.b.dj || 0) < (trk.reqDj || 1)) return;
+    c.djTrack = idx;
     this.forceUpdate();
   }
 
@@ -3911,6 +3999,35 @@ class Game {
       bribeCost: this.bribeCost(g),
       canBribe: c.cash >= this.bribeCost(g) && (c.heat || 0) > 0 && !this.state.tabStale,
       bribePolice: () => this.bribePolice(),
+
+      // Station Subsystems (PR 5)
+      barStock: Math.round(c.barStock || 0),
+      barTier: c.barTier || 0,
+      beverages: (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.BEVERAGES) ? AfterglowCatalogs.BEVERAGES.map((b, idx) => ({
+        ...b,
+        active: (c.barTier || 0) === idx,
+        unlocked: (c.b.bar || 0) >= (b.reqBar || 1),
+        canSelect: (c.b.bar || 0) >= (b.reqBar || 1) && (c.barTier || 0) !== idx,
+        select: () => this.setBarTier(idx)
+      })) : [],
+      curBeverage: ((typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.BEVERAGES) ? AfterglowCatalogs.BEVERAGES[c.barTier || 0] : null) || { name: 'Well Spirits', batchCost: 15, batchSize: 50, revMult: 1.20 },
+      canRestock: c.cash >= (((typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.BEVERAGES) ? AfterglowCatalogs.BEVERAGES[c.barTier || 0]?.batchCost : 15) || 15) && (c.b.bar || 0) > 0 && !this.state.tabStale,
+      restockBar: () => this.restockBar(),
+
+      djTrack: c.djTrack || 0,
+      djTracks: (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.DJ_TRACKS) ? AfterglowCatalogs.DJ_TRACKS.map((t, idx) => ({
+        ...t,
+        active: (c.djTrack || 0) === idx,
+        unlocked: (c.b.dj || 0) >= (t.reqDj || 1),
+        canSelect: (c.b.dj || 0) >= (t.reqDj || 1) && (c.djTrack || 0) !== idx,
+        select: () => this.selectDjTrack(idx)
+      })) : [],
+      curDjTrack: ((typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.DJ_TRACKS) ? AfterglowCatalogs.DJ_TRACKS[c.djTrack || 0] : null) || { name: 'Neon Pulse', bpm: 120 },
+      frenzyActive: (c._frenzyT || 0) > 0,
+      frenzySec: Math.ceil(c._frenzyT || 0),
+      beatCooldown: Math.ceil(c._beatCooldown || 0),
+      canBeatSync: (c._beatCooldown || 0) <= 0 && (c.b.dj || 0) > 0 && !this.state.tabStale,
+      djBeatSync: (e) => this.djBeatSync(e),
       soundEnabled: Boolean(this.audio && this.audio.enabled),
       toggleSound: () => {
         if (this.audio) {
@@ -4880,6 +4997,15 @@ class Game {
       <div class="stage-cta" style="display:flex;flex-wrap:wrap;gap:10px;padding:12px 14px;background:#0b0712;border-bottom:1px solid #2a1738;align-items:center">
         <button id="cta-work-crowd" data-h="${this.bind(v.workCrowd)}" class="cta" style="flex:1 1 240px;background:linear-gradient(180deg,#ff3d85,#d81259);border:0;border-radius:8px;color:#fff;font-weight:700;font-size:13px;letter-spacing:1.2px;text-transform:uppercase;padding:13px 16px;cursor:pointer;box-shadow:0 0 22px rgba(255,45,120,.35)">Work the room <span style="font-family:'IBM Plex Mono',monospace;opacity:.85;text-transform:none;letter-spacing:0">+${v.clickValue}</span></button>
         <button id="cta-buy-round" data-h="${this.bind(v.buyRound)}" ${v.roundLocked ? 'disabled' : ''} title="${v.roundReason || v.roundLabel}" aria-label="${v.roundReason || v.roundLabel}" style="${css(v.roundStyle)}">${v.roundLabel}</button>
+        <div id="station-controls-wrap" style="display:flex;gap:8px;align-items:center">
+          <button id="cta-restock-bar" data-h="${this.bind(v.restockBar)}" ${!v.canRestock ? 'disabled' : ''} class="hv-pink" title="Restock ${v.curBeverage.name} (+${v.curBeverage.batchSize} stock for $${v.curBeverage.batchCost}) · currently ${v.barStock} in stock" aria-label="Restock bar" style="display:flex;align-items:center;gap:6px;background:${v.canRestock ? '#170e22' : '#100a18'};border:1px solid ${v.canRestock ? '#3a2350' : '#221434'};border-radius:8px;padding:10px 12px;color:${v.canRestock ? '#4ade80' : '#8f6f9c'};cursor:${v.canRestock ? 'pointer' : 'not-allowed'};font-size:11px;font-weight:700">
+            <span>🍸 Stock: ${v.barStock}</span>
+            <span style="font-size:9.5px;color:#9c86ab">+$${v.curBeverage.batchCost}</span>
+          </button>
+          <button id="cta-dj-beatsync" data-h="${this.bind(v.djBeatSync)}" ${!v.canBeatSync ? 'disabled' : ''} class="hv-pink" title="DJ Beat-Sync: Trigger 6s Frenzy (+25% Hype, +15% Cash)" aria-label="DJ Beat-Sync" style="display:flex;align-items:center;gap:6px;background:${v.frenzyActive ? 'linear-gradient(180deg,#e879f9,#a855f7)' : (v.canBeatSync ? '#170e22' : '#100a18')};border:1px solid ${v.frenzyActive ? '#f472b6' : (v.canBeatSync ? '#3a2350' : '#221434')};border-radius:8px;padding:10px 12px;color:${v.frenzyActive ? '#fff' : (v.canBeatSync ? '#22d3ee' : '#8f6f9c')};cursor:${v.canBeatSync ? 'pointer' : 'not-allowed'};font-size:11px;font-weight:700">
+            <span>🎧 ${v.frenzyActive ? `FRENZY ${v.frenzySec}s` : (v.beatCooldown > 0 ? `Drop (${v.beatCooldown}s)` : 'Beat Drop')}</span>
+          </button>
+        </div>
         <div id="round-reason-wrap">
         ${v.roundReason ? `<div class="round-reason">${v.roundReason}</div>` : ''}
         </div>
@@ -5199,6 +5325,29 @@ class Game {
       ctaRound.style.cssText = css(v.roundStyle);
       ctaRound.title = v.roundReason || v.roundLabel;
       ctaRound.setAttribute('aria-label', v.roundReason || v.roundLabel);
+    }
+    const ctaRestock = this.dom('#cta-restock-bar');
+    if (ctaRestock) {
+      ctaRestock.disabled = !v.canRestock;
+      if (!v.canRestock) ctaRestock.setAttribute('disabled', '');
+      else ctaRestock.removeAttribute('disabled');
+      ctaRestock.innerHTML = `<span>🍸 Stock: ${v.barStock}</span><span style="font-size:9.5px;color:#9c86ab">+$${v.curBeverage.batchCost}</span>`;
+      ctaRestock.style.background = v.canRestock ? '#170e22' : '#100a18';
+      ctaRestock.style.borderColor = v.canRestock ? '#3a2350' : '#221434';
+      ctaRestock.style.color = v.canRestock ? '#4ade80' : '#8f6f9c';
+      ctaRestock.style.cursor = v.canRestock ? 'pointer' : 'not-allowed';
+      ctaRestock.title = `Restock ${v.curBeverage.name} (+${v.curBeverage.batchSize} stock for $${v.curBeverage.batchCost}) · currently ${v.barStock} in stock`;
+    }
+    const ctaBeat = this.dom('#cta-dj-beatsync');
+    if (ctaBeat) {
+      ctaBeat.disabled = !v.canBeatSync;
+      if (!v.canBeatSync) ctaBeat.setAttribute('disabled', '');
+      else ctaBeat.removeAttribute('disabled');
+      ctaBeat.innerHTML = `<span>🎧 ${v.frenzyActive ? `FRENZY ${v.frenzySec}s` : (v.beatCooldown > 0 ? `Drop (${v.beatCooldown}s)` : 'Beat Drop')}</span>`;
+      ctaBeat.style.background = v.frenzyActive ? 'linear-gradient(180deg,#e879f9,#a855f7)' : (v.canBeatSync ? '#170e22' : '#100a18');
+      ctaBeat.style.borderColor = v.frenzyActive ? '#f472b6' : (v.canBeatSync ? '#3a2350' : '#221434');
+      ctaBeat.style.color = v.frenzyActive ? '#fff' : (v.canBeatSync ? '#22d3ee' : '#8f6f9c');
+      ctaBeat.style.cursor = v.canBeatSync ? 'pointer' : 'not-allowed';
     }
     const rrw = this.dom('#round-reason-wrap');
     if (rrw) {
