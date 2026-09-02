@@ -215,22 +215,34 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
   100% { transform: translateY(-140px) scale(0.9); opacity: 0; }
 }
 
-/* Shell grid (v0.10.0) — replaces the inline grid on <main>. The stage column is
-   hard-capped at 720px so it never stretches into dead space on wide monitors;
-   the shell centers via max-width + margin-inline:auto (not justify-content,
-   which would clip the left edge when narrow screens overflow). */
+/* Shell grid (v0.15.1) — fluid widescreen layout. Replaces the hard-capped
+   1460px box (which wasted 460px+ of dead side gutters on every desktop
+   monitor) with a full-viewport 3-column grid. Each column keeps a sane
+   min so text never stretches beyond readability, and the center stage
+   column absorbs all leftover space via 1fr. Padding-inline: 18px matches
+   the header and ticker bar so the grid sits flush under the brand title
+   and right-side controls instead of floating in a disconnected island. */
 .shell-grid {
   display: grid;
-  grid-template-columns: minmax(232px, 300px) minmax(320px, 720px) minmax(320px, 440px);
+  grid-template-columns: minmax(260px, 320px) minmax(440px, 1fr) minmax(360px, 480px);
   width: 100%;
-  max-width: 1460px;
-  margin-inline: auto;
+  max-width: 100%;
+  padding-inline: 18px;
+  gap: 0;
   min-height: 0;
-  /* Grid item of the app-root 3-row grid: allow shrinking below content
-     min-content, or the single implicit column blows out to the widest
-     child's min-content (e.g. ledger rows) and clips on narrow screens. */
   min-width: 0;
   overflow: auto;
+}
+
+/* Ultrawide display guard (> 2160px): cap the layout at 2200px so the fluid
+   center column does not stretch into illegible proportions on 3440px and
+   4K monitors. The left/right panels keep generous fixed widths. */
+@media (min-width: 2160px) {
+  .shell-grid {
+    grid-template-columns: 340px 1fr 520px;
+    max-width: 2200px;
+    margin-inline: auto;
+  }
 }
 
 /* Ledger collapse toggle: hidden on desktop (the Ledger is always expanded
@@ -315,6 +327,7 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
   .shell-grid {
     grid-template-columns: 1fr;
     max-width: none;
+    padding-inline: 0;
     overflow-y: auto;
     overflow-x: hidden;
     /* min-content, not the `auto` default. As a scroll container inside the
