@@ -1,5 +1,7 @@
-# Local Hermes agent artifacts (plans, runbooks) — never ship in the game repo.
+# Local Hermes/agent artifacts (plans, runbooks) — never ship in the game repo.
 .hermes/
+.omo/
+.playwright-mcp/
 
 # Scratch PR-body file — PR bodies live in .github/pr/<n>-<slug>.md (committed).
 # This scratch file has been accidentally committed in past sessions.
