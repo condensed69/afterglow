@@ -2973,8 +2973,9 @@ class Game {
     if (c.cash < cost || (c.heat || 0) <= 0) return;
     c.cash -= cost;
     this.sessionSpent += cost;
-    c.heat = Math.max(0, (c.heat || 0) - 35);
-    this.push(g, 'Greased the Chief. -35 Heat.', '#22d3ee');
+    const reduction = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.HEAT && AfterglowCatalogs.HEAT.BRIBE_REDUCTION) || 35;
+    c.heat = Math.max(0, (c.heat || 0) - reduction);
+    this.push(g, 'Greased the Chief. -' + reduction + ' Heat.', '#22d3ee');
     this.forceUpdate();
   }
 
