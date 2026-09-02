@@ -42,14 +42,16 @@
       } catch (_) {}
 
       // Handle visibility changes to suspend background audio
+      this._onVisibilityChange = () => {
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+          this.suspend();
+        } else if (this.enabled && this.ctx && this.ctx.state === 'suspended') {
+          this.resume();
+        }
+      };
+
       if (typeof document !== 'undefined' && document.addEventListener) {
-        document.addEventListener('visibilitychange', () => {
-          if (document.visibilityState === 'hidden') {
-            this.suspend();
-          } else if (this.enabled && this.ctx && this.ctx.state === 'suspended') {
-            this.resume();
-          }
-        });
+        document.addEventListener('visibilitychange', this._onVisibilityChange);
       }
     }
 
@@ -267,6 +269,19 @@
 
       osc.start(t);
       osc.stop(t + 0.13);
+    }
+
+    destroy() {
+      this.setEnabled(false);
+      if (this._onVisibilityChange && typeof document !== 'undefined' && document.removeEventListener) {
+        document.removeEventListener('visibilitychange', this._onVisibilityChange);
+      }
+      if (this.ctx && this.ctx.close) {
+        try { this.ctx.close(); } catch (_) {}
+      }
+      this.ctx = null;
+      this.masterGain = null;
+      this.noiseBuffer = null;
     }
   }
 

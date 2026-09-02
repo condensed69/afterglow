@@ -6926,7 +6926,8 @@ test('Web Audio Synthesizer: creates audio instance, toggles sound state, and tr
   audio.tickRhythm(0.8);
   audio.toggle();
   strictEqual(audio.enabled, true, 'toggle() inverts audio enabled state');
-  audio.setEnabled(false);
+  audio.destroy();
+  strictEqual(audio.enabled, false, 'destroy() cleans up and disables audio');
 });
 
 test('Canvas Floorboard Engine: initializes, manages particles, handles updates and pulse ripples', () => {

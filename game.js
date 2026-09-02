@@ -3840,6 +3840,7 @@ class Game {
       // Empty-stage badge jumps to Crew so the next action is one click away.
       stageLineAct: g.jobs.stage > 0 ? null : () => this.setState({ tab: 'crew' }),
       energyPct: Math.round(c.hype / cap.hype * 100) + '%',
+      hypeRatio: cap.hype > 0 ? (c.hype / cap.hype) : 0.5,
       // Stage visuals derived from live state (Task 2).
       crowdN: Math.min(14, 2 + Math.floor(c.patrons / 2)),
       crowdBobDur: (2.4 + 1.2 * (1 - Math.min(1, c.hype / cap.hype))).toFixed(2) + 's',
@@ -5049,7 +5050,7 @@ class Game {
       this.floorboard.update({
         patrons: this.state.g ? (this.club(this.state.g).patrons || 0) : 0,
         regulars: this.state.g ? (this.club(this.state.g).regulars || 0) : 0,
-        hype: v.beamOpacity ? Number(v.beamOpacity) : 0.5,
+        hype: typeof v.hypeRatio === 'number' ? v.hypeRatio : 0.5,
         beamOpacity: Number(v.beamOpacity) || 0.5,
         signLit: Boolean(v.signLit)
       });

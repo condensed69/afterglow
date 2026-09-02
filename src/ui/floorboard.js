@@ -64,8 +64,21 @@
         }
       };
 
+      this._onResize = () => {
+        this.resize();
+      };
+
       if (typeof document !== 'undefined' && document.addEventListener) {
         document.addEventListener('visibilitychange', this._onVisibilityChange);
+      }
+      if (typeof window !== 'undefined' && window.addEventListener) {
+        window.addEventListener('resize', this._onResize);
+      }
+      if (typeof ResizeObserver !== 'undefined' && canvas.parentElement) {
+        try {
+          this.resizeObserver = new ResizeObserver(() => this.resize());
+          this.resizeObserver.observe(canvas.parentElement);
+        } catch (_) {}
       }
 
       this.start();
@@ -313,6 +326,13 @@
       this.pause();
       if (this._onVisibilityChange && typeof document !== 'undefined' && document.removeEventListener) {
         document.removeEventListener('visibilitychange', this._onVisibilityChange);
+      }
+      if (this._onResize && typeof window !== 'undefined' && window.removeEventListener) {
+        window.removeEventListener('resize', this._onResize);
+      }
+      if (this.resizeObserver) {
+        try { this.resizeObserver.disconnect(); } catch (_) {}
+        this.resizeObserver = null;
       }
       this.particles = [];
       this.ripples = [];
