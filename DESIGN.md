@@ -1,7 +1,7 @@
 # DESIGN.md — Afterglow Club Idle
 
 **Game:** Afterglow Club Idle (repo: afterglow)  
-**Spec target:** all shipped systems through 0.14.0 — file save, Owner's List, balance + `pacing.mjs`, prestige, achievements, managers, special shifts, whales, multi-tab ownership, second room + rooftop, research tree, challenge tiers, manager levels, Renown/Brand perks/Endorsement, Vision ladder, location extras, ledger session strip (earned vs spent), challenge HUD chip, golden-over-modals, reactive UI signal store, mobile bottom-cockpit (.thumb-cockpit), canvas floorboard engine & procedural web audio synthesizer, 4-phase operational shifts & police heat engine, station subsystems (mixology bar inventory & DJ beat-sync), club personas & named talent roster 2.0, branching blueprint skill tree & district syndicate map (`game.js` v0.14.0, SAVE_VER 15)  
+**Spec target:** all shipped systems through 0.15.0 — file save, Owner's List, balance + `pacing.mjs`, prestige, achievements, managers, special shifts, whales, multi-tab ownership, second room + rooftop, research tree, challenge tiers, manager levels, Renown/Brand perks/Endorsement, Vision ladder, location extras, ledger session strip (earned vs spent), challenge HUD chip, golden-over-modals, reactive UI signal store, mobile bottom-cockpit (.thumb-cockpit), canvas floorboard engine & procedural web audio synthesizer, 4-phase operational shifts & police heat engine, station subsystems (mixology bar inventory & DJ beat-sync), club personas & named talent roster 2.0, branching blueprint skill tree & district syndicate map, pluggable content pack engine & Season 1: Miami Vice '86 (`game.js` v0.15.0, SAVE_VER 16)  
 **Source of truth for numbers:** `game.js` (`caps()`, `rates()`, constant tables) — re-diff this file when those change  
 **Related:** `PRESTIGE.md` (prestige deep design, shipped 0.8.0), `PLAN.md` (logic-fix predecessor, shipped), `AGENTS.md` (repo gates). Workstream sequencing lived in a local orchestrator plan (not published in the repo tree).  
 **Ancestry:** this branch stacks A (file save) → B (Owner's List) → C (`pacing.mjs` + balance) → D (`PRESTIGE.md`) → 0.7.x stage work → 0.8.x prestige/achievements/whale → 0.9.x managers/special shifts/perk tree → 0.9.5 legacyTotal fix → 0.10.x second room / burst events / golden ticket → 0.11.x research tree, challenges + tiers, manager levels, Renown unlocks, Vision ladder → 0.11.29 challenge-renown preserve, 0.11.30 buy-round reason, 0.11.31 mobile ledger/tabs, 0.11.32 manager-log aggregation, 0.11.33 session strip earned vs spent, 0.11.34 challenge HUD chip, 0.11.35 golden-over-modals, 0.12.0 reactive DOM, 0.12.1 dual surface, 0.12.2 canvas synth, 0.12.3 shifts heat, 0.12.4 station subsystems, 0.13.0 personas & talent roster, so every claim below is present in-tree.
@@ -159,6 +159,25 @@ Introduces 4 specialized blueprint skill trees and an interactive city district 
   Blueprints and District Links persist across standard franchise prestige resets (`confirmPrestige`), and wipe back to `{}` upon a full Franchise Sale (`confirmFranchiseSale`).
 - **Save Migration & Pacing Invariants:**
   Bumps `SAVE_VER` from 14 to 15 with `MIGRATIONS[14]` (backfills `g.blueprints = {}`, `g.districtLinks = {}`). Reference bot preserves 100% bit-identical pacing benchmarks.
+
+### 3.5 Pluggable Content Pack Engine & Season 1: Miami Vice '86 (v0.15.0, SAVE_VER 16)
+
+- **Pluggable Architecture (`src/core/packs.js`):**
+  Content packs can be registered, activated, or uninstalled dynamically at runtime without editing core simulation equations.
+  The engine provides pack lifecycle hooks for custom visual styling, additional venues, tracks, cocktails, and seasonal progression.
+- **Season 1: Miami Vice '86 (`src/catalogs/packs/season1-miami.js`):**
+  - *Theme:* Pastel neon aesthetic (hot pink `#ff71ce`, cyan `#01cdfe`, sunset gold `#fffb96`), CRT scanline overlay option.
+  - *Venues:* South Beach Dayclub & Pool (`dayclub`, Ocean Drive daybed bottle service).
+  - *Soundtrack:* 80s synthwave audio presets (`Synthwave Sunset`, `Ocean Drive Groove`).
+  - *30-Tier Battle Pass Track:*
+    Earn seasonal XP (100 XP/tier) via club activities (serving drinks +10 XP, beat drops +15 XP, bribing police +20 XP, buying rounds +25 XP, working room +1 XP).
+    Unlocks tiered cash bundles, clout caches, and Legacy point grants.
+  - *Grand Capstone Reward (Tier 30):*
+    **Golden Flamingo Relic** (`golden_flamingo`): permanent art-deco 24k artifact granting +15% VIP cash flow and +10% prestige Legacy point yield.
+- **Prestige & Franchise Sale Matrices:**
+  Permanent relics (`g.relics`) and seasonal progression (`g.packs`) persist seamlessly across standard prestige deals (`confirmPrestige`), challenge starts (`startChallenge`), and full franchise sales (`confirmFranchiseSale`).
+- **Save Migration & Pacing Invariants:**
+  Bumps `SAVE_VER` from 15 to 16 with `MIGRATIONS[15]` (backfills `g.packs`, `g.relics`). Reference bot preserves 100% bit-identical pacing benchmarks.
 
 ---
 
@@ -670,12 +689,12 @@ Permanent unlocks with small Clout/Legacy rewards.
 | Field | Value |
 |-------|--------|
 | localStorage key | `afterglow.save` |
-| SAVE_VER | **15** |
+| SAVE_VER | **16** |
 | Envelope | `{ saveVer, ver, build, g }` |
 | Autosave | every 10 s (`save('auto')`) |
 | Manual | Settings → Save now |
 
-### 13.1 `g` shape (v15 — Blueprints & Syndicate Map 0.14.0)
+### 13.1 `g` shape (v16 — Content Packs & Miami Vice 0.15.0)
 
 ```
 clubs: {
@@ -705,12 +724,14 @@ challengeTier, challengeTiers, // 0.11.13 challenge tier ladder (SAVE_VER 12)
 lifetimeEarned,             // 0.11.15 Vision ladder accumulator (SAVE_VER 13)
 roster,                     // 0.13.0 Named Talent global roster (SAVE_VER 14)
 blueprints: { id: bool },   // 0.14.0 Branching Blueprint Skill Tree unlocks (SAVE_VER 15)
-districtLinks: { id: bool } // 0.14.0 City District Syndicate Logistics Links (SAVE_VER 15)
+districtLinks: { id: bool }, // 0.14.0 City District Syndicate Logistics Links (SAVE_VER 15)
+packs: { active: id, progress: { id: { tier, xp, claimed } } }, // 0.15.0 Content Pack Engine & Seasonal Track (SAVE_VER 16)
+relics: { relicId: bool }   // 0.15.0 Permanent seasonal relics (SAVE_VER 16)
 ```
 
-Club-level run fields live under `g.clubs[<id>]`; account/shared fields stay top-level. `club(g)` reads/writes the active club (SECOND_LOCATION.md §5), so club fields must never be treated as top-level. Flat `g.cash`-style access exists only through the `wrapState` compat proxy (same shape on disk: `JSON.stringify` emits the real v15 layout).
+Club-level run fields live under `g.clubs[<id>]`; account/shared fields stay top-level. `club(g)` reads/writes the active club (SECOND_LOCATION.md §5), so club fields must never be treated as top-level. Flat `g.cash`-style access exists only through the `wrapState` compat proxy (same shape on disk: `JSON.stringify` emits the real v16 layout).
 
-Additive fields (`managerPaused`, the 0.10.1 counters `whalesCount` / `specialsCount`, and the 0.10.2 `golden` offer) default to 0/false/null when absent — not required by `isValidSavePayload`, so they never force a SAVE_VER bump on their own. The 0.11.9 Renown fields (`renown`, `renownTotal`, `brand`) are part of SAVE_VER 10 itself — `MIGRATIONS[9]` defaults them, `sanitizeG` / `completeImportedG` fail close on malformed values, and `isValidSavePayload` still does not require them (migration fills them). The 0.11.12 Brand Endorsement level (`brandLevel`) is part of SAVE_VER 11 — `MIGRATIONS[10]` defaults it, same fail-closed shape. The 0.11.13 challenge tier fields (`challengeTier`, `challengeTiers`) are part of SAVE_VER 12 — `MIGRATIONS[11]` defaults them and backfills tier 1 from `challengesDone` (the repo convention: a new persisted field bumps, even when additive — PR 6/PR 1 review precedent). The 0.11.15 Vision accumulator (`lifetimeEarned`) is part of SAVE_VER 13 — `MIGRATIONS[12]` defaults it to 0 (no-clobber) and the ladder starts measuring from the migration (history cannot be reconstructed). The 0.13.0 Personas & Talent fields (`roster`, per-club `persona`/`activeTalent`) are part of SAVE_VER 14 — `MIGRATIONS[13]` defaults and normalizes them. The 0.14.0 Blueprint and Syndicate fields (`blueprints`, `districtLinks`) are part of SAVE_VER 15 — `MIGRATIONS[14]` defaults and normalizes them.
+Additive fields (`managerPaused`, the 0.10.1 counters `whalesCount` / `specialsCount`, and the 0.10.2 `golden` offer) default to 0/false/null when absent — not required by `isValidSavePayload`, so they never force a SAVE_VER bump on their own. The 0.11.9 Renown fields (`renown`, `renownTotal`, `brand`) are part of SAVE_VER 10 itself — `MIGRATIONS[9]` defaults them, `sanitizeG` / `completeImportedG` fail close on malformed values, and `isValidSavePayload` still does not require them (migration fills them). The 0.11.12 Brand Endorsement level (`brandLevel`) is part of SAVE_VER 11 — `MIGRATIONS[10]` defaults it, same fail-closed shape. The 0.11.13 challenge tier fields (`challengeTier`, `challengeTiers`) are part of SAVE_VER 12 — `MIGRATIONS[11]` defaults them and backfills tier 1 from `challengesDone` (the repo convention: a new persisted field bumps, even when additive — PR 6/PR 1 review precedent). The 0.11.15 Vision accumulator (`lifetimeEarned`) is part of SAVE_VER 13 — `MIGRATIONS[12]` defaults it to 0 (no-clobber) and the ladder starts measuring from the migration (history cannot be reconstructed). The 0.13.0 Personas & Talent fields (`roster`, per-club `persona`/`activeTalent`) are part of SAVE_VER 14 — `MIGRATIONS[13]` defaults and normalizes them. The 0.14.0 Blueprint and Syndicate fields (`blueprints`, `districtLinks`) are part of SAVE_VER 15 — `MIGRATIONS[14]` defaults and normalizes them. The 0.15.0 Content Pack and Relic fields (`packs`, `relics`) are part of SAVE_VER 16 — `MIGRATIONS[15]` defaults and normalizes them.
 
 ### 13.2 Paths
 

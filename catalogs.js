@@ -697,6 +697,18 @@ const AfterglowCatalogs = {
       bonusType: 'bulk_restock',
       bonusVal: 0.30
     }
+  ],
+
+  // Pluggable Content Pack Engine & Seasonal Relics (PR 8 of Afterglow 2.0)
+  RELICS: [
+    {
+      id: 'golden_flamingo',
+      name: 'Golden Flamingo Relic',
+      desc: 'Gleaming 24-karat art deco flamingo relic. +15% VIP cash flow and +10% prestige Legacy point yield across all timelines.',
+      perk: '+15% VIP Cash Flow & +10% Prestige Legacy',
+      vipCashMult: 1.15,
+      legacyMult: 1.10
+    }
   ]
 };
 

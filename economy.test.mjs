@@ -8,8 +8,15 @@ import { readFileSync, writeSync } from 'node:fs';
 import { format } from 'node:util';
 import AudioPkg from './src/core/audio.js';
 import FloorboardPkg from './src/ui/floorboard.js';
+import PacksPkg from './src/core/packs.js';
+import Season1MiamiPkg from './src/catalogs/packs/season1-miami.js';
 const { createAudio, SynthAudio } = AudioPkg;
 const { createFloorboard, Floorboard } = FloorboardPkg;
+globalThis.AfterglowPacks = PacksPkg;
+globalThis.AfterglowSeason1Miami = Season1MiamiPkg;
+if (PacksPkg && PacksPkg.register && Season1MiamiPkg) {
+  PacksPkg.register(Season1MiamiPkg);
+}
 
 // Flush every line to stdout synchronously (issue #92): on POSIX console.log to
 // a pipe is asynchronous and can buffer, which is how the slow 10-night §3 sim
@@ -2484,9 +2491,9 @@ test('non-numeric saveVer fails closed', () => {
 
 console.log('\nSave migration map (PLAN §2.2)');
 
-test('SAVE_VER is 15', () => {
+test('SAVE_VER is 16', () => {
   const game = newGame();
-  strictEqual(game.SAVE_VER, 15);
+  strictEqual(game.SAVE_VER, 16);
   ok(typeof game.MIGRATIONS[3] === 'function', 'MIGRATIONS[3] must exist');
   ok(typeof game.MIGRATIONS[4] === 'function', 'MIGRATIONS[4] must exist (Owner\'s List)');
   ok(typeof game.MIGRATIONS[5] === 'function', 'MIGRATIONS[5] must exist (prestige)');
@@ -2499,6 +2506,7 @@ test('SAVE_VER is 15', () => {
   ok(typeof game.MIGRATIONS[12] === 'function', 'MIGRATIONS[12] must exist (lifetime value)');
   ok(typeof game.MIGRATIONS[13] === 'function', 'MIGRATIONS[13] must exist (Club Personas & Named Talent)');
   ok(typeof game.MIGRATIONS[14] === 'function', 'MIGRATIONS[14] must exist (Branching Blueprints & Syndicate Map)');
+  ok(typeof game.MIGRATIONS[15] === 'function', 'MIGRATIONS[15] must exist (Pluggable Content Pack Engine & Season 1)');
 });
 
 test('v8 save migrates to the current version: club fields land in clubs.main, account fields stay', () => {
@@ -5016,6 +5024,8 @@ const ACCOUNT_FIELDS = [
   'roster',
   'blueprints',
   'districtLinks',
+  'packs',
+  'relics',
   'ts', 'log',
   'crew', 'jobs',
   'clubs', 'activeClub',
@@ -7399,10 +7409,10 @@ test('UI Integration: renderVals & renderTemplate expose Personas & Talent cards
   ok(templateHtml.includes('data-talent-id="nova_cyan"'), 'renderTemplate renders nova_cyan card');
 });
 
-test('PR 7: Version 0.14.0 and SAVE_VER 15 migration & fail-closed validation', () => {
+test('PR 7 & 8: Version 0.15.0 and SAVE_VER 16 migration & fail-closed validation', () => {
   const game = newGame();
-  strictEqual(game.VERSION.num, '0.14.0', 'Game version is 0.14.0');
-  strictEqual(game.SAVE_VER, 15, 'SAVE_VER is 15');
+  strictEqual(game.VERSION.num, '0.15.0', 'Game version is 0.15.0');
+  strictEqual(game.SAVE_VER, 16, 'SAVE_VER is 16');
 
   // Test MIGRATIONS[14] (14 -> 15)
   const v14Save = {
@@ -7639,6 +7649,164 @@ test('PR 7: UI view models expose blueprints, districts, and district links in r
   ok(vPerks.cards.some(c => c.name && c.name.includes('Sub-Bass Acoustics')), 'Blueprint card rendered in Perks tab');
   ok(vPerks.cards.some(c => c.name && c.name.includes('Downtown Neon Strip')), 'District card rendered in Perks tab');
   ok(vPerks.cards.some(c => c.name && c.name.includes('VIP Shuttles')), 'District link card rendered in Perks tab');
+});
+
+// ── PR 8: Pluggable Content Pack Engine & Season 1: Miami Vice '86 ─────────────
+
+console.log('\n───────────────────────────────────────');
+console.log('PR 8: Pluggable Content Pack Engine & Season 1: Miami Vice \'86');
+
+test('PR 8: ContentPackEngine registry supports dynamic registration, unregistration, and pack querying', () => {
+  const customEngine = new PacksPkg.ContentPackEngine();
+  strictEqual(customEngine.list().length, 0, 'Custom engine starts with zero packs');
+
+  const packA = { id: 'pack_a', name: 'Pack A' };
+  const packB = { id: 'pack_b', name: 'Pack B' };
+
+  customEngine.register(packA);
+  strictEqual(customEngine.list().length, 1, 'One pack registered');
+  strictEqual(customEngine.getActive().id, 'pack_a', 'First registered pack becomes active default');
+
+  customEngine.register(packB);
+  strictEqual(customEngine.list().length, 2, 'Two packs registered');
+  strictEqual(customEngine.get('pack_b').name, 'Pack B', 'Can retrieve pack by ID');
+
+  customEngine.setActive('pack_b');
+  strictEqual(customEngine.getActive().id, 'pack_b', 'setActive changes active pack');
+
+  customEngine.unregister('pack_b');
+  strictEqual(customEngine.get('pack_b'), null, 'Unregistered pack no longer retrieved');
+  strictEqual(customEngine.getActive().id, 'pack_a', 'Active pack falls back to remaining pack');
+});
+
+test('PR 8: Season 1: Miami Vice \'86 content pack catalog definition matches spec', () => {
+  ok(Season1MiamiPkg, 'Season 1 pack loaded');
+  strictEqual(Season1MiamiPkg.id, 'season1-miami', 'Pack ID is season1-miami');
+  strictEqual(Season1MiamiPkg.season, 1, 'Season is 1');
+  ok(Season1MiamiPkg.theme, 'Theme definition present');
+  strictEqual(Season1MiamiPkg.theme.primary, '#ff71ce', 'Primary theme color is neon pink');
+  strictEqual(Season1MiamiPkg.theme.secondary, '#01cdfe', 'Secondary theme color is cyan');
+
+  ok(Array.isArray(Season1MiamiPkg.venues), 'Venues array defined');
+  strictEqual(Season1MiamiPkg.venues[0].id, 'dayclub', 'Dayclub pool venue defined');
+
+  ok(Array.isArray(Season1MiamiPkg.progression.tiers), 'Progression tiers array defined');
+  strictEqual(Season1MiamiPkg.progression.tiers.length, 30, 'Exactly 30 tiers in seasonal battle pass');
+
+  const tier30 = Season1MiamiPkg.progression.tiers[29];
+  strictEqual(tier30.tier, 30, 'Tier 30 is the capstone');
+  strictEqual(tier30.reward.type, 'relic', 'Tier 30 reward is permanent relic');
+  strictEqual(tier30.reward.relicId, 'golden_flamingo', 'Tier 30 grants golden_flamingo relic');
+});
+
+test('PR 8: Seasonal XP accumulation, tier advancement, and reward claiming logic', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+
+  strictEqual(g.packs.active, 'season1-miami', 'Active pack defaults to season1-miami');
+  const prog = g.packs.progress['season1-miami'];
+  strictEqual(prog.tier, 0, 'Starts at Tier 0');
+  strictEqual(prog.xp, 0, 'Starts with 0 XP');
+
+  // Award XP via actions
+  game.addSeasonalXp(90);
+  strictEqual(g.packs.progress['season1-miami'].tier, 0, 'Still tier 0 with 90 XP');
+  strictEqual(g.packs.progress['season1-miami'].xp, 90, 'Has 90 XP');
+
+  // Cross 100 XP threshold -> Tier 1
+  game.addSeasonalXp(15);
+  strictEqual(g.packs.progress['season1-miami'].tier, 1, 'Leveled up to Tier 1');
+  strictEqual(g.packs.progress['season1-miami'].xp, 5, 'Remaining 5 XP rolls over');
+
+  // Claim Tier 1 Reward ($100 Cash)
+  const initialCash = game.club(g).cash;
+  const claimRes = PacksPkg.claimReward(game, 'season1-miami', 1);
+  ok(claimRes.ok, 'Tier 1 claimed successfully');
+  strictEqual(game.club(g).cash, initialCash + 100, '$100 cash awarded');
+  strictEqual(g.packs.progress['season1-miami'].claimed[1], true, 'Tier 1 marked claimed');
+
+  // Claiming again should fail
+  const doubleClaim = PacksPkg.claimReward(game, 'season1-miami', 1);
+  strictEqual(doubleClaim.ok, false, 'Cannot claim tier reward twice');
+
+  // Advance to Tier 30 and claim Golden Flamingo Relic
+  g.packs.progress['season1-miami'].tier = 30;
+  const relicClaim = PacksPkg.claimReward(game, 'season1-miami', 30);
+  ok(relicClaim.ok, 'Tier 30 claimed successfully');
+  strictEqual(g.relics.golden_flamingo, true, 'Golden Flamingo relic added to g.relics');
+});
+
+test('PR 8: Golden Flamingo Relic rates and prestige bonuses', () => {
+  const game = newGame(10000);
+  const g = game.state.g;
+  const c = game.club(g);
+
+  c.b.vip = 4;
+  g.jobs.vipjob = 2;
+  c.regulars = 100;
+  c.night = 14;
+
+  const baseRates = game.rates(g);
+  const baseLegacyGain = game.legacyGain(g);
+
+  // Activate Golden Flamingo
+  g.relics.golden_flamingo = true;
+
+  const boostedRates = game.rates(g);
+  const boostedLegacyGain = game.legacyGain(g);
+
+  ok(boostedRates.cash > baseRates.cash, 'Golden Flamingo boosts total cash income');
+  strictEqual(boostedLegacyGain, Math.floor(baseLegacyGain * 1.10), 'Golden Flamingo boosts legacyGain by +10%');
+});
+
+test('PR 8: Permanent relics and seasonal progress persist across resets', () => {
+  const game = newGame(50000);
+  const g = game.state.g;
+  const c = game.club(g);
+
+  // Set up seasonal progress and relic
+  g.relics.golden_flamingo = true;
+  g.packs.progress['season1-miami'].tier = 15;
+  g.packs.progress['season1-miami'].claimed[5] = true;
+
+  // 1. Confirm standard prestige persists relics and packs
+  c.regulars = 30;
+  game.confirmPrestige();
+  strictEqual(game.state.g.relics.golden_flamingo, true, 'golden_flamingo persists across confirmPrestige');
+  strictEqual(game.state.g.packs.progress['season1-miami'].tier, 15, 'seasonal tier persists across confirmPrestige');
+  strictEqual(game.state.g.packs.progress['season1-miami'].claimed[5], true, 'claimed rewards persist across confirmPrestige');
+
+  // 2. Confirm challenge start persists relics and packs
+  const chDef = game.CHALLENGES[0];
+  game.startChallenge(chDef); // arm
+  game.startChallenge(chDef); // start
+  strictEqual(game.state.g.relics.golden_flamingo, true, 'golden_flamingo persists across startChallenge');
+  strictEqual(game.state.g.packs.progress['season1-miami'].tier, 15, 'seasonal tier persists across startChallenge');
+  game.endChallenge();
+
+  // 3. Confirm franchise sale persists permanent relics
+  game.state.g.relics.golden_flamingo = true;
+  game.state.showFranchise = true;
+  game.state.franchiseArmed = true;
+  game.confirmFranchiseSale();
+  strictEqual(game.state.g.relics.golden_flamingo, true, 'golden_flamingo persists across confirmFranchiseSale');
+  strictEqual(game.state.g.packs.progress['season1-miami'].tier, 15, 'seasonal tier persists across confirmFranchiseSale');
+});
+
+test('PR 8: Content pack removal and absent engine safety invariance', () => {
+  const game = newGame(1000);
+  const origPacks = globalThis.AfterglowPacks;
+  try {
+    globalThis.AfterglowPacks = undefined;
+    const r = game.rates(game.state.g);
+    ok(typeof r.cash === 'number' && Number.isFinite(r.cash), 'rates() calculates cleanly without AfterglowPacks');
+    const v = game.renderVals();
+    ok(v.seasonTrack, 'renderVals produces seasonTrack without crash');
+    game.addSeasonalXp(10);
+    game.claimSeasonReward(1);
+  } finally {
+    globalThis.AfterglowPacks = origPacks;
+  }
 });
 
 if (pendingTests.length > 0) await Promise.all(pendingTests);
