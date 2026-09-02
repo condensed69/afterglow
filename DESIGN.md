@@ -93,7 +93,10 @@ Active station mechanics enhance floor management:
   - *Craft Cocktails* (Tier 2, Cost \$45, Size 40, Req Bar 3): $1.35\times$ Bar Revenue.
   - *Top-Shelf Champagne* (Tier 3, Cost \$120, Size 30, Req Bar 5): $1.60\times$ Bar Revenue.
 - **DJ Beat-Sync Frenzy:**  
-  During live play (`_live = true`), clicking `djBeatSync()` triggers a 6-second Beat Sync Frenzy ($+25\%$ Hype gain, $+15\%$ Total Cash multiplier) with a 15-second cooldown.
+  During live play (`_live = true`), clicking `djBeatSync()` triggers a Beat Sync Frenzy ($+15\%$ Total Cash multiplier, and track-specific duration & hype boost) with a 15-second cooldown:
+  - *Neon Pulse* (120 BPM, Req DJ 1): 6s Frenzy ($+25\%$ Hype gain).
+  - *Acid Rain* (128 BPM, Req DJ 3): 8s Frenzy ($+35\%$ Hype gain).
+  - *Midnight Laser Storm* (140 BPM, Req DJ 5): 10s Frenzy ($+50\%$ Hype gain).
 - **Pacing Invariant:** Pacing bot does not execute manual Beat-Sync or restock loops, keeping reference bot baselines 100% deterministic.
 
 ---

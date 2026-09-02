@@ -7165,6 +7165,19 @@ test('Station Subsystems: Mixology Bar Inventory boosts revenue and consumes sto
   game.restockBar();
   strictEqual(c.barStock, beforeStock + 50, 'restockBar adds batchSize of 50 stock');
   strictEqual(c.cash, beforeCash - 15, 'restockBar deducts $15 for Well Spirits');
+
+  // Beverage Tier gating & multipliers
+  game.setBarTier(1);
+  strictEqual(c.barTier, 0, 'Cannot select Craft Cocktails with only 2 bars (req 3)');
+  c.b.bar = 3;
+  game.setBarTier(1);
+  strictEqual(c.barTier, 1, 'Can select Craft Cocktails with 3 bars');
+  const rCraft = game.rates(g);
+  c.b.bar = 5;
+  game.setBarTier(2);
+  strictEqual(c.barTier, 2, 'Can select Champagne with 5 bars');
+  const rChampagne = game.rates(g);
+  ok(rChampagne.cash > rCraft.cash, 'Top-Shelf Champagne generates higher cash rate than Craft Cocktails');
 });
 
 test('Station Subsystems: DJ Beat-Sync Frenzy triggers bonus multipliers and cooldowns', () => {
@@ -7200,6 +7213,13 @@ test('Station Subsystems: DJ Beat-Sync Frenzy triggers bonus multipliers and coo
   game.step(2);
   strictEqual(Math.round(c._frenzyT), 4, 'step decrements frenzy duration');
   strictEqual(Math.round(c._beatCooldown), 13, 'step decrements beat cooldown');
+
+  // Track selection gating
+  game.selectDjTrack(2);
+  strictEqual(c.djTrack, 0, 'Cannot select Midnight Laser Storm with 2 DJs (req 5)');
+  c.b.dj = 5;
+  game.selectDjTrack(2);
+  strictEqual(c.djTrack, 2, 'Can select Midnight Laser Storm with 5 DJs');
 });
 
 test('Game Integration: renders #cta-restock-bar and #cta-dj-beatsync', () => {
