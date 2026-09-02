@@ -211,12 +211,17 @@ class Game {
     // v13 → v14: Club Personas & Named Talent Roster (PR 6 of Afterglow 2.0)
     13(g) {
       if (!Array.isArray(g.roster)) g.roster = [];
+      else if (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.TALENT) {
+        g.roster = g.roster.filter(id => typeof id === 'string' && AfterglowCatalogs.TALENT.some(t => t.id === id));
+      }
       if (!g.clubs || typeof g.clubs !== 'object') return;
       for (const clubId of Object.keys(g.clubs)) {
         const c = g.clubs[clubId];
         if (!c || typeof c !== 'object') continue;
-        if (c.persona === undefined) c.persona = null;
-        if (!Array.isArray(c.activeTalent)) c.activeTalent = [];
+        c.persona = (typeof c.persona === 'string' && typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.PERSONAS && AfterglowCatalogs.PERSONAS.some(p => p.id === c.persona)) ? c.persona : null;
+        c.activeTalent = (Array.isArray(c.activeTalent) && typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.TALENT)
+          ? c.activeTalent.filter(id => typeof id === 'string' && AfterglowCatalogs.TALENT.some(t => t.id === id)).slice(0, 2)
+          : [];
       }
     }
   };
@@ -1623,6 +1628,10 @@ class Game {
         if (c.shiftT < 0 || c.shiftT >= this.SHIFTS[c.shiftIdx].len) return false;
       }
       if (c.elapsed < 0 || c.night < 1) return false;
+      c.persona = (typeof c.persona === 'string' && typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.PERSONAS && AfterglowCatalogs.PERSONAS.some(p => p.id === c.persona)) ? c.persona : null;
+      c.activeTalent = (Array.isArray(c.activeTalent) && typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.TALENT)
+        ? c.activeTalent.filter(id => typeof id === 'string' && AfterglowCatalogs.TALENT.some(t => t.id === id)).slice(0, 2)
+        : [];
 
       // Rebuild from known IDs only — unknown keys (e.g. string-valued XSS bait under
       // c.b) must not survive into Object.values(c.b) / Structures or other paths.
@@ -3182,7 +3191,17 @@ class Game {
     if (!Array.isArray(c.activeTalent)) c.activeTalent = [];
     if (c.activeTalent.includes(talentId)) return;
     if (c.activeTalent.length >= 2) {
-      c.activeTalent.shift();
+      this.push(g, 'Active talent full (max 2) — unassign a performer first.', '#ff7aa8');
+      this.forceUpdate();
+      return;
+    }
+    // If assigned to another club, transfer them to this club
+    for (const cid of Object.keys(g.clubs || {})) {
+      if (cid === g.activeClub) continue;
+      const other = g.clubs[cid];
+      if (other && Array.isArray(other.activeTalent) && other.activeTalent.includes(talentId)) {
+        other.activeTalent = other.activeTalent.filter(id => id !== talentId);
+      }
     }
     c.activeTalent.push(talentId);
     this.forceUpdate();
@@ -3221,7 +3240,8 @@ class Game {
       renown: (g.renown || 0),
       renownTotal: (g.renownTotal || 0),
       challengeTiers: {},
-      lifetimeEarned: this.lifetimeEarned(g)
+      lifetimeEarned: this.lifetimeEarned(g),
+      roster: Array.isArray(g.roster) ? g.roster.slice() : []
     };
     for (const def of this.PRESTIGE_PERKS) snapshot.perks[def.id] = this.perk(g, def.id);
     for (const def of this.MANAGERS) snapshot.managers[def.id] = g.managers && g.managers[def.id] === true;
@@ -3238,23 +3258,12 @@ class Game {
     // its club — prestige resets run state, it does not delete rooms.
     for (const id of Object.keys(g.clubs)) {
       if (id === 'main') continue;
-      const b2 = {}, u2 = {};
-      this.BUILDINGS.forEach(x => b2[x.id] = 0);
-      this.UPGRADES.forEach(x => u2[x.id] = false);
-      // Location extras (REPLAY_ROADMAP.md §9) survive prestige reset, zeroed.
-      for (const x of this.locationExtras(id)) {
-        if (x.kind === 'b') b2[x.id] = 0;
-        else u2[x.id] = false;
-      }
-      next.clubs[id] = {
-        cash: (this.props && this.props.startingCash) ?? 20, hype: 0, buzz: 0, patrons: 0, regulars: 0,
-        b: b2, u: u2, elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0,
-        _specialShift: null, _whaleCooldown: 0
-      };
+      next.clubs[id] = this.freshClubState(id);
     }
     if (typeof g.activeClub === 'string' && Object.prototype.hasOwnProperty.call(next.clubs, g.activeClub)) {
       next.activeClub = g.activeClub;
     }
+    next.roster = snapshot.roster;
     next.legacy = snapshot.legacy + gain;
     next.legacyTotal = snapshot.legacyTotal + gain;
     next.perks = snapshot.perks;

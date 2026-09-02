@@ -108,6 +108,7 @@ Introduces thematic club identity and collectible talent management with compoun
   - *Techno Bunker* (`techno_bunker`, tags: `techno, cyber, underground`): $+30\%$ Hype Gain, $+5\%$ Cash Flow, $-15\%$ Bar Revenue, $+10\%$ Heat Generation.
   - *Velvet VIP Lounge* (`velvet_lounge`, tags: `vip, lounge, luxury`): $-20\%$ Hype Gain, $+25\%$ Cash Flow, $+20\%$ Bar Revenue, $-10\%$ Heat Generation.
   - *Cyber Speakeasy* (`cyber_speakeasy`, tags: `speakeasy, mixology, stealth`): $-5\%$ Hype Gain, $+15\%$ Cash Flow, $+50\%$ Bar Revenue, $-50\%$ Heat Generation.
+  - *Heat Multiplier Application:* `persona.heatMult` and `talentHeatReduction` scale heat generation strictly when $\text{rawHeat} > 0$; passive security cooling ($\text{rawHeat} \le 0$) is unaffected.
 - **Named Talent Cards (`catalogs.js: TALENT`):**
   A global talent roster (`g.roster`) can be hired for cash and assigned up to 2 active performers per club (`c.activeTalent`):
   - *Nova Cyan* (Stage Headliner, Rare, \$250, tags: `techno, cyber`): Trait "Overdrive Beat" (+20% Stage Hype).
@@ -117,6 +118,8 @@ Introduces thematic club identity and collectible talent management with compoun
   - *DJ Klaus* (Resident DJ, Uncommon, \$180, tags: `techno, underground`): Trait "Bass Resonance" (+15% Hype, +10% Cash).
 - **Compounding Synergy Mechanic:**
   When an assigned talent's tags share at least one tag with the club's active persona, their trait effectiveness increases by $+50\%$ compounding (`synMult = 1.50`).
+- **Slot Capacity & Multi-Club Assignment:**
+  Each club supports up to 2 active talent slots. Attempting to assign into a full lineup is rejected with an explicit notification. Assigning a talent currently active in another venue automatically transfers them to the active club.
 - **Save Migration & Pacing Invariants:**
   Bumps `SAVE_VER` from 13 to 14 with `MIGRATIONS[13]` (backfills `g.roster = []`, `c.persona = null`, `c.activeTalent = []`). Default unselected state preserves 100% bit-identical pacing benchmark output.
 
@@ -606,12 +609,21 @@ Permanent unlocks with small Clout/Legacy rewards. `checkAchievements(g)` iterat
 | challenge_t3_all | Legendary | all 4 challenges tier ≥ 3 | 3 Legacy |
 | endorse_5 | Endorsed | brandLevel ≥ 5 | 3 Legacy |
 | vista_1 | Panorama | rooftop `u.vista === true` | 3 Legacy |
-| heli_2 | Sky Armada | rooftop heli ≥ 2 | 5 Legacy |
-| endorse_10 | Sponsored | brandLevel ≥ 10 | 4 Legacy |
-| endorse_25 | Household Name | brandLevel ≥ 25 | 8 Legacy |
-| endorse_50 | Icon | brandLevel ≥ 50 | 16 Legacy |
+---
 
-Achievements live in the Settings modal. Backfill on load credits already-earned unlocks without double-paying (v6→v7 migration runs `checkAchievements`).
+## 11. Burst events & visitors
+
+Three live-session burst opportunities keep active play rewarding:
+
+### 11.1 The Whale (`spawnWhale`) — shipped 0.8.0
+
+Spawns during live sessions with cash reward and particle bursts.
+
+---
+
+## 12. Achievements (`ACHIEVEMENTS`)
+
+Permanent unlocks with small Clout/Legacy rewards.
 
 ---
 
@@ -620,17 +632,19 @@ Achievements live in the Settings modal. Backfill on load credits already-earned
 | Field | Value |
 |-------|--------|
 | localStorage key | `afterglow.save` |
-| SAVE_VER | **13** |
+| SAVE_VER | **14** |
 | Envelope | `{ saveVer, ver, build, g }` |
 | Autosave | every 10 s (`save('auto')`) |
 | Manual | Settings → Save now |
 
-### 13.1 `g` shape (v13 — Vision ladder 0.11.15)
+### 13.1 `g` shape (v14 — Personas & Named Talent Roster 0.13.0)
 
 ```
 clubs: {
   main: {
-    cash, hype, buzz, patrons, regulars,
+    cash, hype, buzz, patrons, regulars, heat,
+    barStock, barTier, djTrack, _frenzyT, _beatCooldown,
+    persona, activeTalent,
     b: { …building counts }, u: { …upgrade bools },
     elapsed, night, shiftIdx, shiftT,
     _specialShift, _whaleCooldown
@@ -650,12 +664,13 @@ renown, renownTotal,        // 0.11.9 Renown meta (second prestige layer)
 brand: { perkId: rank },    // 0.11.9 Brand-perk ranks (PR 7 spends Renown)
 brandLevel,                 // 0.11.12 Brand Endorsement level (repeatable Renown sink)
 challengeTier, challengeTiers, // 0.11.13 challenge tier ladder (SAVE_VER 12)
-lifetimeEarned              // 0.11.15 Vision ladder accumulator (SAVE_VER 13)
+lifetimeEarned,             // 0.11.15 Vision ladder accumulator (SAVE_VER 13)
+roster                      // 0.13.0 Named Talent global roster (SAVE_VER 14)
 ```
 
-Club-level run fields live under `g.clubs[<id>]`; account/shared fields stay top-level. `club(g)` reads/writes the active club (SECOND_LOCATION.md §5), so club fields must never be treated as top-level. Flat `g.cash`-style access exists only through the `wrapState` compat proxy (same shape on disk: `JSON.stringify` emits the real v13 layout).
+Club-level run fields live under `g.clubs[<id>]`; account/shared fields stay top-level. `club(g)` reads/writes the active club (SECOND_LOCATION.md §5), so club fields must never be treated as top-level. Flat `g.cash`-style access exists only through the `wrapState` compat proxy (same shape on disk: `JSON.stringify` emits the real v14 layout).
 
-Additive fields (`managerPaused`, the 0.10.1 counters `whalesCount` / `specialsCount`, and the 0.10.2 `golden` offer) default to 0/false/null when absent — not required by `isValidSavePayload`, so they never force a SAVE_VER bump on their own. The 0.11.9 Renown fields (`renown`, `renownTotal`, `brand`) are part of SAVE_VER 10 itself — `MIGRATIONS[9]` defaults them, `sanitizeG` / `completeImportedG` fail close on malformed values, and `isValidSavePayload` still does not require them (migration fills them). The 0.11.12 Brand Endorsement level (`brandLevel`) is part of SAVE_VER 11 — `MIGRATIONS[10]` defaults it, same fail-closed shape. The 0.11.13 challenge tier fields (`challengeTier`, `challengeTiers`) are part of SAVE_VER 12 — `MIGRATIONS[11]` defaults them and backfills tier 1 from `challengesDone` (the repo convention: a new persisted field bumps, even when additive — PR 6/PR 1 review precedent). The 0.11.15 Vision accumulator (`lifetimeEarned`) is part of SAVE_VER 13 — `MIGRATIONS[12]` defaults it to 0 (no-clobber) and the ladder starts measuring from the migration (history cannot be reconstructed).
+Additive fields (`managerPaused`, the 0.10.1 counters `whalesCount` / `specialsCount`, and the 0.10.2 `golden` offer) default to 0/false/null when absent — not required by `isValidSavePayload`, so they never force a SAVE_VER bump on their own. The 0.11.9 Renown fields (`renown`, `renownTotal`, `brand`) are part of SAVE_VER 10 itself — `MIGRATIONS[9]` defaults them, `sanitizeG` / `completeImportedG` fail close on malformed values, and `isValidSavePayload` still does not require them (migration fills them). The 0.11.12 Brand Endorsement level (`brandLevel`) is part of SAVE_VER 11 — `MIGRATIONS[10]` defaults it, same fail-closed shape. The 0.11.13 challenge tier fields (`challengeTier`, `challengeTiers`) are part of SAVE_VER 12 — `MIGRATIONS[11]` defaults them and backfills tier 1 from `challengesDone` (the repo convention: a new persisted field bumps, even when additive — PR 6/PR 1 review precedent). The 0.11.15 Vision accumulator (`lifetimeEarned`) is part of SAVE_VER 13 — `MIGRATIONS[12]` defaults it to 0 (no-clobber) and the ladder starts measuring from the migration (history cannot be reconstructed). The 0.13.0 Personas & Talent fields (`roster`, per-club `persona`/`activeTalent`) are part of SAVE_VER 14 — `MIGRATIONS[13]` defaults and normalizes them.
 
 ### 13.2 Paths
 
@@ -697,6 +712,7 @@ If `setItem` throws (or any earlier step fails) → `saveState: 'import failed'`
 | 10 → 11 | Brand Endorsement: `brandLevel` defaulted to 0 when missing/malformed — no-clobber |
 | 11 → 12 | Challenge tiers: `challengeTier` / `challengeTiers` defaulted; tier 1 backfilled from `challengesDone` |
 | 12 → 13 | Vision ladder: `lifetimeEarned` defaulted to 0 when missing/malformed — no-clobber (history cannot be reconstructed; the ladder starts measuring from migration) |
+| 13 → 14 | Club Personas & Named Talent: `g.roster` defaulted to `[]` and filtered; per-club `persona` and `activeTalent` initialized and fail-closed |
 
 Future saveVer or missing step → wipe on load (localStorage path) or import failed (clipboard/file).
 

@@ -3,7 +3,7 @@
 // Dependencies: none (Node built-ins only)
 // PLAN.md §1.0 — guards Phase 1 correctness fixes
 
-import { ok, strictEqual } from 'node:assert';
+import { ok, strictEqual, deepStrictEqual } from 'node:assert';
 import { readFileSync, writeSync } from 'node:fs';
 import { format } from 'node:util';
 import AudioPkg from './src/core/audio.js';
@@ -7324,15 +7324,48 @@ test('Talent: hiring, auto-assign, manual slot management, and synergy', () => {
   ok(g.roster.includes('velvet_vixen'), 'Velvet Vixen hired to roster');
   strictEqual(c.activeTalent.length, 2, 'Active talent stays clamped at 2');
 
-  // Manual assignment eviction / swapping
+  // Attempting to assign into a full 2-slot lineup is rejected
   game.assignTalent('velvet_vixen');
-  ok(c.activeTalent.includes('velvet_vixen'), 'Velvet Vixen assigned');
-  strictEqual(c.activeTalent.length, 2, 'Active capacity maintained');
+  ok(!c.activeTalent.includes('velvet_vixen'), 'Assignment rejected when 2 slots full');
 
-  // Unassign
-  game.unassignTalent('velvet_vixen');
-  ok(!c.activeTalent.includes('velvet_vixen'), 'Velvet Vixen unassigned');
+  // Unassign one slot first
+  game.unassignTalent('roxie_spark');
+  ok(!c.activeTalent.includes('roxie_spark'), 'Roxie Spark unassigned');
   strictEqual(c.activeTalent.length, 1, 'Active count decreased to 1');
+
+  // Now assignment succeeds
+  game.assignTalent('velvet_vixen');
+  ok(c.activeTalent.includes('velvet_vixen'), 'Velvet Vixen now assigned');
+  strictEqual(c.activeTalent.length, 2, 'Active capacity filled');
+});
+
+test('PR 6: confirmPrestige preserves g.roster and resets multi-club shapes cleanly', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.roster = ['nova_cyan', 'blade_thorne'];
+  g.clubs.main.regulars = 30;
+  g.clubs.main.persona = 'techno_bunker';
+  g.clubs.main.activeTalent = ['nova_cyan'];
+
+  // Open annex room
+  g.clubs.annex = game.freshClubState('annex');
+  g.clubs.annex.persona = 'velvet_lounge';
+  g.clubs.annex.activeTalent = ['blade_thorne'];
+
+  game.confirmPrestige();
+  const nextG = game.state.g;
+  ok(Array.isArray(nextG.roster), 'roster array preserved after prestige');
+  strictEqual(nextG.roster.length, 2, 'roster entries survive prestige');
+  ok(nextG.roster.includes('nova_cyan'), 'nova_cyan in roster');
+  ok(nextG.roster.includes('blade_thorne'), 'blade_thorne in roster');
+
+  // Club run states reset cleanly
+  strictEqual(nextG.clubs.main.persona, null, 'main persona reset');
+  deepStrictEqual(nextG.clubs.main.activeTalent, [], 'main activeTalent reset');
+  ok('heat' in nextG.clubs.annex, 'annex has heat field');
+  ok('barStock' in nextG.clubs.annex, 'annex has barStock field');
+  strictEqual(nextG.clubs.annex.persona, null, 'annex persona reset');
+  deepStrictEqual(nextG.clubs.annex.activeTalent, [], 'annex activeTalent reset');
 });
 
 test('UI Integration: renderVals & renderTemplate expose Personas & Talent cards', () => {
