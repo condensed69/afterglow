@@ -4522,6 +4522,9 @@ class Game {
     const tabRows = v.tabs.map(tb => `
       <button data-h="${this.bind(tb.go)}" class="tab-btn" data-tab-label="${this.escapeHtml(tb.label)}" style="${css(tb.style)}">${tb.label}</button>`).join('');
 
+    const thumbTabRows = v.tabs.map(tb => `
+      <button data-h="${this.bind(tb.go)}" class="tab-btn ${tb.active ? 'tab-active' : ''}" style="${css(tb.style)}" aria-label="${this.escapeHtml(tb.label)} tab">${tb.label}</button>`).join('');
+
     const cardRows = v.cards.map(cd => `
       <div class="card-item" data-card-name="${this.escapeHtml(cd.name)}" ${cd.buildingId ? `data-building-id="${cd.buildingId}"` : ''} style="${css(cd.wrapStyle)}">
         <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
@@ -4791,7 +4794,7 @@ class Game {
     </aside>
   </main>
 
-  <nav id="thumb-cockpit" class="thumb-cockpit">
+  <nav id="thumb-cockpit" class="thumb-cockpit" aria-label="Mobile quick actions">
     <div class="thumb-cta-row">
       <button id="thumb-cta-work" data-h="${this.bind(v.workCrowd)}" class="cta" style="background:linear-gradient(180deg,#ff2d78,#c2185b);border:0;color:#fff;box-shadow:0 0 16px rgba(255,45,120,.4)">
         Work the room <span style="font-family:'IBM Plex Mono',monospace;opacity:.85;text-transform:none;letter-spacing:0">+${v.clickValue}</span>
@@ -4801,7 +4804,7 @@ class Game {
       </button>
     </div>
     <div id="thumb-tabs-container" class="thumb-tabs-row">
-      ${tabRows}
+      ${thumbTabRows}
     </div>
   </nav>
 

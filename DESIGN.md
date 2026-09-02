@@ -726,6 +726,12 @@ Purely CSS; the `game.js` render path, palette, and fonts are untouched, so the 
 
 **Contrast floor (v0.11.38).** The 2026-08-28 headless mobile audit (390×844) measured the dimmest text against the page background (`#07050c`): night-log timestamps `#4a3860` at **1.96:1**, locked/disabled control text and tab hints `#6f5885` at **3.29:1**, and the section micro-labels `#7b5f90` at **3.75:1** — all under the WCAG AA floor, on the exact small font sizes phones magnify least. All three tones collapse to one readable muted purple, **`#8f6f9c` (4.75:1 on the page, 4.49:1 on control backgrounds `#120c1c`/`#1f1430`)** — timestamps, locked crew-stepper/Buy-a-round labels, requirement and meta lines, tab hints, and the Ledger/Shift/House/Room-energy/Assignments micro-labels. The mobile-only 8px header labels (wordmark sub-line, version-button sub-text, `style.css` ≤900px block) rise to 9px. Affects desktop too — the same tokens render there — which is the point: contrast is a property of the palette, not the viewport.
 
+**Responsive Dual-Surface Layout & Mobile Bottom-Cockpit (0.12.1, PR 2).** Implements the dual-surface responsive architecture:
+- **Desktop Command Deck (≥901px):** Three parallel columns (`#ledger-aside`, `#stage-column`, `#systems-column`). Centered backdrop-blurred modal overlays (`.modal-overlay` / `.modal-dialog`). `.thumb-cockpit` is `display:none`.
+- **Mobile Bottom-Cockpit (≤900px):** Single-column stacked scroller (`.shell-grid` with `padding-bottom:140px`). Primary interaction CTAs (`Work the room` and `Buy a round`) and Systems tabs (`#thumb-tabs-container`) move to a bottom cockpit (`.thumb-cockpit`) pinned at `bottom: 28px` with notch/home-bar padding `calc(6px + env(safe-area-inset-bottom, 0px))`.
+- **Slide-Up Bottom-Sheet Drawers:** Modals on mobile anchor to the bottom of the viewport with rounded top corners (`border-radius: 16px 16px 0 0`) and animate in via `slideUpDrawer`.
+- **Zero Tap Latency:** `touch-action: manipulation` applied across all interactive controls (`button, input, select, textarea, a`) to eliminate 300ms mobile touch delay. Min hitboxes remain ≥44×44px.
+
 ### 14.2 Main Stage (environment only — v0.7.0)
 
 **No CSS/DOM performer, pole, or undressing progression.** Operator removed the figure in v0.7.0 (“gimmicky”). Stage art is environmental only:

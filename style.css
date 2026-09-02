@@ -26,6 +26,11 @@ button { font-family: inherit; }
 a { color: #22d3ee; text-decoration: none; }
 a:hover { color: #67e8f9; }
 
+.app-root {
+  height: 100vh;
+  height: 100dvh;
+}
+
 /* Premium pass (0.11.18) — film grain over the whole app to break the flat,
    purely-digital panels. Fixed, pointer-events-none SVG noise at low opacity
    with mix-blend-mode:overlay so it adds texture without washing out the neon.
@@ -41,6 +46,18 @@ body::after {
   opacity: .035;
   mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Global Keyframes */
+@keyframes slideUpDrawer {
+  from {
+    transform: translateY(100%);
+    opacity: 0.7;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 /* Touch devices: the fixed full-viewport grain layer blends with the scrolling
@@ -534,16 +551,6 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
     box-shadow: 0 -10px 40px rgba(0, 0, 0, .8);
     animation: slideUpDrawer 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-  }
-  @keyframes slideUpDrawer {
-    from {
-      transform: translateY(100%);
-      opacity: 0.7;
-    }
-    to {
-      transform: translateY(0);
-      opacity: 1;
-    }
   }
 
   /* Font scaling (v0.12): intentionally minimal. The two prior selectors
