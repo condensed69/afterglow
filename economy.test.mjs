@@ -2482,9 +2482,9 @@ test('non-numeric saveVer fails closed', () => {
 
 console.log('\nSave migration map (PLAN §2.2)');
 
-test('SAVE_VER is 13', () => {
+test('SAVE_VER is 14', () => {
   const game = newGame();
-  strictEqual(game.SAVE_VER, 13);
+  strictEqual(game.SAVE_VER, 14);
   ok(typeof game.MIGRATIONS[3] === 'function', 'MIGRATIONS[3] must exist');
   ok(typeof game.MIGRATIONS[4] === 'function', 'MIGRATIONS[4] must exist (Owner\'s List)');
   ok(typeof game.MIGRATIONS[5] === 'function', 'MIGRATIONS[5] must exist (prestige)');
@@ -2495,6 +2495,7 @@ test('SAVE_VER is 13', () => {
   ok(typeof game.MIGRATIONS[10] === 'function', 'MIGRATIONS[10] must exist (Brand Endorsement)');
   ok(typeof game.MIGRATIONS[11] === 'function', 'MIGRATIONS[11] must exist (challenge tiers)');
   ok(typeof game.MIGRATIONS[12] === 'function', 'MIGRATIONS[12] must exist (lifetime value)');
+  ok(typeof game.MIGRATIONS[13] === 'function', 'MIGRATIONS[13] must exist (Club Personas & Named Talent)');
 });
 
 test('v8 save migrates to the current version: club fields land in clubs.main, account fields stay', () => {
@@ -4997,7 +4998,7 @@ test('render throttle: forceUpdate throttled with mock clock', () => {
 
 // Verbatim from SECOND_LOCATION.md §4 "Fields that move ... into each club".
 const CLUB_FIELDS = [
-  'cash', 'hype', 'buzz', 'patrons', 'regulars', 'b', 'u',
+  'cash', 'hype', 'buzz', 'patrons', 'regulars', 'heat', 'barStock', 'barTier', 'djTrack', '_frenzyT', '_beatCooldown', 'persona', 'activeTalent', 'b', 'u',
   'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown',
 ];
 // Verbatim from SECOND_LOCATION.md §4 "Fields that stay at the top level".
@@ -5009,6 +5010,7 @@ const ACCOUNT_FIELDS = [
   'challenge', 'challengesDone', 'challengeTier', 'challengeTiers',
   'renown', 'renownTotal', 'brand', 'brandLevel',
   'lifetimeEarned',
+  'roster',
   'ts', 'log',
   'crew', 'jobs',
   'clubs', 'activeClub',
@@ -7237,6 +7239,126 @@ test('Game Integration: renders #cta-restock-bar and #cta-dj-beatsync', () => {
   const templateHtml = game.renderTemplate(v);
   ok(templateHtml.includes('id="cta-restock-bar"'), 'stage-cta includes #cta-restock-bar');
   ok(templateHtml.includes('id="cta-dj-beatsync"'), 'stage-cta includes #cta-dj-beatsync');
+});
+
+// ── PR 6: Club Personas & Named Talent Roster 2.0 Tests ───────────────────────
+
+console.log('\nPR 6: Club Personas & Named Talent Roster 2.0');
+
+test('SAVE_VER 13 → 14 Migration: backfills roster, persona, activeTalent', () => {
+  const v13Save = {
+    cash: 100, hype: 10, buzz: 5, patrons: 2, regulars: 1, heat: 0,
+    barStock: 0, barTier: 0, djTrack: 0, _frenzyT: 0, _beatCooldown: 0,
+    b: {}, u: {}, r: {}, clubs: {
+      main: {
+        cash: 100, hype: 10, buzz: 5, patrons: 2, regulars: 1, heat: 0,
+        barStock: 0, barTier: 0, djTrack: 0, _frenzyT: 0, _beatCooldown: 0,
+        b: {}, u: {}, elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0, _specialShift: null, _whaleCooldown: 0
+      }
+    },
+    activeClub: 'main', crew: 0, jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+    lifetimeEarned: 500
+  };
+
+  const game = newGame();
+  const migrated = game.migrateFrom(v13Save, 13);
+  ok(migrated, 'migrateFrom v13 returns true');
+  ok(Array.isArray(v13Save.roster), 'g.roster initialized as array');
+  strictEqual(v13Save.clubs.main.persona, null, 'c.persona initialized as null');
+  ok(Array.isArray(v13Save.clubs.main.activeTalent), 'c.activeTalent initialized as array');
+});
+
+test('Personas: selection, operational multipliers, and reset', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  const c = game.club(g);
+  c.b.dj = 2;
+  c.b.vip = 2;
+  c.patrons = 40;
+
+  const rBase = game.rates(g);
+  strictEqual(c.persona, null, 'Default persona is null');
+
+  game.setPersona('techno_bunker');
+  strictEqual(c.persona, 'techno_bunker', 'setPersona updates c.persona');
+  const rBunker = game.rates(g);
+  ok(rBunker.hype > rBase.hype, 'Techno Bunker boosts hype (+30%)');
+  ok(rBunker.cash > rBase.cash, 'Techno Bunker boosts cash (+5%)');
+
+  game.setPersona('velvet_lounge');
+  strictEqual(c.persona, 'velvet_lounge', 'setPersona switches to velvet_lounge');
+  const rLounge = game.rates(g);
+  ok(rLounge.cash > rBunker.cash, 'Velvet Lounge boosts cash (+25%) above bunker');
+
+  game.setPersona(null);
+  strictEqual(c.persona, null, 'setPersona(null) resets persona');
+  const rReset = game.rates(g);
+  strictEqual(Math.round(rReset.cash * 100), Math.round(rBase.cash * 100), 'Reset rates match baseline');
+});
+
+test('Talent: hiring, auto-assign, manual slot management, and synergy', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  const c = game.club(g);
+  c.b.dj = 2;
+
+  // Hire Nova Cyan ($250, stage headliner, tags: techno, cyber, bonus: hype +20%)
+  game.hireTalent('nova_cyan');
+  ok(g.roster.includes('nova_cyan'), 'Nova Cyan added to g.roster');
+  ok(c.activeTalent.includes('nova_cyan'), 'Nova Cyan auto-assigned to active talent');
+  strictEqual(c.cash, 5000 - 250, 'Hire cost deducted from cash');
+
+  // Without persona, Nova gives +20% hype
+  const rTalentNoPersona = game.rates(g);
+
+  // Set Techno Bunker (synergy with techno tag) -> +50% synergy bonus (+30% hype)
+  game.setPersona('techno_bunker');
+  const rTalentSynergy = game.rates(g);
+  ok(rTalentSynergy.hype > rTalentNoPersona.hype, 'Talent synergy compounds persona hype bonus');
+
+  // Hire Roxie Spark ($200) and Velvet Vixen ($500)
+  game.hireTalent('roxie_spark');
+  strictEqual(c.activeTalent.length, 2, 'Two talents active (slot capacity 2)');
+
+  game.hireTalent('velvet_vixen');
+  ok(g.roster.includes('velvet_vixen'), 'Velvet Vixen hired to roster');
+  strictEqual(c.activeTalent.length, 2, 'Active talent stays clamped at 2');
+
+  // Manual assignment eviction / swapping
+  game.assignTalent('velvet_vixen');
+  ok(c.activeTalent.includes('velvet_vixen'), 'Velvet Vixen assigned');
+  strictEqual(c.activeTalent.length, 2, 'Active capacity maintained');
+
+  // Unassign
+  game.unassignTalent('velvet_vixen');
+  ok(!c.activeTalent.includes('velvet_vixen'), 'Velvet Vixen unassigned');
+  strictEqual(c.activeTalent.length, 1, 'Active count decreased to 1');
+});
+
+test('UI Integration: renderVals & renderTemplate expose Personas & Talent cards', () => {
+  const root = {
+    innerHTML: '',
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    querySelectorAll() { return []; },
+    querySelector() { return null; }
+  };
+  const game = new Game(root);
+  game.init();
+
+  const v = game.renderVals();
+  ok(Array.isArray(v.personas), 'renderVals exposes personas array');
+  strictEqual(v.personas.length, 3, '3 club personas available');
+  ok(Array.isArray(v.talentList), 'renderVals exposes talentList array');
+  strictEqual(v.talentList.length, 5, '5 named talent cards in catalog');
+
+  game.state.tab = 'crew';
+  const vCrew = game.renderVals();
+  const templateHtml = game.renderTemplate(vCrew);
+  ok(templateHtml.includes('Club Persona'), 'renderTemplate renders Club Persona section');
+  ok(templateHtml.includes('Named Talent Roster'), 'renderTemplate renders Named Talent Roster section');
+  ok(templateHtml.includes('data-persona-id="techno_bunker"'), 'renderTemplate renders techno_bunker button');
+  ok(templateHtml.includes('data-talent-id="nova_cyan"'), 'renderTemplate renders nova_cyan card');
 });
 
 if (pendingTests.length > 0) await Promise.all(pendingTests);

@@ -1,10 +1,10 @@
 # DESIGN.md — Afterglow Club Idle
 
 **Game:** Afterglow Club Idle (repo: afterglow)  
-**Spec target:** all shipped systems through 0.12.4 — file save, Owner's List, balance + `pacing.mjs`, prestige, achievements, managers, special shifts, whales, multi-tab ownership, second room + rooftop, research tree, challenge tiers, manager levels, Renown/Brand perks/Endorsement, Vision ladder, location extras, ledger session strip (earned vs spent), challenge HUD chip, golden-over-modals, reactive UI signal store, mobile bottom-cockpit (.thumb-cockpit), canvas floorboard engine & procedural web audio synthesizer, 4-phase operational shifts & police heat engine, station subsystems (mixology bar inventory & DJ beat-sync) (`game.js` v0.12.4, SAVE_VER 13)  
+**Spec target:** all shipped systems through 0.13.0 — file save, Owner's List, balance + `pacing.mjs`, prestige, achievements, managers, special shifts, whales, multi-tab ownership, second room + rooftop, research tree, challenge tiers, manager levels, Renown/Brand perks/Endorsement, Vision ladder, location extras, ledger session strip (earned vs spent), challenge HUD chip, golden-over-modals, reactive UI signal store, mobile bottom-cockpit (.thumb-cockpit), canvas floorboard engine & procedural web audio synthesizer, 4-phase operational shifts & police heat engine, station subsystems (mixology bar inventory & DJ beat-sync), club personas & named talent roster 2.0 (`game.js` v0.13.0, SAVE_VER 14)  
 **Source of truth for numbers:** `game.js` (`caps()`, `rates()`, constant tables) — re-diff this file when those change  
 **Related:** `PRESTIGE.md` (prestige deep design, shipped 0.8.0), `PLAN.md` (logic-fix predecessor, shipped), `AGENTS.md` (repo gates). Workstream sequencing lived in a local orchestrator plan (not published in the repo tree).  
-**Ancestry:** this branch stacks A (file save) → B (Owner's List) → C (`pacing.mjs` + balance) → D (`PRESTIGE.md`) → 0.7.x stage work → 0.8.x prestige/achievements/whale → 0.9.x managers/special shifts/perk tree → 0.9.5 legacyTotal fix → 0.10.x second room / burst events / golden ticket → 0.11.x research tree, challenges + tiers, manager levels, Renown unlocks, Vision ladder → 0.11.29 challenge-renown preserve, 0.11.30 buy-round reason, 0.11.31 mobile ledger/tabs, 0.11.32 manager-log aggregation, 0.11.33 session strip earned vs spent, 0.11.34 challenge HUD chip, 0.11.35 golden-over-modals, so every claim below is present in-tree.
+**Ancestry:** this branch stacks A (file save) → B (Owner's List) → C (`pacing.mjs` + balance) → D (`PRESTIGE.md`) → 0.7.x stage work → 0.8.x prestige/achievements/whale → 0.9.x managers/special shifts/perk tree → 0.9.5 legacyTotal fix → 0.10.x second room / burst events / golden ticket → 0.11.x research tree, challenges + tiers, manager levels, Renown unlocks, Vision ladder → 0.11.29 challenge-renown preserve, 0.11.30 buy-round reason, 0.11.31 mobile ledger/tabs, 0.11.32 manager-log aggregation, 0.11.33 session strip earned vs spent, 0.11.34 challenge HUD chip, 0.11.35 golden-over-modals, 0.12.0 reactive DOM, 0.12.1 dual surface, 0.12.2 canvas synth, 0.12.3 shifts heat, 0.12.4 station subsystems, 0.13.0 personas & talent roster, so every claim below is present in-tree.
 
 This document describes what the shipped neon-noir club-management idle **actually does**, not aspirational UI kits.
 
@@ -98,6 +98,27 @@ Active station mechanics enhance floor management:
   - *Acid Rain* (128 BPM, Req DJ 3): 8s Frenzy ($+35\%$ Hype gain).
   - *Midnight Laser Storm* (140 BPM, Req DJ 5): 10s Frenzy ($+50\%$ Hype gain).
 - **Pacing Invariant:** Pacing bot does not execute manual Beat-Sync or restock loops, keeping reference bot baselines 100% deterministic.
+
+### 3.3 Club Personas & Named Talent Roster 2.0 — 0.13.0 (PR 6)
+
+Introduces thematic club identity and collectible talent management with compounding synergy tags:
+
+- **Club Personas (`catalogs.js: PERSONAS`):**
+  Each club location can adopt an identity (`c.persona`) that applies distinct operational multipliers:
+  - *Techno Bunker* (`techno_bunker`, tags: `techno, cyber, underground`): $+30\%$ Hype Gain, $+5\%$ Cash Flow, $-15\%$ Bar Revenue, $+10\%$ Heat Generation.
+  - *Velvet VIP Lounge* (`velvet_lounge`, tags: `vip, lounge, luxury`): $-20\%$ Hype Gain, $+25\%$ Cash Flow, $+20\%$ Bar Revenue, $-10\%$ Heat Generation.
+  - *Cyber Speakeasy* (`cyber_speakeasy`, tags: `speakeasy, mixology, stealth`): $-5\%$ Hype Gain, $+15\%$ Cash Flow, $+50\%$ Bar Revenue, $-50\%$ Heat Generation.
+- **Named Talent Cards (`catalogs.js: TALENT`):**
+  A global talent roster (`g.roster`) can be hired for cash and assigned up to 2 active performers per club (`c.activeTalent`):
+  - *Nova Cyan* (Stage Headliner, Rare, \$250, tags: `techno, cyber`): Trait "Overdrive Beat" (+20% Stage Hype).
+  - *Roxie Spark* (Lead Mixologist, Rare, \$200, tags: `mixology, speakeasy`): Trait "Craft Infusion" (+30% Bar Revenue).
+  - *Blade Thorne* (Head of Security, Uncommon, \$150, tags: `stealth, underground`): Trait "Discreet Perimeter" (-30% Heat Gain).
+  - *Velvet Vixen* (VIP Host, Legendary, \$500, tags: `vip, luxury, lounge`): Trait "Whale Magnet" (+35% Cash Flow).
+  - *DJ Klaus* (Resident DJ, Uncommon, \$180, tags: `techno, underground`): Trait "Bass Resonance" (+15% Hype, +10% Cash).
+- **Compounding Synergy Mechanic:**
+  When an assigned talent's tags share at least one tag with the club's active persona, their trait effectiveness increases by $+50\%$ compounding (`synMult = 1.50`).
+- **Save Migration & Pacing Invariants:**
+  Bumps `SAVE_VER` from 13 to 14 with `MIGRATIONS[13]` (backfills `g.roster = []`, `c.persona = null`, `c.activeTalent = []`). Default unselected state preserves 100% bit-identical pacing benchmark output.
 
 ---
 
