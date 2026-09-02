@@ -991,7 +991,20 @@ class Game {
     const reg = Math.max(0, c.regulars || 0);
     const nights = Math.max(0, c.night || 0);
     const base = Math.floor(Math.sqrt(reg) + nights / 7);
-    const relicMult = (g.relics && g.relics.golden_flamingo === true) ? 1.10 : 1.0;
+    let relicMult = 1.0;
+    if (g.relics && typeof g.relics === 'object') {
+      const relicsCat = (typeof AfterglowCatalogs !== 'undefined' && Array.isArray(AfterglowCatalogs.RELICS)) ? AfterglowCatalogs.RELICS : [];
+      for (const [rId, active] of Object.entries(g.relics)) {
+        if (active === true) {
+          const rDef = relicsCat.find(r => r.id === rId);
+          if (rDef && typeof rDef.legacyMult === 'number') {
+            relicMult *= rDef.legacyMult;
+          } else if (rId === 'golden_flamingo') {
+            relicMult *= 1.10;
+          }
+        }
+      }
+    }
     return Math.floor(base * relicMult);
   }
 
