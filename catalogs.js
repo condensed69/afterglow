@@ -390,6 +390,19 @@ const AfterglowCatalogs = {
     { id: 'brawl', name: 'Bar Fight', heat: 8, text: 'Rowdy patrons broke glassware at the bar. +8 Heat.' },
     { id: 'noise', name: 'Noise Complaint', heat: 5, text: 'Neighbors called in the subwoofers. +5 Heat.' },
     { id: 'inspection', name: 'Fire Marshal Check', heat: 12, text: 'Fire Marshal spotted an over-capacity VIP line. +12 Heat.' }
+  ],
+
+  // Station Subsystems (PR 5 of Afterglow 2.0)
+  BEVERAGES: [
+    { id: 'well', name: 'Well Spirits', tier: 1, batchCost: 15, batchSize: 50, revMult: 1.20, reqBar: 1 },
+    { id: 'craft', name: 'Craft Cocktails', tier: 2, batchCost: 45, batchSize: 40, revMult: 1.35, reqBar: 3 },
+    { id: 'champagne', name: 'Top-Shelf Champagne', tier: 3, batchCost: 120, batchSize: 30, revMult: 1.60, reqBar: 5 }
+  ],
+
+  DJ_TRACKS: [
+    { id: 'neon_pulse', name: 'Neon Pulse', bpm: 120, hypeBonus: 1.25, frenzySec: 6, reqDj: 1 },
+    { id: 'acid_rain', name: 'Acid Rain', bpm: 128, hypeBonus: 1.35, frenzySec: 8, reqDj: 3 },
+    { id: 'midnight_storm', name: 'Midnight Laser Storm', bpm: 140, hypeBonus: 1.50, frenzySec: 10, reqDj: 5 }
   ]
 };
 

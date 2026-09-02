@@ -7129,6 +7129,116 @@ test('Game Integration: renders #header-heat-meter and #header-heat-val', () => 
   ok(templateHtml.includes('id="header-heat-val"'), 'header includes #header-heat-val');
 });
 
+test('Station Subsystems: Mixology Bar Inventory boosts revenue and consumes stock in step()', () => {
+  localStorage.clear();
+  const root = {
+    innerHTML: '',
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    querySelectorAll() { return []; },
+    querySelector() { return null; }
+  };
+  const game = new Game(root);
+  game.forceUpdate = () => {};
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+
+  const g = game.state.g;
+  const c = game.club(g);
+  c.b.bar = 2;
+  c.cash = 100;
+  c.barStock = 0;
+
+  const rUnstocked = game.rates(g);
+  c.barStock = 50;
+  const rStocked = game.rates(g);
+  ok(rStocked.cash > rUnstocked.cash, 'Stocked bar generates higher cash rate than unstocked');
+
+  // step consumes stock
+  game.step(10);
+  ok(c.barStock < 50, 'step consumes bar stock');
+
+  // restockBar adds stock
+  const beforeCash = c.cash;
+  const beforeStock = c.barStock;
+  game.restockBar();
+  strictEqual(c.barStock, beforeStock + 50, 'restockBar adds batchSize of 50 stock');
+  strictEqual(c.cash, beforeCash - 15, 'restockBar deducts $15 for Well Spirits');
+
+  // Beverage Tier gating & multipliers
+  game.setBarTier(1);
+  strictEqual(c.barTier, 0, 'Cannot select Craft Cocktails with only 2 bars (req 3)');
+  c.b.bar = 3;
+  game.setBarTier(1);
+  strictEqual(c.barTier, 1, 'Can select Craft Cocktails with 3 bars');
+  const rCraft = game.rates(g);
+  c.b.bar = 5;
+  game.setBarTier(2);
+  strictEqual(c.barTier, 2, 'Can select Champagne with 5 bars');
+  const rChampagne = game.rates(g);
+  ok(rChampagne.cash > rCraft.cash, 'Top-Shelf Champagne generates higher cash rate than Craft Cocktails');
+});
+
+test('Station Subsystems: DJ Beat-Sync Frenzy triggers bonus multipliers and cooldowns', () => {
+  localStorage.clear();
+  const root = {
+    innerHTML: '',
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    querySelectorAll() { return []; },
+    querySelector() { return null; }
+  };
+  const game = new Game(root);
+  game.forceUpdate = () => {};
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+
+  const g = game.state.g;
+  const c = game.club(g);
+  c.b.bar = 2;
+  c.b.dj = 2;
+
+  const rNormal = game.rates(g);
+  game.djBeatSync();
+  strictEqual(c._frenzyT, 6, 'djBeatSync sets 6s frenzy');
+  strictEqual(c._beatCooldown, 15, 'djBeatSync sets 15s cooldown');
+
+  const rFrenzy = game.rates(g);
+  ok(rFrenzy.cash > rNormal.cash, 'Frenzy boosts cash revenue');
+  ok(rFrenzy.hype > rNormal.hype, 'Frenzy boosts hype gain');
+
+  // step decrements frenzy and cooldown
+  game.step(2);
+  strictEqual(Math.round(c._frenzyT), 4, 'step decrements frenzy duration');
+  strictEqual(Math.round(c._beatCooldown), 13, 'step decrements beat cooldown');
+
+  // Track selection gating
+  game.selectDjTrack(2);
+  strictEqual(c.djTrack, 0, 'Cannot select Midnight Laser Storm with 2 DJs (req 5)');
+  c.b.dj = 5;
+  game.selectDjTrack(2);
+  strictEqual(c.djTrack, 2, 'Can select Midnight Laser Storm with 5 DJs');
+});
+
+test('Game Integration: renders #cta-restock-bar and #cta-dj-beatsync', () => {
+  const root = {
+    innerHTML: '',
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    querySelectorAll() { return []; },
+    querySelector() { return null; }
+  };
+  const game = new Game(root);
+  game.init();
+
+  const v = game.renderVals();
+  const templateHtml = game.renderTemplate(v);
+  ok(templateHtml.includes('id="cta-restock-bar"'), 'stage-cta includes #cta-restock-bar');
+  ok(templateHtml.includes('id="cta-dj-beatsync"'), 'stage-cta includes #cta-dj-beatsync');
+});
+
 if (pendingTests.length > 0) await Promise.all(pendingTests);
 
 console.log(`Results: ${passed} passed, ${skipped} skipped, ${failed} failed`);

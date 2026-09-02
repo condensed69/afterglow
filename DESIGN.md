@@ -1,7 +1,7 @@
 # DESIGN.md — Afterglow Club Idle
 
 **Game:** Afterglow Club Idle (repo: afterglow)  
-**Spec target:** all shipped systems through 0.12.3 — file save, Owner's List, balance + `pacing.mjs`, prestige, achievements, managers, special shifts, whales, multi-tab ownership, second room + rooftop, research tree, challenge tiers, manager levels, Renown/Brand perks/Endorsement, Vision ladder, location extras, ledger session strip (earned vs spent), challenge HUD chip, golden-over-modals, reactive UI signal store, mobile bottom-cockpit (.thumb-cockpit), canvas floorboard engine & procedural web audio synthesizer, 4-phase operational shifts & police heat engine (`game.js` v0.12.3, SAVE_VER 13)  
+**Spec target:** all shipped systems through 0.12.4 — file save, Owner's List, balance + `pacing.mjs`, prestige, achievements, managers, special shifts, whales, multi-tab ownership, second room + rooftop, research tree, challenge tiers, manager levels, Renown/Brand perks/Endorsement, Vision ladder, location extras, ledger session strip (earned vs spent), challenge HUD chip, golden-over-modals, reactive UI signal store, mobile bottom-cockpit (.thumb-cockpit), canvas floorboard engine & procedural web audio synthesizer, 4-phase operational shifts & police heat engine, station subsystems (mixology bar inventory & DJ beat-sync) (`game.js` v0.12.4, SAVE_VER 13)  
 **Source of truth for numbers:** `game.js` (`caps()`, `rates()`, constant tables) — re-diff this file when those change  
 **Related:** `PRESTIGE.md` (prestige deep design, shipped 0.8.0), `PLAN.md` (logic-fix predecessor, shipped), `AGENTS.md` (repo gates). Workstream sequencing lived in a local orchestrator plan (not published in the repo tree).  
 **Ancestry:** this branch stacks A (file save) → B (Owner's List) → C (`pacing.mjs` + balance) → D (`PRESTIGE.md`) → 0.7.x stage work → 0.8.x prestige/achievements/whale → 0.9.x managers/special shifts/perk tree → 0.9.5 legacyTotal fix → 0.10.x second room / burst events / golden ticket → 0.11.x research tree, challenges + tiers, manager levels, Renown unlocks, Vision ladder → 0.11.29 challenge-renown preserve, 0.11.30 buy-round reason, 0.11.31 mobile ledger/tabs, 0.11.32 manager-log aggregation, 0.11.33 session strip earned vs spent, 0.11.34 challenge HUD chip, 0.11.35 golden-over-modals, so every claim below is present in-tree.
@@ -81,6 +81,23 @@ Club operation attracts law enforcement attention as shifts progress. Each locat
 - **Offline Semantics (`catchUp`):** Heat does not accrue while offline (live-session tension only). If Door Staff provides net negative heat rate ($\text{HeatRate} < 0$), heat decays naturally towards 0 during catchUp.
 - **Bribe Chief:** Active CTA (`bribePolice()`) allows paying $\$30 + 4 \times \text{night}$ (min $\$25$) to instantly dissipate $-35$ Heat.
 - **Police Raid:** Reaching $100\%$ Heat in live play triggers a police raid, fining cash ($\$20 + 5 \times \text{night}$) and resetting Heat to $45\%$.
+
+### 3.2 Station Subsystems (Mixology Bar Inventory & DJ Beat-Sync) — 0.12.4
+
+Active station mechanics enhance floor management:
+
+- **Mixology Bar Stocking:**  
+  The bar consumes inventory as drinks are sold to patrons ($0.05 \times \text{bar} \times \text{dt}$).  
+  When `c.barStock > 0`, drink revenue receives a multiplier based on the active beverage tier:
+  - *Well Spirits* (Tier 1, Cost \$15, Size 50): $1.20\times$ Bar Revenue.
+  - *Craft Cocktails* (Tier 2, Cost \$45, Size 40, Req Bar 3): $1.35\times$ Bar Revenue.
+  - *Top-Shelf Champagne* (Tier 3, Cost \$120, Size 30, Req Bar 5): $1.60\times$ Bar Revenue.
+- **DJ Beat-Sync Frenzy:**  
+  During live play (`_live = true`), clicking `djBeatSync()` triggers a Beat Sync Frenzy ($+15\%$ Total Cash multiplier, and track-specific duration & hype boost) with a 15-second cooldown:
+  - *Neon Pulse* (120 BPM, Req DJ 1): 6s Frenzy ($+25\%$ Hype gain).
+  - *Acid Rain* (128 BPM, Req DJ 3): 8s Frenzy ($+35\%$ Hype gain).
+  - *Midnight Laser Storm* (140 BPM, Req DJ 5): 10s Frenzy ($+50\%$ Hype gain).
+- **Pacing Invariant:** Pacing bot does not execute manual Beat-Sync or restock loops, keeping reference bot baselines 100% deterministic.
 
 ---
 
