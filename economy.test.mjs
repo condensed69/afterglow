@@ -127,6 +127,8 @@ if (stripped === src) {
   console.error('economy.test.mjs: failed to strip game.js boot lines — process may hang');
   process.exit(2);
 }
+const AfterglowCatalogs = new Function(catSrc + ';\nreturn AfterglowCatalogs;')();
+globalThis.AfterglowCatalogs = AfterglowCatalogs;
 const Game = new Function(catSrc + '\n' + reactSrc + '\n' + stripped + ';\nreturn Game;')();
 
 // ── Test Harness ─────────────────────────────────────────────────────────────
@@ -2482,9 +2484,9 @@ test('non-numeric saveVer fails closed', () => {
 
 console.log('\nSave migration map (PLAN §2.2)');
 
-test('SAVE_VER is 14', () => {
+test('SAVE_VER is 15', () => {
   const game = newGame();
-  strictEqual(game.SAVE_VER, 14);
+  strictEqual(game.SAVE_VER, 15);
   ok(typeof game.MIGRATIONS[3] === 'function', 'MIGRATIONS[3] must exist');
   ok(typeof game.MIGRATIONS[4] === 'function', 'MIGRATIONS[4] must exist (Owner\'s List)');
   ok(typeof game.MIGRATIONS[5] === 'function', 'MIGRATIONS[5] must exist (prestige)');
@@ -2496,6 +2498,7 @@ test('SAVE_VER is 14', () => {
   ok(typeof game.MIGRATIONS[11] === 'function', 'MIGRATIONS[11] must exist (challenge tiers)');
   ok(typeof game.MIGRATIONS[12] === 'function', 'MIGRATIONS[12] must exist (lifetime value)');
   ok(typeof game.MIGRATIONS[13] === 'function', 'MIGRATIONS[13] must exist (Club Personas & Named Talent)');
+  ok(typeof game.MIGRATIONS[14] === 'function', 'MIGRATIONS[14] must exist (Branching Blueprints & Syndicate Map)');
 });
 
 test('v8 save migrates to the current version: club fields land in clubs.main, account fields stay', () => {
@@ -5011,6 +5014,8 @@ const ACCOUNT_FIELDS = [
   'renown', 'renownTotal', 'brand', 'brandLevel',
   'lifetimeEarned',
   'roster',
+  'blueprints',
+  'districtLinks',
   'ts', 'log',
   'crew', 'jobs',
   'clubs', 'activeClub',
@@ -7392,6 +7397,248 @@ test('UI Integration: renderVals & renderTemplate expose Personas & Talent cards
   ok(templateHtml.includes('Named Talent Roster'), 'renderTemplate renders Named Talent Roster section');
   ok(templateHtml.includes('data-persona-id="techno_bunker"'), 'renderTemplate renders techno_bunker button');
   ok(templateHtml.includes('data-talent-id="nova_cyan"'), 'renderTemplate renders nova_cyan card');
+});
+
+test('PR 7: Version 0.14.0 and SAVE_VER 15 migration & fail-closed validation', () => {
+  const game = newGame();
+  strictEqual(game.VERSION.num, '0.14.0', 'Game version is 0.14.0');
+  strictEqual(game.SAVE_VER, 15, 'SAVE_VER is 15');
+
+  // Test MIGRATIONS[14] (14 -> 15)
+  const v14Save = {
+    saveVer: 14,
+    ver: '0.13.0',
+    build: 260,
+    g: {
+      clubs: {
+        main: { cash: 100, hype: 0, buzz: 0, patrons: 0, regulars: 0, heat: 0, barStock: 0, barTier: 0, djTrack: 0, b: {}, u: {} }
+      },
+      activeClub: 'main',
+      clout: 10,
+      crew: 0,
+      jobs: { stage: 0, vipjob: 0, floor: 0, off: 0 },
+      roster: ['nova_cyan']
+    }
+  };
+
+  const okMigrate = game.migrateFrom(v14Save.g, 14);
+  ok(okMigrate, 'migrateFrom returned true');
+  const migratedG = v14Save.g;
+  ok(typeof migratedG.blueprints === 'object' && !Array.isArray(migratedG.blueprints), 'blueprints map initialized on migration');
+  ok(typeof migratedG.districtLinks === 'object' && !Array.isArray(migratedG.districtLinks), 'districtLinks map initialized on migration');
+  deepStrictEqual(migratedG.blueprints, {}, 'blueprints defaults to empty object');
+  deepStrictEqual(migratedG.districtLinks, {}, 'districtLinks defaults to empty object');
+
+  // Test fail-closed sanitization in sanitizeG
+  const corruptG = {
+    ...migratedG,
+    blueprints: { sub_bass_acoustics: true, fake_blueprint: true, drop_synchronizer: 'invalid' },
+    districtLinks: { vip_shuttles: true, non_existent_link: true, touring_djs: 123 }
+  };
+  const sanitized = game.sanitizeG(corruptG);
+  strictEqual(sanitized.blueprints.sub_bass_acoustics, true, 'valid blueprint preserved');
+  strictEqual(sanitized.blueprints.fake_blueprint, undefined, 'unknown blueprint stripped');
+  strictEqual(sanitized.blueprints.drop_synchronizer, undefined, 'non-boolean blueprint stripped');
+  strictEqual(sanitized.districtLinks.vip_shuttles, true, 'valid district link preserved');
+  strictEqual(sanitized.districtLinks.non_existent_link, undefined, 'unknown district link stripped');
+  strictEqual(sanitized.districtLinks.touring_djs, undefined, 'non-boolean district link stripped');
+});
+
+test('PR 7: Branching Blueprint skill tree unlock and prerequisites logic', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.legacy = 10;
+
+  // Try unlocking tier 2 without prerequisite (should fail)
+  game.unlockBlueprint('drop_synchronizer');
+  strictEqual(g.blueprints.drop_synchronizer, undefined, 'Cannot unlock Tier 2 blueprint without Tier 1 req');
+  strictEqual(g.legacy, 10, 'Legacy untouched when unlock rejected');
+
+  // Unlock Tier 1: sub_bass_acoustics (cost 1)
+  game.unlockBlueprint('sub_bass_acoustics');
+  strictEqual(g.blueprints.sub_bass_acoustics, true, 'Unlocked sub_bass_acoustics');
+  strictEqual(g.legacy, 9, 'Deducted 1 Legacy');
+
+  // Now Tier 2: drop_synchronizer (cost 2) succeeds
+  game.unlockBlueprint('drop_synchronizer');
+  strictEqual(g.blueprints.drop_synchronizer, true, 'Unlocked drop_synchronizer');
+  strictEqual(g.legacy, 7, 'Deducted 2 Legacy');
+
+  // Unlock Tier 3: acoustic_overdrive (cost 4)
+  game.unlockBlueprint('acoustic_overdrive');
+  strictEqual(g.blueprints.acoustic_overdrive, true, 'Unlocked acoustic_overdrive');
+  strictEqual(g.legacy, 3, 'Deducted 4 Legacy');
+
+  // Cannot unlock with insufficient Legacy
+  g.legacy = 1;
+  game.unlockBlueprint('master_distillery'); // costs 4
+  strictEqual(g.blueprints.master_distillery, undefined, 'Rejected when legacy insufficient');
+  strictEqual(g.legacy, 1, 'Legacy preserved');
+});
+
+test('PR 7: Blueprint multipliers and subsystem effects in rates, restock, bribe, beat-sync, whale', () => {
+  const game = newGame(1000);
+  const g = game.state.g;
+  const c = game.club(g);
+  c.b.dj = 2;
+  c.b.bar = 3;
+  c.b.vip = 2;
+  c.patrons = 10;
+  c.regulars = 5;
+
+  const rBase = game.rates(g);
+
+  // Enable blueprints
+  g.blueprints = {
+    sub_bass_acoustics: true,
+    acoustic_overdrive: true,
+    craft_infusions: true,
+    master_distillery: true,
+    velvet_allure: true,
+    hype_viral_loop: true,
+    shadow_patrols: true,
+    bribe_networks: true,
+    black_market_logistics: true,
+    automated_pourers: true,
+    whale_syndicate: true,
+    drop_synchronizer: true
+  };
+
+  const rBp = game.rates(g);
+  ok(rBp.hype > rBase.hype, 'Blueprint audio bonuses increase hype generation');
+  ok(rBp.cash > rBase.cash, 'Blueprint mixology and overdrive bonuses increase cash flow');
+
+  // Test bribeCost with bribe_networks (-40% cost)
+  c.night = 10;
+  const standardBribe = Math.max(25, Math.floor(30 + 10 * 4));
+  const discountedBribe = game.bribeCost(g);
+  strictEqual(discountedBribe, Math.max(15, Math.floor(standardBribe * 0.60)), 'Bribe network applies 40% discount');
+
+  // Test restockBar with black_market_logistics (-50% cost) and automated_pourers (+30% stock)
+  c.cash = 500;
+  c.barStock = 0;
+  game.restockBar();
+  const bev = AfterglowCatalogs.BEVERAGES[0];
+  strictEqual(c.barStock, Math.floor(bev.batchSize * 1.30), 'Automated pourers yields 30% more batch stock');
+  strictEqual(c.cash, 500 - Math.floor(bev.batchCost * 0.50), 'Black market logistics cuts restocking cost in half');
+
+  // Test stacked restocking discounts (black_market_logistics + supply_corridor = 65% off)
+  g.districtLinks.supply_corridor = true;
+  g.clubs.annex = game.freshClubState('annex');
+  g.clubs.rooftop = game.freshClubState('rooftop');
+  const stackedCost = game.restockCost(g);
+  strictEqual(stackedCost, Math.floor(bev.batchCost * 0.35), 'Stacked logistics discounts correctly calculate combined 65% discount without floor drift');
+
+  // Test velvet_allure VIP regular conversion scaling
+  const rWithoutAllure = game.rates({ ...g, blueprints: { ...g.blueprints, velvet_allure: false } });
+  const rWithAllure = game.rates(g);
+  const ratio = rWithAllure.regulars / rWithoutAllure.regulars;
+  ok(Math.abs(ratio - 1.25) < 1e-4, 'Velvet Allure increases VIP regulars conversion by exactly +25%');
+
+  // Test spawnWhale with whale_syndicate (now folded into totalCashMult)
+  c.cash = 0;
+  const multBefore = game.totalCashMult(g); // already includes whale_syndicate ×1.5
+  game.spawnWhale(g);
+  const expectedWhale = Math.floor(50 * (1 + c.hype / 100) * multBefore);
+  strictEqual(c.cash, expectedWhale, 'Whale syndicate +50% flows through totalCashMult');
+});
+
+test('PR 7: City District Syndicate Map and Logistics Links activation & operational bonuses', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  const c = game.club(g);
+
+  // Cannot link when required club locations are not unlocked
+  game.toggleDistrictLink('vip_shuttles'); // requires main (Downtown) and rooftop (Uptown)
+  strictEqual(g.districtLinks.vip_shuttles, undefined, 'Cannot activate link without both connected venues');
+
+  // Unlock annex and rooftop
+  g.clubs.annex = game.freshClubState('annex');
+  g.clubs.rooftop = game.freshClubState('rooftop');
+
+  // Now activate vip_shuttles ($500)
+  c.cash = 2000;
+  game.toggleDistrictLink('vip_shuttles');
+  strictEqual(g.districtLinks.vip_shuttles, true, 'Activated vip_shuttles link');
+  strictEqual(c.cash, 1500, 'Deducted $500 activation fee');
+
+  // Toggle again to deactivate (no cash cost, deletes key)
+  game.toggleDistrictLink('vip_shuttles');
+  strictEqual(g.districtLinks.vip_shuttles, undefined, 'Deactivated vip_shuttles link removes key');
+  strictEqual(c.cash, 1500, 'Cash untouched on deactivation');
+
+  // Re-activate and activate touring_djs ($450)
+  game.toggleDistrictLink('vip_shuttles');
+  strictEqual(c.cash, 1000, 'Deducted $500 activation fee on re-activation');
+  game.toggleDistrictLink('touring_djs');
+  strictEqual(g.districtLinks.touring_djs, true, 'Activated touring_djs link');
+  strictEqual(c.cash, 1000 - 450, 'Deducted $450 activation fee');
+
+  // Check rate multiplier on main club
+  c.b.dj = 2;
+  c.b.vip = 2;
+  c.patrons = 10;
+  const rLinks = game.rates(g);
+  ok(rLinks.hype > 0, 'Touring DJs increases stage and DJ hype on connected Downtown club');
+});
+
+test('PR 7: confirmPrestige and confirmFranchiseSale blueprint and district link reset matrices', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  g.blueprints = { sub_bass_acoustics: true, craft_infusions: true };
+  g.districtLinks = { vip_shuttles: true };
+  g.clubs.main.regulars = 30;
+
+  // Standard franchise prestige: blueprints and districtLinks persist!
+  game.confirmPrestige();
+  const postPrestigeG = game.state.g;
+  ok(postPrestigeG.blueprints.sub_bass_acoustics, 'sub_bass_acoustics blueprint persists through prestige');
+  ok(postPrestigeG.blueprints.craft_infusions, 'craft_infusions blueprint persists through prestige');
+  ok(postPrestigeG.districtLinks.vip_shuttles, 'vip_shuttles district link persists through prestige');
+
+  // Set up franchise sale prerequisites
+  for (const p of game.PRESTIGE_PERKS) postPrestigeG.perks[p.id] = p.max;
+  for (const m of game.MANAGERS) postPrestigeG.managers[m.id] = true;
+  postPrestigeG.clubs.annex = game.freshClubState('annex');
+  postPrestigeG.legacyTotal = 500;
+
+  // Franchise Sale: resets everything except Renown, Achievements, Brand ranks, Lifetime
+  game.state.showFranchise = true;
+  game.state.franchiseArmed = true;
+  game.confirmFranchiseSale();
+  const postSaleG = game.state.g;
+  deepStrictEqual(postSaleG.blueprints, {}, 'blueprints reset to empty object on franchise sale');
+  deepStrictEqual(postSaleG.districtLinks, {}, 'districtLinks reset to empty object on franchise sale');
+});
+
+test('PR 7: UI view models expose blueprints, districts, and district links in renderVals', () => {
+  const root = {
+    innerHTML: '',
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    querySelectorAll() { return []; },
+    querySelector() { return null; }
+  };
+  const game = new Game(root);
+  game.init();
+
+  const v = game.renderVals();
+  ok(Array.isArray(v.blueprintList), 'renderVals exposes blueprintList');
+  strictEqual(v.blueprintList.length, 12, '12 blueprints available across 4 branches');
+  ok(Array.isArray(v.districts), 'renderVals exposes districts list');
+  strictEqual(v.districts.length, 3, '3 city districts defined');
+  ok(Array.isArray(v.districtLinks), 'renderVals exposes districtLinks list');
+  strictEqual(v.districtLinks.length, 3, '3 syndicate logistics links defined');
+  strictEqual(v.restockBatchSizeVal, 50, 'Base restock batch size is 50');
+  game.state.g.blueprints.automated_pourers = true;
+  const vBoosted = game.renderVals();
+  strictEqual(vBoosted.restockBatchSizeVal, 65, 'Boosted restock batch size is 65 with automated_pourers');
+
+  game.state.tab = 'perks';
+  const vPerks = game.renderVals();
+  ok(vPerks.cards.some(c => c.name && c.name.includes('Sub-Bass Acoustics')), 'Blueprint card rendered in Perks tab');
+  ok(vPerks.cards.some(c => c.name && c.name.includes('Downtown Neon Strip')), 'District card rendered in Perks tab');
+  ok(vPerks.cards.some(c => c.name && c.name.includes('VIP Shuttles')), 'District link card rendered in Perks tab');
 });
 
 if (pendingTests.length > 0) await Promise.all(pendingTests);

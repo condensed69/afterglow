@@ -138,6 +138,8 @@ goals, clicks, rounds,
 whalesCount, specialsCount, golden,
 challenge, challengesDone, challengeTier, challengeTiers (SAVE_VER 12 — challenge runs §6/§11; challengeTier/challengeTiers = the 3-tier ladder, 0.11.13),
 renown, renownTotal, brand, brandLevel (SAVE_VER 10/11 — second prestige layer, REPLAY_ROADMAP.md §8; brandLevel = repeatable Endorsement sink, SAVE_VER 11, 0.11.12),
+roster (SAVE_VER 14 — Named Talent global roster, 0.13.0),
+blueprints, districtLinks (SAVE_VER 15 — Blueprint skill tree & Syndicate map, 0.14.0),
 ts, log (shared night log, see §8),
 crew, jobs,
 clubs, activeClub
