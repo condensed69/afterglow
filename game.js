@@ -211,8 +211,8 @@ class Game {
     // v13 → v14: Club Personas & Named Talent Roster (PR 6 of Afterglow 2.0)
     13(g) {
       if (!Array.isArray(g.roster)) g.roster = [];
-      else if (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.TALENT) {
-        g.roster = g.roster.filter(id => typeof id === 'string' && AfterglowCatalogs.TALENT.some(t => t.id === id));
+      else {
+        g.roster = g.roster.filter(id => typeof id === 'string' && (typeof AfterglowCatalogs === 'undefined' || !AfterglowCatalogs.TALENT || AfterglowCatalogs.TALENT.some(t => t.id === id)));
       }
       if (!g.clubs || typeof g.clubs !== 'object') return;
       for (const clubId of Object.keys(g.clubs)) {

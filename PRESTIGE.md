@@ -461,8 +461,9 @@ On the confirmed sale — the confirm is **two-click armed** (`state.franchiseAr
 
 | Field / group | After sale |
 |---------------|------------|
-| `g.clubs` | `{ main: freshClubState() }` — the annex re-locks; only `main` remains |
+| `g.clubs` | `{ main: freshClubState() }` — the annex re-locks; only `main` remains; per-club `persona`/`activeTalent` wipe |
 | `g.activeClub` | `'main'` |
+| `g.roster` | `[]` — hired talent wiped on franchise sale |
 | `g.legacy` / `g.legacyTotal` | `0` / `0` |
 | `g.perks` / `g.prestiges` | `{}` / `0` |
 | `g.clout` | `0` |
