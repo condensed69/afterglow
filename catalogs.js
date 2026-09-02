@@ -400,9 +400,9 @@ const AfterglowCatalogs = {
   ],
 
   DJ_TRACKS: [
-    { id: 'neon_pulse', name: 'Neon Pulse', bpm: 120, hypeBonus: 1.20, duration: 60, reqDj: 1 },
-    { id: 'acid_rain', name: 'Acid Rain', bpm: 128, hypeBonus: 1.35, duration: 75, reqDj: 3 },
-    { id: 'midnight_storm', name: 'Midnight Laser Storm', bpm: 140, hypeBonus: 1.50, duration: 90, reqDj: 5 }
+    { id: 'neon_pulse', name: 'Neon Pulse', bpm: 120, hypeBonus: 1.25, frenzySec: 6, reqDj: 1 },
+    { id: 'acid_rain', name: 'Acid Rain', bpm: 128, hypeBonus: 1.35, frenzySec: 8, reqDj: 3 },
+    { id: 'midnight_storm', name: 'Midnight Laser Storm', bpm: 140, hypeBonus: 1.50, frenzySec: 10, reqDj: 5 }
   ]
 };
 

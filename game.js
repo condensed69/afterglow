@@ -212,7 +212,7 @@ class Game {
 
   CHANGELOG = [
       { v: '0.12.4', date: '2026-09-02', codename: 'Station Subsystems', notes: [
-        'STATION SUBSYSTEMS (MIXOLOGY BAR INVENTORY & DJ BEAT-SYNC) (PR 5 of Afterglow 2.0): introduced active station mechanics for bar and stage. Mixology inventory system (Well Spirits, Craft Cocktails, Top-Shelf Champagne) supplies bar stock to boost drink revenue by up to 1.60x when stocked. DJ Beat-Sync minigame allows triggering rhythmic Beat Sync Frenzies (+25% hype, +15% cash) during live play with synth audio pulse and floorboard particle bursts. Auto-restock supported via bar automation. SAVE_VER stays 13, pacing bit-identical.'
+        'STATION SUBSYSTEMS (MIXOLOGY BAR INVENTORY & DJ BEAT-SYNC) (PR 5 of Afterglow 2.0): introduced active station mechanics for bar and stage. Mixology inventory system (Well Spirits, Craft Cocktails, Top-Shelf Champagne) supplies bar stock to boost drink revenue by up to 1.60x when stocked. DJ Beat-Sync minigame allows triggering rhythmic Beat Sync Frenzies (+25% to +50% hype, +15% cash) during live play with synth audio pulse and floorboard particle bursts. SAVE_VER stays 13, pacing bit-identical.'
       ] },
       { v: '0.12.3', date: '2026-09-02', codename: 'Neon Syndicate', notes: [
         '4-PHASE OPERATIONAL SHIFTS & POLICE HEAT ENGINE (PR 4 of Afterglow 2.0): integrated dynamic 4-phase shift cycles with shift-specific Heat generation rates (Early Doors, Peak Hours, Last Call, After Hours) and door security mitigation. Introduced Police Heat & Bribe mechanic with live incident triggers (Bar Fights, Noise Complaints, Fire Marshal checks), heat HUD indicators, and Chief bribery. SAVE_VER stays 13, pacing bit-identical.'
@@ -2302,8 +2302,10 @@ class Game {
     // is folded into totalCashMult — the single all-cash composition point — so
     // it covers passive income AND clicks/whale/golden (see totalCashMult()).
     // Station Subsystems (PR 5): DJ Beat-Sync Frenzy
+    const tracks = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.DJ_TRACKS) ? AfterglowCatalogs.DJ_TRACKS : [];
+    const curTrk = tracks[c.djTrack || 0] || { hypeBonus: 1.25 };
     const frenzyCashMult = (c._frenzyT || 0) > 0 ? 1.15 : 1.0;
-    const frenzyHypeGain = (c._frenzyT || 0) > 0 ? 1.25 : 1.0;
+    const frenzyHypeGain = (c._frenzyT || 0) > 0 ? (curTrk.hypeBonus || 1.25) : 1.0;
 
     const crewMult = (c.u.residency ? 1.4 : 1) * (g.r.school ? 1.15 : 1) * (1 + this.challengeBonus(g).crewOut);
     const cashMult = (c.u.twodrink ? 1.35 : 1) * hypeMult * sm * (c.u.skyline ? 1.25 : 1) * frenzyCashMult;
@@ -2440,8 +2442,10 @@ class Game {
       c.patrons = Math.max(0, Math.min(cap.patrons, c.patrons + rates.patrons * dt));
       c.regulars = Math.max(0, c.regulars + rates.regulars * dt);
       g.clout = Math.max(0, g.clout + rates.clout * dt);
-      // Station Subsystems (PR 5): Bar Stocking consumption
+      // Station Subsystems (PR 5): Bar Stocking consumption & DJ Frenzy duration
       if ((c.barStock || 0) > 0) c.barStock = Math.max(0, c.barStock - (c.b.bar || 0) * 0.05 * dt);
+      if ((c._frenzyT || 0) > 0) c._frenzyT = Math.max(0, c._frenzyT - dt);
+      if ((c._beatCooldown || 0) > 0) c._beatCooldown = Math.max(0, c._beatCooldown - dt);
       // Offline heat only decays via security suppression, never increases while away
       if (rates.heatRate < 0) c.heat = Math.max(0, (c.heat || 0) + rates.heatRate * dt);
       c.shiftT += wall;
@@ -3007,6 +3011,7 @@ class Game {
     const g = this.state.g;
     if (!g || this.state.tabStale) return;
     const c = this.club(g);
+    if ((c.b.bar || 0) < 1) return;
     const bevs = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.BEVERAGES) ? AfterglowCatalogs.BEVERAGES : [];
     const bev = bevs[c.barTier || 0] || { batchCost: 15, batchSize: 50, name: 'Well Spirits' };
     if (c.cash < bev.batchCost) return;
@@ -3034,7 +3039,10 @@ class Game {
     if (!g || this.state.tabStale) return;
     const c = this.club(g);
     if ((c._beatCooldown || 0) > 0 || (c.b.dj || 0) < 1) return;
-    c._frenzyT = 6;
+    const tracks = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.DJ_TRACKS) ? AfterglowCatalogs.DJ_TRACKS : [];
+    const trk = tracks[c.djTrack || 0] || { frenzySec: 6, hypeBonus: 1.25, name: 'Neon Pulse' };
+    const dur = trk.frenzySec || 6;
+    c._frenzyT = dur;
     c._beatCooldown = 15;
     if (this.audio) this.audio.playChime();
     if (this.floorboard) {
@@ -3050,9 +3058,7 @@ class Game {
         this.floorboard.triggerPulse();
       }
     }
-    const tracks = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.DJ_TRACKS) ? AfterglowCatalogs.DJ_TRACKS : [];
-    const trk = tracks[c.djTrack || 0] || { name: 'Neon Pulse' };
-    this.push(g, '🎵 Beat-Sync Frenzy on ' + trk.name + '! +25% Hype, +15% Cash.', '#e879f9');
+    this.push(g, '🎵 Beat-Sync Frenzy on ' + trk.name + '! +' + Math.round(((trk.hypeBonus || 1.25) - 1) * 100) + '% Hype, +15% Cash.', '#e879f9');
     this.forceUpdate();
   }
 
