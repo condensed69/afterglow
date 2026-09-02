@@ -2423,7 +2423,8 @@ class Game {
       c.patrons = Math.max(0, Math.min(cap.patrons, c.patrons + rates.patrons * dt));
       c.regulars = Math.max(0, c.regulars + rates.regulars * dt);
       g.clout = Math.max(0, g.clout + rates.clout * dt);
-      c.heat = Math.max(0, Math.min(100, (c.heat || 0) + (rates.heatRate || 0) * dt));
+      // Offline heat only decays via security suppression, never increases while away
+      if (rates.heatRate < 0) c.heat = Math.max(0, (c.heat || 0) + rates.heatRate * dt);
       c.shiftT += wall;
       c.elapsed += wall;
       remaining -= wall;
@@ -2462,7 +2463,11 @@ class Game {
         const fine = Math.min(c.cash, Math.floor(20 + (c.night || 1) * 5));
         c.cash = Math.max(0, c.cash - fine);
         c.heat = 45;
-        this.push(g, '🚨 Police Raid! Fined $' + this.fmt(fine) + '. Heat cooled to 45.', '#ff2d78');
+        if (fine > 0) {
+          this.push(g, '🚨 Police Raid! Fined $' + this.fmt(fine) + '. Heat cooled to 45.', '#ff2d78');
+        } else {
+          this.push(g, '🚨 Police Raid! Warning issued (till empty). Heat cooled to 45.', '#ff2d78');
+        }
         this.forceUpdate();
       } else if (Math.random() < 0.0015 && (c.heat || 0) < 85 && typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.INCIDENTS) {
         const incs = AfterglowCatalogs.INCIDENTS;
@@ -2953,12 +2958,18 @@ class Game {
     this.forceUpdate();
   }
 
+  // Police Heat Engine (PR 4) — Bribe Chief cost calculation helper
+  bribeCost(g) {
+    const c = this.club(g);
+    return Math.max(25, Math.floor(30 + (c.night || 1) * 4));
+  }
+
   // Police Heat Engine (PR 4) — Bribe Chief action to clear 35 Heat
   bribePolice() {
     const g = this.state.g;
     if (!g || this.state.tabStale) return;
     const c = this.club(g);
-    const cost = Math.max(25, Math.floor(30 + (c.night || 1) * 4));
+    const cost = this.bribeCost(g);
     if (c.cash < cost || (c.heat || 0) <= 0) return;
     c.cash -= cost;
     this.sessionSpent += cost;
@@ -3896,8 +3907,8 @@ class Game {
       heatVal: Number((c.heat || 0).toFixed(1)),
       heatRate: (r.heatRate > 0 ? '+' : '') + r.heatRate.toFixed(2) + '/s',
       heatColor: (c.heat || 0) >= 70 ? '#ff2d78' : ((c.heat || 0) >= 40 ? '#ffc94a' : '#4ade80'),
-      bribeCost: Math.max(25, Math.floor(30 + (c.night || 1) * 4)),
-      canBribe: c.cash >= Math.max(25, Math.floor(30 + (c.night || 1) * 4)) && (c.heat || 0) > 0 && !this.state.tabStale,
+      bribeCost: this.bribeCost(g),
+      canBribe: c.cash >= this.bribeCost(g) && (c.heat || 0) > 0 && !this.state.tabStale,
       bribePolice: () => this.bribePolice(),
       soundEnabled: Boolean(this.audio && this.audio.enabled),
       toggleSound: () => {
@@ -5001,7 +5012,6 @@ class Game {
     const hwrap = this.dom('#header-heat-meter');
     if (hwrap) {
       hwrap.title = `Police Heat: ${v.heat}% (${v.heatRate}) — tap to bribe Chief ($${v.bribeCost})`;
-      hwrap.setAttribute('data-h', String(this.bind(v.bribePolice)));
     }
     const sndBtn = this.dom('#header-sound-btn');
     if (sndBtn) {
@@ -5009,8 +5019,6 @@ class Game {
       sndBtn.title = v.soundEnabled ? 'Mute sound & procedural synth' : 'Enable sound & procedural synth';
       sndBtn.style.color = v.soundEnabled ? '#ffc94a' : '#8f6f9c';
     }
-    const setBtn = this.dom('#header-settings-btn');
-    if (setBtn) setBtn.setAttribute('data-h', String(this.bind(v.toggleSettings)));
 
     // 2. Ticker
     const tt = this.dom('.ticker-text');

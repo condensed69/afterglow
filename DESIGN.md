@@ -78,6 +78,7 @@ Club operation attracts law enforcement attention as shifts progress. Each locat
 - **Security Score Mitigation:** Each Door Staff (`b.door`) provides `-0.015/s` heat suppression:  
   $$\text{HeatRate} = \max(-0.04, \text{BaseHeat}(\text{Shift}) - 0.015 \times \text{DoorStaff})$$
 - **Live Incidents:** During live sessions (`_live = true`), random disruptions (Bar Fight $+8$, Noise Complaint $+5$, Fire Marshal $+12$) occur dynamically.
+- **Offline Semantics (`catchUp`):** Heat does not accrue while offline (live-session tension only). If Door Staff provides net negative heat rate ($\text{HeatRate} < 0$), heat decays naturally towards 0 during catchUp.
 - **Bribe Chief:** Active CTA (`bribePolice()`) allows paying $\$30 + 4 \times \text{night}$ (min $\$25$) to instantly dissipate $-35$ Heat.
 - **Police Raid:** Reaching $100\%$ Heat in live play triggers a police raid, fining cash ($\$20 + 5 \times \text{night}$) and resetting Heat to $45\%$.
 

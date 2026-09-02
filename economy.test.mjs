@@ -7045,6 +7045,12 @@ test('Police Heat Engine: advances heat in step() and handles Bribe Chief action
   const g = game.state.g;
   const c = game.club(g);
 
+  // bribeCost helper
+  c.night = 1;
+  strictEqual(game.bribeCost(g), 34, 'bribeCost night 1 = 30 + 4*1 = 34');
+  c.night = 5;
+  strictEqual(game.bribeCost(g), 50, 'bribeCost night 5 = 30 + 4*5 = 50');
+
   c.heat = 50;
   c.cash = 200;
   game.step(10);
@@ -7054,7 +7060,56 @@ test('Police Heat Engine: advances heat in step() and handles Bribe Chief action
   const beforeCash = c.cash;
   game.bribePolice();
   strictEqual(Math.round(c.heat * 10) / 10, Math.round(Math.max(0, beforeHeat - 35) * 10) / 10, 'bribePolice reduces heat by 35');
-  ok(c.cash < beforeCash, 'bribePolice deducts cash bribe cost');
+  strictEqual(c.cash, beforeCash - 50, 'bribePolice deducts exact bribeCost');
+});
+
+test('Police Heat Engine: offline catchUp only decays heat and never saturates', () => {
+  const root = {
+    innerHTML: '',
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    querySelectorAll() { return []; },
+    querySelector() { return null; }
+  };
+  const game = new Game(root);
+  const g = game.fresh();
+  const c = game.club(g);
+
+  c.heat = 60;
+  c.b.door = 0; // positive heat rate in live, but offline should not increase
+  game.catchUp(g, 3600);
+  strictEqual(c.heat, 60, 'offline catchUp does not increase heat');
+
+  // With heavy door staff, heat decays offline
+  c.b.door = 6;
+  game.catchUp(g, 600);
+  ok(c.heat < 60, 'offline catchUp decays heat when security suppression is active');
+});
+
+test('Police Heat Engine: liveStep triggers Police Raid at 100 heat', () => {
+  const root = {
+    innerHTML: '',
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    querySelectorAll() { return []; },
+    querySelector() { return null; }
+  };
+  const game = new Game(root);
+  game.forceUpdate = () => {};
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+
+  const g = game.state.g;
+  const c = game.club(g);
+  c.heat = 100;
+  c.cash = 500;
+  c.night = 2;
+
+  game.liveStep(g, 0.1);
+  strictEqual(c.heat, 45, 'Police raid cools heat to 45');
+  strictEqual(Math.round(c.cash), 470, 'Police raid fines $20 + 5*night ($30 on night 2)');
+  ok(g.log.some(l => l.msg.includes('Police Raid')), 'Police raid logs incident message');
 });
 
 test('Game Integration: renders #header-heat-meter and #header-heat-val', () => {
