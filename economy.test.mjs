@@ -7522,12 +7522,12 @@ test('PR 7: Blueprint multipliers and subsystem effects in rates, restock, bribe
   strictEqual(c.barStock, Math.floor(bev.batchSize * 1.30), 'Automated pourers yields 30% more batch stock');
   strictEqual(c.cash, 500 - Math.floor(bev.batchCost * 0.50), 'Black market logistics cuts restocking cost in half');
 
-  // Test spawnWhale with whale_syndicate (+50% bonus)
+  // Test spawnWhale with whale_syndicate (now folded into totalCashMult)
   c.cash = 0;
-  const multBefore = game.totalCashMult(g);
+  const multBefore = game.totalCashMult(g); // already includes whale_syndicate ×1.5
   game.spawnWhale(g);
-  const expectedWhale = Math.floor(50 * (1 + c.hype / 100) * multBefore * 1.5);
-  strictEqual(c.cash, expectedWhale, 'Whale syndicate increases whale grant by 50%');
+  const expectedWhale = Math.floor(50 * (1 + c.hype / 100) * multBefore);
+  strictEqual(c.cash, expectedWhale, 'Whale syndicate +50% flows through totalCashMult');
 });
 
 test('PR 7: City District Syndicate Map and Logistics Links activation & operational bonuses', () => {

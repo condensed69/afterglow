@@ -1000,9 +1000,12 @@ class Game {
     // Brand Endorsement (next-roadmap PR 1): +2% all cash per level, repeatable.
     // Vision ladder (next-roadmap PR 4): +1%/+1%/+2% all cash per lifetime-value
     // tier crossed — ×1.0 on the pacing bot's path (probe-pinned under ★1).
+    // whale_syndicate blueprint (PR 7): +50% all cash — folded here so the whale
+    // grant and every other cash source see the same composition.
+    const whaleSyn = (g.blueprints && g.blueprints.whale_syndicate) ? 1.50 : 1.0;
     return this.cashIncomeMult(g) * this.achievementMult(g) * (g.r.brand ? 1.10 : 1)
       * (1 + this.challengeBonus(g).cashMult) * (1 + 0.10 * this.brandRank(g, 'nationwide'))
-      * (1 + 0.02 * this.brandLevel(g)) * (1 + this.visionBonus(g)) * incomeMod;
+      * (1 + 0.02 * this.brandLevel(g)) * (1 + this.visionBonus(g)) * incomeMod * whaleSyn;
   }
 
   // Featured regular name — derived from the active club's regulars count
@@ -3167,21 +3170,33 @@ class Game {
   }
 
   // Station Subsystems (PR 5): Mixology Bar Restocking
-  restockBar() {
-    const g = this.state.g;
-    if (!g || this.state.tabStale) return;
-    const c = this.club(g);
-    if ((c.b.bar || 0) < 1) return;
+  // Discounted restock cost — single source of truth for canRestock gating,
+  // button label, and the actual restockBar() deduction. Blueprint
+  // (black_market_logistics -50%) and district link (supply_corridor -30%)
+  // discounts are applied here so the UI never lies about affordability.
+  restockCost(g) {
     const bevs = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.BEVERAGES) ? AfterglowCatalogs.BEVERAGES : [];
+    const c = this.club(g);
     const bev = bevs[c.barTier || 0] || { batchCost: 15, batchSize: 50, name: 'Well Spirits' };
     let cost = bev.batchCost;
     if (g.blueprints && g.blueprints.black_market_logistics) cost = Math.floor(cost * 0.50);
     if (g.districtLinks && g.districtLinks.supply_corridor && g.clubs && g.clubs.annex && g.clubs.rooftop) {
       cost = Math.floor(cost * 0.70);
     }
+    return cost;
+  }
+
+  restockBar() {
+    const g = this.state.g;
+    if (!g || this.state.tabStale) return;
+    const c = this.club(g);
+    if ((c.b.bar || 0) < 1) return;
+    const cost = this.restockCost(g);
     if (c.cash < cost) return;
     c.cash -= cost;
     this.sessionSpent += cost;
+    const bevs = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.BEVERAGES) ? AfterglowCatalogs.BEVERAGES : [];
+    const bev = bevs[c.barTier || 0] || { batchCost: 15, batchSize: 50, name: 'Well Spirits' };
     let size = bev.batchSize;
     if (g.blueprints && g.blueprints.automated_pourers) size = Math.floor(size * 1.30);
     c.barStock = (c.barStock || 0) + size;
@@ -4357,7 +4372,8 @@ class Game {
         select: () => this.setBarTier(idx)
       })) : [],
       curBeverage: ((typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.BEVERAGES) ? AfterglowCatalogs.BEVERAGES[c.barTier || 0] : null) || { name: 'Well Spirits', batchCost: 15, batchSize: 50, revMult: 1.20 },
-      canRestock: c.cash >= (((typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.BEVERAGES) ? AfterglowCatalogs.BEVERAGES[c.barTier || 0]?.batchCost : 15) || 15) && (c.b.bar || 0) > 0 && !this.state.tabStale,
+      canRestock: c.cash >= this.restockCost(g) && (c.b.bar || 0) > 0 && !this.state.tabStale,
+      restockCostVal: this.restockCost(g),
       restockBar: () => this.restockBar(),
 
       djTrack: c.djTrack || 0,
@@ -4754,8 +4770,9 @@ class Game {
   spawnWhale(g) {
     const c = this.club(g);
     const mult = 1 + c.hype / 100;
-    const whaleBoost = (g.blueprints && g.blueprints.whale_syndicate) ? 1.5 : 1.0;
-    const bonus = Math.floor(50 * mult * this.totalCashMult(g) * whaleBoost);
+    // whale_syndicate +50% is folded into totalCashMult (the single all-cash
+    // composition point) so the grant matches the displayed cash-flow rate.
+    const bonus = Math.floor(50 * mult * this.totalCashMult(g));
     c.cash += bonus;
     // 0.10.1: lifetime whale counter (drives whale_1/whale_10).
     g.whalesCount = (g.whalesCount || 0) + 1;
@@ -5455,9 +5472,9 @@ class Game {
         <button id="cta-work-crowd" data-h="${this.bind(v.workCrowd)}" class="cta" style="flex:1 1 240px;background:linear-gradient(180deg,#ff3d85,#d81259);border:0;border-radius:8px;color:#fff;font-weight:700;font-size:13px;letter-spacing:1.2px;text-transform:uppercase;padding:13px 16px;cursor:pointer;box-shadow:0 0 22px rgba(255,45,120,.35)">Work the room <span style="font-family:'IBM Plex Mono',monospace;opacity:.85;text-transform:none;letter-spacing:0">+${v.clickValue}</span></button>
         <button id="cta-buy-round" data-h="${this.bind(v.buyRound)}" ${v.roundLocked ? 'disabled' : ''} title="${v.roundReason || v.roundLabel}" aria-label="${v.roundReason || v.roundLabel}" style="${css(v.roundStyle)}">${v.roundLabel}</button>
         <div id="station-controls-wrap" style="display:flex;gap:8px;align-items:center">
-          <button id="cta-restock-bar" data-h="${this.bind(v.restockBar)}" ${!v.canRestock ? 'disabled' : ''} class="hv-pink" title="Restock ${v.curBeverage.name} (+${v.curBeverage.batchSize} stock for $${v.curBeverage.batchCost}) · currently ${v.barStock} in stock" aria-label="Restock bar" style="display:flex;align-items:center;gap:6px;background:${v.canRestock ? '#170e22' : '#100a18'};border:1px solid ${v.canRestock ? '#3a2350' : '#221434'};border-radius:8px;padding:10px 12px;color:${v.canRestock ? '#4ade80' : '#8f6f9c'};cursor:${v.canRestock ? 'pointer' : 'not-allowed'};font-size:11px;font-weight:700">
+          <button id="cta-restock-bar" data-h="${this.bind(v.restockBar)}" ${!v.canRestock ? 'disabled' : ''} class="hv-pink" title="Restock ${v.curBeverage.name} (+${v.curBeverage.batchSize} stock for $${v.restockCostVal}) · currently ${v.barStock} in stock" aria-label="Restock bar" style="display:flex;align-items:center;gap:6px;background:${v.canRestock ? '#170e22' : '#100a18'};border:1px solid ${v.canRestock ? '#3a2350' : '#221434'};border-radius:8px;padding:10px 12px;color:${v.canRestock ? '#4ade80' : '#8f6f9c'};cursor:${v.canRestock ? 'pointer' : 'not-allowed'};font-size:11px;font-weight:700">
             <span>🍸 Stock: ${v.barStock}</span>
-            <span style="font-size:9.5px;color:#9c86ab">+$${v.curBeverage.batchCost}</span>
+            <span style="font-size:9.5px;color:#9c86ab">+$${v.restockCostVal}</span>
           </button>
           <button id="cta-dj-beatsync" data-h="${this.bind(v.djBeatSync)}" ${!v.canBeatSync ? 'disabled' : ''} class="hv-pink" title="DJ Beat-Sync: Trigger 6s Frenzy (+25% Hype, +15% Cash)" aria-label="DJ Beat-Sync" style="display:flex;align-items:center;gap:6px;background:${v.frenzyActive ? 'linear-gradient(180deg,#e879f9,#a855f7)' : (v.canBeatSync ? '#170e22' : '#100a18')};border:1px solid ${v.frenzyActive ? '#f472b6' : (v.canBeatSync ? '#3a2350' : '#221434')};border-radius:8px;padding:10px 12px;color:${v.frenzyActive ? '#fff' : (v.canBeatSync ? '#22d3ee' : '#8f6f9c')};cursor:${v.canBeatSync ? 'pointer' : 'not-allowed'};font-size:11px;font-weight:700">
             <span>🎧 ${v.frenzyActive ? `FRENZY ${v.frenzySec}s` : (v.beatCooldown > 0 ? `Drop (${v.beatCooldown}s)` : 'Beat Drop')}</span>
@@ -5788,12 +5805,12 @@ class Game {
       ctaRestock.disabled = !v.canRestock;
       if (!v.canRestock) ctaRestock.setAttribute('disabled', '');
       else ctaRestock.removeAttribute('disabled');
-      ctaRestock.innerHTML = `<span>🍸 Stock: ${v.barStock}</span><span style="font-size:9.5px;color:#9c86ab">+$${v.curBeverage.batchCost}</span>`;
+      ctaRestock.innerHTML = `<span>🍸 Stock: ${v.barStock}</span><span style="font-size:9.5px;color:#9c86ab">+$${v.restockCostVal}</span>`;
       ctaRestock.style.background = v.canRestock ? '#170e22' : '#100a18';
       ctaRestock.style.borderColor = v.canRestock ? '#3a2350' : '#221434';
       ctaRestock.style.color = v.canRestock ? '#4ade80' : '#8f6f9c';
       ctaRestock.style.cursor = v.canRestock ? 'pointer' : 'not-allowed';
-      ctaRestock.title = `Restock ${v.curBeverage.name} (+${v.curBeverage.batchSize} stock for $${v.curBeverage.batchCost}) · currently ${v.barStock} in stock`;
+      ctaRestock.title = `Restock ${v.curBeverage.name} (+${v.curBeverage.batchSize} stock for $${v.restockCostVal}) · currently ${v.barStock} in stock`;
     }
     const ctaBeat = this.dom('#cta-dj-beatsync');
     if (ctaBeat) {
