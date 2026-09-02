@@ -39,8 +39,8 @@ const FLAT_RUN_FIELDS = Object.freeze(['cash', 'hype', 'buzz', 'patrons', 'regul
 const STRAY_FIELDS = Object.freeze(['cash', 'hype', 'buzz', 'patrons', 'regulars', 'heat', 'barStock', 'barTier', 'djTrack', '_frenzyT', '_beatCooldown', 'persona', 'activeTalent', 'b', 'u', 'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown']);
 
 class Game {
-  VERSION = { num: '0.13.0', build: 270, channel: 'alpha', date: '2026-09-02', codename: 'Personas & Talent' };
-  SAVE_VER = 14;
+  VERSION = { num: '0.14.0', build: 280, channel: 'alpha', date: '2026-09-02', codename: 'Blueprints & Syndicate' };
+  SAVE_VER = 15;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
   // A plain boolean is copied when the browser duplicates a tab, so a duplicate would
@@ -223,10 +223,34 @@ class Game {
           ? c.activeTalent.filter(id => typeof id === 'string' && AfterglowCatalogs.TALENT.some(t => t.id === id)).slice(0, 2)
           : [];
       }
+    },
+    // v14 → v15: Branching Blueprint Skill Tree & District Syndicate Map (PR 7 of Afterglow 2.0)
+    14(g) {
+      if (!g.blueprints || typeof g.blueprints !== 'object' || Array.isArray(g.blueprints)) {
+        g.blueprints = {};
+      } else if (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.BLUEPRINTS) {
+        const clean = {};
+        for (const bp of AfterglowCatalogs.BLUEPRINTS) {
+          if (g.blueprints[bp.id] === true) clean[bp.id] = true;
+        }
+        g.blueprints = clean;
+      }
+      if (!g.districtLinks || typeof g.districtLinks !== 'object' || Array.isArray(g.districtLinks)) {
+        g.districtLinks = {};
+      } else if (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.DISTRICT_LINKS) {
+        const clean = {};
+        for (const dl of AfterglowCatalogs.DISTRICT_LINKS) {
+          if (g.districtLinks[dl.id] === true) clean[dl.id] = true;
+        }
+        g.districtLinks = clean;
+      }
     }
   };
 
   CHANGELOG = [
+      { v: '0.14.0', date: '2026-09-02', codename: 'Blueprints & Syndicate', notes: [
+        'BRANCHING BLUEPRINT SKILL TREE & DISTRICT SYNDICATE MAP (PR 7 of Afterglow 2.0): introduced 4 specialized blueprint branches (Audio Engine, Mixology Lab, Crowd Psychology, Underground Syndicate) with tier prerequisites and permanent operational bonuses. Added interactive City District Syndicate Map with inter-club logistics links (VIP Shuttles, Touring DJ Circuits, Syndicate Supply Corridors) connecting Downtown, Warehouse Underground, and Sky Tower venues. Bumps SAVE_VER to 15 with fail-closed migration in MIGRATIONS[14], pacing bit-identical.'
+      ] },
       { v: '0.13.0', date: '2026-09-02', codename: 'Personas & Talent', notes: [
         'CLUB PERSONAS & NAMED TALENT ROSTER 2.0 (PR 6 of Afterglow 2.0): introduced 3 selectable Club Personas (Techno Bunker, Velvet VIP Lounge, Cyber Speakeasy) with distinct operational multipliers and synergy tags. Added Named Talent Cards roster with unique traits and compounding +50% persona tag synergies. Bumps SAVE_VER to 14 with backward-compatible migration in MIGRATIONS[13], pacing bit-identical.'
       ] },
@@ -1262,7 +1286,10 @@ class Game {
       // start, franchise sale) — lifetime is the brand's cumulative footprint.
       lifetimeEarned: 0,
       // Club Personas & Named Talent Roster (PR 6 of Afterglow 2.0)
-      roster: []
+      roster: [],
+      // Branching Blueprint Skill Tree & District Syndicate Map (PR 7 of Afterglow 2.0)
+      blueprints: {},
+      districtLinks: {}
     };
     this.applyStartPerks(g);
     return g;
@@ -1494,6 +1521,24 @@ class Game {
     // Club Personas & Named Talent Roster (PR 6 of Afterglow 2.0)
     if (!Array.isArray(g.roster)) g.roster = [];
     else g.roster = g.roster.filter(id => typeof id === 'string' && typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.TALENT && AfterglowCatalogs.TALENT.some(t => t.id === id));
+    // Branching Blueprint Skill Tree (PR 7 of Afterglow 2.0)
+    if (!g.blueprints || typeof g.blueprints !== 'object' || Array.isArray(g.blueprints)) g.blueprints = {};
+    const bpNext = Object.create(null);
+    if (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.BLUEPRINTS) {
+      for (const bp of AfterglowCatalogs.BLUEPRINTS) {
+        if (g.blueprints[bp.id] === true) bpNext[bp.id] = true;
+      }
+    }
+    g.blueprints = bpNext;
+    // City District Syndicate Map (PR 7 of Afterglow 2.0)
+    if (!g.districtLinks || typeof g.districtLinks !== 'object' || Array.isArray(g.districtLinks)) g.districtLinks = {};
+    const dlNext = Object.create(null);
+    if (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.DISTRICT_LINKS) {
+      for (const dl of AfterglowCatalogs.DISTRICT_LINKS) {
+        if (g.districtLinks[dl.id] === true) dlNext[dl.id] = true;
+      }
+    }
+    g.districtLinks = dlNext;
     return g;
   }
 
@@ -1761,6 +1806,26 @@ class Game {
     // Club Personas & Named Talent Roster (PR 6 of Afterglow 2.0)
     if (!Array.isArray(g.roster)) g.roster = [];
     else g.roster = g.roster.filter(id => typeof id === 'string' && typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.TALENT && AfterglowCatalogs.TALENT.some(t => t.id === id));
+
+    // Branching Blueprint Skill Tree (PR 7 of Afterglow 2.0)
+    if (!g.blueprints || typeof g.blueprints !== 'object' || Array.isArray(g.blueprints)) g.blueprints = {};
+    const bpImportNext = Object.create(null);
+    if (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.BLUEPRINTS) {
+      for (const bp of AfterglowCatalogs.BLUEPRINTS) {
+        if (g.blueprints[bp.id] === true) bpImportNext[bp.id] = true;
+      }
+    }
+    g.blueprints = bpImportNext;
+
+    // City District Syndicate Map (PR 7 of Afterglow 2.0)
+    if (!g.districtLinks || typeof g.districtLinks !== 'object' || Array.isArray(g.districtLinks)) g.districtLinks = {};
+    const dlImportNext = Object.create(null);
+    if (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.DISTRICT_LINKS) {
+      for (const dl of AfterglowCatalogs.DISTRICT_LINKS) {
+        if (g.districtLinks[dl.id] === true) dlImportNext[dl.id] = true;
+      }
+    }
+    g.districtLinks = dlImportNext;
 
     if (!Array.isArray(g.log)) g.log = [];
     // Keep raw validated t/msg (length-capped) so export→import is idempotent.
@@ -2383,7 +2448,26 @@ class Game {
       }
     }
 
-    barMult = (barMult + talentBarBonus) * (personaObj ? personaObj.barMult : 1.0);
+    // Branching Blueprint Skill Tree (PR 7 of Afterglow 2.0)
+    const bp = g.blueprints || {};
+    const bpDjHype = bp.sub_bass_acoustics ? 1.20 : 1.0;
+    const bpStageHype = bp.acoustic_overdrive ? 1.25 : 1.0;
+    const bpCashOverdrive = bp.acoustic_overdrive ? 1.10 : 1.0;
+    const bpBarCash = bp.craft_infusions ? 1.25 : 1.0;
+    const bpDistillery = bp.master_distillery ? 1.15 : 1.0;
+    const bpVipConv = bp.velvet_allure ? 1.25 : 1.0;
+    const bpHypeLoop = !!bp.hype_viral_loop;
+    const bpShadowHeat = bp.shadow_patrols ? 0.25 : 0.0;
+
+    // District Syndicate Logistics Links (PR 7 of Afterglow 2.0)
+    const dl = g.districtLinks || {};
+    const activeLoc = (typeof g.activeClub === 'string' && g.clubs && g.clubs[g.activeClub]) ? g.activeClub : 'main';
+    const hasVipShuttles = !!(dl.vip_shuttles && g.clubs && g.clubs.main && g.clubs.rooftop);
+    const hasTouringDjs = !!(dl.touring_djs && g.clubs && g.clubs.main && g.clubs.annex);
+    const dlVipMult = (hasVipShuttles && (activeLoc === 'main' || activeLoc === 'rooftop')) ? 1.20 : 1.0;
+    const dlDjHypeMult = (hasTouringDjs && (activeLoc === 'main' || activeLoc === 'annex')) ? 1.25 : 1.0;
+
+    barMult = (barMult + talentBarBonus) * (personaObj ? personaObj.barMult : 1.0) * bpDistillery;
 
     const railCap = c.b.rail * 6;
     // Non-crew cash: door cover + tip rail + bar + VIP rooms + regulars loop.
@@ -2397,14 +2481,14 @@ class Game {
     const houseCut = this.totalCashMult(g);
     const coverRate = g.r.cover ? 0.03 : 0.02;
     const personaCashMult = (personaObj ? personaObj.cashMult : 1.0) * (1 + talentCashBonus);
-    let nonCrewCash = (c.patrons * coverRate + Math.min(c.patrons, railCap) * 0.06 + c.b.bar * 0.45 * barMult) * cashMult * houseCut * personaCashMult;
-    nonCrewCash += c.b.vip * 1.25 * (g.r.concierge ? 1.5 : 1) * bottle * cashMult * houseCut * personaCashMult;
+    let nonCrewCash = (c.patrons * coverRate + Math.min(c.patrons, railCap) * 0.06 + c.b.bar * 0.45 * barMult * bpBarCash) * cashMult * houseCut * personaCashMult * bpCashOverdrive;
+    nonCrewCash += c.b.vip * 1.25 * (g.r.concierge ? 1.5 : 1) * bottle * cashMult * houseCut * personaCashMult * bpCashOverdrive * dlVipMult;
     // Location extras (REPLAY_ROADMAP.md §9): per-location cash buildings.
-    nonCrewCash += ((c.b.pool || 0) * 0.60 + (c.b.roofbar || 0) * 0.90 + (c.b.heli || 0) * 1.50) * cashMult * houseCut * personaCashMult;
-    if (g.r.loop) nonCrewCash += c.regulars * 0.04 * cashMult * houseCut * personaCashMult;
+    nonCrewCash += ((c.b.pool || 0) * 0.60 + (c.b.roofbar || 0) * 0.90 + (c.b.heli || 0) * 1.50) * cashMult * houseCut * personaCashMult * bpCashOverdrive;
+    if (g.r.loop) nonCrewCash += c.regulars * 0.04 * cashMult * houseCut * personaCashMult * bpCashOverdrive;
 
     let wage = (g.crew - g.jobs.off) * 0.20 * (g.r.payroll ? 0.6 : 1) * (g.r.scheduling ? 0.75 : 1);
-    let vipCrewCash = g.jobs.vipjob * 1.35 * crewMult * bottle * cashMult * houseCut * personaCashMult;
+    let vipCrewCash = g.jobs.vipjob * 1.35 * crewMult * bottle * cashMult * houseCut * personaCashMult * bpCashOverdrive * dlVipMult;
     let stageHype = g.jobs.stage * 0.24 * crewMult;
     let floorBuzz = g.jobs.floor * 0.035 * crewMult;
 
@@ -2423,12 +2507,12 @@ class Game {
     const cash = nonCrewCash + vipCrewCash - wage;
 
     const personaHypeMult = (personaObj ? personaObj.hypeMult : 1.0) * (1 + talentHypeBonus);
-    const hypeGain = (c.b.dj * 0.10 + stageHype) * (c.u.led ? 1.3 : 1) * (c.u.vista ? 1.4 : 1) * frenzyHypeGain * personaHypeMult;
+    const hypeGain = (c.b.dj * 0.10 * bpDjHype * dlDjHypeMult + stageHype * bpStageHype * dlDjHypeMult) * (c.u.led ? 1.3 : 1) * (c.u.vista ? 1.4 : 1) * frenzyHypeGain * personaHypeMult;
     const decay = c.hype * 0.014 * Math.max(0.25, 1 - c.b.door * 0.12);
     const hype = hypeGain - decay;
 
     const buzz = (c.b.marquee * 0.07 + c.b.flyers * 0.025 + floorBuzz) * (c.u.photog ? 1.5 : 1);
-    const promoMult = g.r.promo ? 1.6 : 1;
+    const promoMult = (g.r.promo ? 1.6 : 1) * (bpHypeLoop ? 1.40 : 1.0);
     // Buzz→patron conversion paced for §C (numbers only; walk-in 0.02 stays fixed).
     // Cap scales with cap.buzz (which grows with Marquee Sign), so buying Buzz-cap
     // upgrades legitimately raises the pull ceiling instead of being permanently
@@ -2443,17 +2527,17 @@ class Game {
     const buzzSpent = basis > 0 && pull > 0 ? basis * (admitted / pull) : 0;
     const patrons = admitted - c.patrons * 0.008;
     // Regulars / Clout paced for first-research ~25 min under the §C reference bot.
-    const regulars = c.patrons * 0.00045 * (1 + c.b.vip * 0.18) * sm * (g.r.playbook ? 1.25 : 1);
+    const regulars = c.patrons * 0.00045 * (1 + c.b.vip * 0.18 * bpVipConv) * sm * (g.r.playbook ? 1.25 : 1) * (bpHypeLoop ? 1.20 : 1.0);
     const clout = c.regulars * 0.0011 * (1 + 0.25 * this.perk(g, 'clout25')) * (g.r.network ? 1.25 : 1);
 
-    // Police Heat Engine (PR 4) & Personas/Talent heat tuning (PR 6)
+    // Police Heat Engine (PR 4) & Personas/Talent heat tuning (PR 6) & Shadow Patrols (PR 7)
     const shiftHeatMap = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.HEAT) ? AfterglowCatalogs.HEAT.SHIFT_BASE : [0.02, 0.08, 0.05, 0.12];
     const baseHeat = shiftHeatMap[c.shiftIdx] ?? 0.05;
     const doorSec = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.HEAT) ? AfterglowCatalogs.HEAT.DOOR_SECURITY : 0.015;
     const securityScore = (c.b.door || 0) * doorSec;
     const rawHeat = Math.max(-0.04, baseHeat - securityScore);
     const heatRate = rawHeat > 0
-      ? rawHeat * Math.max(0.1, 1 - talentHeatReduction) * (personaObj ? personaObj.heatMult : 1.0)
+      ? rawHeat * Math.max(0.1, 1 - (talentHeatReduction + bpShadowHeat)) * (personaObj ? personaObj.heatMult : 1.0)
       : rawHeat;
 
     return { cash, hype, buzz, patrons, regulars, clout, wage, cap, shift, sm, pull, buzzSpent, strike, heatRate, heat: c.heat || 0 };
@@ -3060,7 +3144,11 @@ class Game {
   // Police Heat Engine (PR 4) — Bribe Chief cost calculation helper
   bribeCost(g) {
     const c = this.club(g);
-    return Math.max(25, Math.floor(30 + (c.night || 1) * 4));
+    let cost = Math.max(25, Math.floor(30 + (c.night || 1) * 4));
+    if (g.blueprints && g.blueprints.bribe_networks) {
+      cost = Math.max(15, Math.floor(cost * 0.60));
+    }
+    return cost;
   }
 
   // Police Heat Engine (PR 4) — Bribe Chief action to clear 35 Heat
@@ -3086,11 +3174,18 @@ class Game {
     if ((c.b.bar || 0) < 1) return;
     const bevs = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.BEVERAGES) ? AfterglowCatalogs.BEVERAGES : [];
     const bev = bevs[c.barTier || 0] || { batchCost: 15, batchSize: 50, name: 'Well Spirits' };
-    if (c.cash < bev.batchCost) return;
-    c.cash -= bev.batchCost;
-    this.sessionSpent += bev.batchCost;
-    c.barStock = (c.barStock || 0) + bev.batchSize;
-    this.push(g, 'Restocked ' + bev.name + ' (+' + bev.batchSize + ' stock).', '#4ade80');
+    let cost = bev.batchCost;
+    if (g.blueprints && g.blueprints.black_market_logistics) cost = Math.floor(cost * 0.50);
+    if (g.districtLinks && g.districtLinks.supply_corridor && g.clubs && g.clubs.annex && g.clubs.rooftop) {
+      cost = Math.floor(cost * 0.70);
+    }
+    if (c.cash < cost) return;
+    c.cash -= cost;
+    this.sessionSpent += cost;
+    let size = bev.batchSize;
+    if (g.blueprints && g.blueprints.automated_pourers) size = Math.floor(size * 1.30);
+    c.barStock = (c.barStock || 0) + size;
+    this.push(g, 'Restocked ' + bev.name + ' (+' + size + ' stock).', '#4ade80');
     this.forceUpdate();
   }
 
@@ -3130,7 +3225,9 @@ class Game {
         this.floorboard.triggerPulse();
       }
     }
-    this.push(g, '🎵 Beat-Sync Frenzy on ' + trk.name + '! +' + Math.round(((trk.hypeBonus || 1.25) - 1) * 100) + '% Hype, +15% Cash.', '#e879f9');
+    let hypeBonusVal = (trk.hypeBonus || 1.25) - 1;
+    if (g.blueprints && g.blueprints.drop_synchronizer) hypeBonusVal *= 1.5;
+    this.push(g, '🎵 Beat-Sync Frenzy on ' + trk.name + '! +' + Math.round(hypeBonusVal * 100) + '% Hype, +15% Cash.', '#e879f9');
     this.forceUpdate();
   }
 
@@ -3142,6 +3239,52 @@ class Game {
     const trk = tracks[idx];
     if (!trk || (c.b.dj || 0) < (trk.reqDj || 1)) return;
     c.djTrack = idx;
+    this.forceUpdate();
+  }
+
+  // Branching Blueprint Skill Tree (PR 7 of Afterglow 2.0)
+  unlockBlueprint(bpId) {
+    const g = this.state.g;
+    if (!g || this.state.tabStale) return;
+    if (!g.blueprints) g.blueprints = {};
+    if (g.blueprints[bpId]) return;
+    const blueprints = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.BLUEPRINTS) ? AfterglowCatalogs.BLUEPRINTS : [];
+    const bp = blueprints.find(x => x.id === bpId);
+    if (!bp) return;
+    if (bp.req && !g.blueprints[bp.req]) return;
+    if ((g.legacy || 0) < bp.cost) return;
+    g.legacy -= bp.cost;
+    g.blueprints[bpId] = true;
+    this.push(g, 'Unlocked Blueprint: ' + bp.name + ' (' + bp.desc + ')', '#38bdf8');
+    this.forceUpdate();
+  }
+
+  // City District Syndicate Map (PR 7 of Afterglow 2.0)
+  toggleDistrictLink(linkId) {
+    const g = this.state.g;
+    if (!g || this.state.tabStale) return;
+    if (!g.districtLinks) g.districtLinks = {};
+    const c = this.club(g);
+    const links = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.DISTRICT_LINKS) ? AfterglowCatalogs.DISTRICT_LINKS : [];
+    const link = links.find(x => x.id === linkId);
+    if (!link) return;
+    const districts = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.DISTRICTS) ? AfterglowCatalogs.DISTRICTS : [];
+    const srcDist = districts.find(d => d.id === link.source);
+    const tgtDist = districts.find(d => d.id === link.target);
+    if (!srcDist || !tgtDist || !g.clubs || !g.clubs[srcDist.clubId] || !g.clubs[tgtDist.clubId]) {
+      this.push(g, 'Cannot link: requires both ' + (srcDist ? srcDist.name : link.source) + ' and ' + (tgtDist ? tgtDist.name : link.target) + ' unlocked.', '#f87171');
+      return;
+    }
+    if (g.districtLinks[linkId]) {
+      g.districtLinks[linkId] = false;
+      this.push(g, 'Deactivated Syndicate Link: ' + link.name + '.', '#94a3b8');
+    } else {
+      if (c.cash < link.cost) return;
+      c.cash -= link.cost;
+      this.sessionSpent += link.cost;
+      g.districtLinks[linkId] = true;
+      this.push(g, 'Activated Syndicate Link: ' + link.name + '! ' + link.desc, '#a855f7');
+    }
     this.forceUpdate();
   }
 
@@ -3241,7 +3384,9 @@ class Game {
       renownTotal: (g.renownTotal || 0),
       challengeTiers: {},
       lifetimeEarned: this.lifetimeEarned(g),
-      roster: Array.isArray(g.roster) ? g.roster.slice() : []
+      roster: Array.isArray(g.roster) ? g.roster.slice() : [],
+      blueprints: (g.blueprints && typeof g.blueprints === 'object' && !Array.isArray(g.blueprints)) ? { ...g.blueprints } : {},
+      districtLinks: (g.districtLinks && typeof g.districtLinks === 'object' && !Array.isArray(g.districtLinks)) ? { ...g.districtLinks } : {}
     };
     for (const def of this.PRESTIGE_PERKS) snapshot.perks[def.id] = this.perk(g, def.id);
     for (const def of this.MANAGERS) snapshot.managers[def.id] = g.managers && g.managers[def.id] === true;
@@ -3264,6 +3409,8 @@ class Game {
       next.activeClub = g.activeClub;
     }
     next.roster = snapshot.roster;
+    next.blueprints = snapshot.blueprints;
+    next.districtLinks = snapshot.districtLinks;
     next.legacy = snapshot.legacy + gain;
     next.legacyTotal = snapshot.legacyTotal + gain;
     next.perks = snapshot.perks;
@@ -4009,7 +4156,67 @@ class Game {
           act: () => this.confirmOpenRooftop()
         });
       }
-      cards = cards.concat(brandCards);
+      // Branching Blueprint Skill Tree (PR 7 of Afterglow 2.0)
+      const blueprintCards = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.BLUEPRINTS ? AfterglowCatalogs.BLUEPRINTS : []).map(bp => {
+        const unlocked = !!(g.blueprints && g.blueprints[bp.id] === true);
+        const reqMet = !bp.req || !!(g.blueprints && g.blueprints[bp.req] === true);
+        const reqDef = bp.req ? (AfterglowCatalogs.BLUEPRINTS.find(x => x.id === bp.req) || { name: bp.req }) : null;
+        const ok = !unlocked && reqMet && (g.legacy || 0) >= bp.cost;
+        return {
+          id: bp.id,
+          name: bp.name + ' (Tier ' + bp.tier + ')',
+          desc: bp.desc,
+          owned: unlocked ? 'unlocked' : '—',
+          btn: unlocked ? 'Unlocked' : bp.cost + ' Legacy',
+          meta: unlocked ? 'active across all clubs' : (!reqMet ? 'requires ' + (reqDef ? reqDef.name : bp.req) : (ok ? 'ready' : this.fmt(bp.cost - (g.legacy || 0)) + ' Legacy short')),
+          reqLocked: !reqMet,
+          reqName: reqDef ? reqDef.name : '',
+          locked: !ok,
+          wrapStyle: cardWrap(!unlocked && reqMet),
+          btnStyle: btn(unlocked || ok, '#38bdf8'),
+          act: () => this.unlockBlueprint(bp.id)
+        };
+      });
+
+      // City District Syndicate Map (PR 7 of Afterglow 2.0)
+      const districtCards = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.DISTRICTS ? AfterglowCatalogs.DISTRICTS : []).map(dist => {
+        const isCurrent = (g.activeClub || 'main') === dist.clubId;
+        const isUnlocked = !!(g.clubs && g.clubs[dist.clubId]);
+        return {
+          id: dist.id,
+          name: dist.name + (isCurrent ? ' [ACTIVE]' : ''),
+          desc: dist.tagline + ' · ' + dist.perk,
+          owned: isUnlocked ? (isCurrent ? 'current venue' : 'controlled') : 'locked',
+          btn: isUnlocked ? (isCurrent ? 'Current' : 'Switch') : 'Locked',
+          meta: isUnlocked ? 'district bonus active' : 'unlock location to control',
+          locked: !isUnlocked || isCurrent,
+          wrapStyle: cardWrap(isUnlocked),
+          btnStyle: btn(isUnlocked && !isCurrent, '#a855f7'),
+          act: () => isUnlocked && !isCurrent ? this.setActiveClub(dist.clubId) : null
+        };
+      });
+
+      const districtLinkCards = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.DISTRICT_LINKS ? AfterglowCatalogs.DISTRICT_LINKS : []).map(link => {
+        const active = !!(g.districtLinks && g.districtLinks[link.id] === true);
+        const srcDist = (AfterglowCatalogs.DISTRICTS || []).find(d => d.id === link.source);
+        const tgtDist = (AfterglowCatalogs.DISTRICTS || []).find(d => d.id === link.target);
+        const canConnect = !!(srcDist && tgtDist && g.clubs && g.clubs[srcDist.clubId] && g.clubs[tgtDist.clubId]);
+        const ok = !active && canConnect && c.cash >= link.cost;
+        return {
+          id: link.id,
+          name: link.name,
+          desc: link.desc,
+          owned: active ? 'active' : (canConnect ? 'available' : 'venues locked'),
+          btn: active ? 'Deactivate' : (canConnect ? '$' + this.fmt(link.cost) : 'Locked'),
+          meta: active ? 'syndicate logistics linked' : (canConnect ? (ok ? 'ready to connect' : '$' + this.fmt(link.cost - c.cash) + ' cash short') : 'requires both ' + (srcDist ? srcDist.name : link.source) + ' and ' + (tgtDist ? tgtDist.name : link.target)),
+          locked: !active && !ok,
+          wrapStyle: cardWrap(active || canConnect),
+          btnStyle: btn(active || ok, '#e879f9'),
+          act: () => this.toggleDistrictLink(link.id)
+        };
+      });
+
+      cards = cards.concat(brandCards, blueprintCards, districtCards, districtLinkCards);
     } else {
       tabHint = 'Research is paid in Clout. Clout comes from Regulars. Regulars are made at Tip Rails and VIP Booths. Permanent, global effects.';
       cards = this.RESEARCH.map(d => {
@@ -4193,6 +4400,47 @@ class Game {
           canHire: !owned && c.cash >= t.hireCost && !this.state.tabStale,
           hire: () => this.hireTalent(t.id),
           toggleAssign: () => assigned ? this.unassignTalent(t.id) : this.assignTalent(t.id)
+        };
+      }) : [],
+
+      // Branching Blueprint Skill Tree (PR 7 of Afterglow 2.0)
+      blueprints: g.blueprints || {},
+      blueprintList: (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.BLUEPRINTS) ? AfterglowCatalogs.BLUEPRINTS.map(bp => {
+        const unlocked = !!(g.blueprints && g.blueprints[bp.id]);
+        const reqMet = !bp.req || !!(g.blueprints && g.blueprints[bp.req]);
+        const canUnlock = !unlocked && reqMet && (g.legacy || 0) >= bp.cost && !this.state.tabStale;
+        return {
+          ...bp,
+          unlocked,
+          reqMet,
+          canUnlock,
+          unlock: () => this.unlockBlueprint(bp.id)
+        };
+      }) : [],
+
+      // City District Syndicate Map (PR 7 of Afterglow 2.0)
+      districts: (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.DISTRICTS) ? AfterglowCatalogs.DISTRICTS.map(dist => {
+        const isCurrent = (g.activeClub || 'main') === dist.clubId;
+        const isUnlocked = !!(g.clubs && g.clubs[dist.clubId]);
+        return {
+          ...dist,
+          isCurrent,
+          isUnlocked,
+          switchClub: () => this.setActiveClub(dist.clubId)
+        };
+      }) : [],
+      districtLinks: (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.DISTRICT_LINKS) ? AfterglowCatalogs.DISTRICT_LINKS.map(link => {
+        const active = !!(g.districtLinks && g.districtLinks[link.id]);
+        const srcDist = (AfterglowCatalogs.DISTRICTS || []).find(d => d.id === link.source);
+        const tgtDist = (AfterglowCatalogs.DISTRICTS || []).find(d => d.id === link.target);
+        const canConnect = !!(srcDist && tgtDist && g.clubs && g.clubs[srcDist.clubId] && g.clubs[tgtDist.clubId]);
+        const canToggle = !active ? (canConnect && c.cash >= link.cost && !this.state.tabStale) : !this.state.tabStale;
+        return {
+          ...link,
+          active,
+          canConnect,
+          canToggle,
+          toggle: () => this.toggleDistrictLink(link.id)
         };
       }) : [],
 
@@ -4506,7 +4754,8 @@ class Game {
   spawnWhale(g) {
     const c = this.club(g);
     const mult = 1 + c.hype / 100;
-    const bonus = Math.floor(50 * mult * this.totalCashMult(g));
+    const whaleBoost = (g.blueprints && g.blueprints.whale_syndicate) ? 1.5 : 1.0;
+    const bonus = Math.floor(50 * mult * this.totalCashMult(g) * whaleBoost);
     c.cash += bonus;
     // 0.10.1: lifetime whale counter (drives whale_1/whale_10).
     g.whalesCount = (g.whalesCount || 0) + 1;

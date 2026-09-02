@@ -92,6 +92,8 @@ On confirm of Franchise offer:
 | `perks` | unchanged (purchases permanent until a future redesign) |
 | `prestiges` | += 1 |
 | `roster` | unchanged — global talent signings survive ordinary prestige (0.13.0) |
+| `blueprints` | unchanged — blueprint tree progress persists across ordinary prestige (0.14.0) |
+| `districtLinks` | unchanged — syndicate logistics links persist across ordinary prestige (0.14.0) |
 | `lifetimeEarned` | unchanged — the Vision ladder's accumulator is the brand's cumulative footprint, not run state (0.11.15) |
 | Save-format / version fields | as always on write (`saveVer`, `ver`, `build`) |
 
@@ -464,6 +466,7 @@ On the confirmed sale — the confirm is **two-click armed** (`state.franchiseAr
 | `g.clubs` | `{ main: freshClubState() }` — the annex re-locks; only `main` remains; per-club `persona`/`activeTalent` wipe |
 | `g.activeClub` | `'main'` |
 | `g.roster` | `[]` — hired talent wiped on franchise sale |
+| `g.blueprints` / `g.districtLinks` | `{}` / `{}` — blueprint unlocks and syndicate logistics links wipe on franchise sale |
 | `g.legacy` / `g.legacyTotal` | `0` / `0` |
 | `g.perks` / `g.prestiges` | `{}` / `0` |
 | `g.clout` | `0` |

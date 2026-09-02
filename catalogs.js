@@ -498,6 +498,211 @@ const AfterglowCatalogs = {
       bonusVal: 0.15,
       hireCost: 180
     }
+  ],
+
+  // Branching Blueprint Skill Tree (PR 7 of Afterglow 2.0)
+  // 4 branches: Audio Engine, Mixology Lab, Crowd Psychology, Underground Syndicate
+  BLUEPRINTS: [
+    // Branch: Audio Engine ('audio')
+    {
+      id: 'sub_bass_acoustics',
+      branch: 'audio',
+      tier: 1,
+      name: 'Sub-Bass Acoustics',
+      cost: 1,
+      desc: '+20% DJ Booth Hype generation across all clubs.',
+      bonusType: 'dj_hype',
+      bonusVal: 0.20
+    },
+    {
+      id: 'drop_synchronizer',
+      branch: 'audio',
+      tier: 2,
+      req: 'sub_bass_acoustics',
+      name: 'Drop Synchronizer',
+      cost: 2,
+      desc: 'DJ Beat frenzy multiplier x1.50.',
+      bonusType: 'frenzy_mult',
+      bonusVal: 0.50
+    },
+    {
+      id: 'acoustic_overdrive',
+      branch: 'audio',
+      tier: 3,
+      req: 'drop_synchronizer',
+      name: 'Acoustic Overdrive',
+      cost: 4,
+      desc: '+25% Stage Hype and +10% Cash Flow across all clubs.',
+      bonusType: 'stage_overdrive',
+      bonusVal: 0.25
+    },
+
+    // Branch: Mixology Lab ('mixology')
+    {
+      id: 'craft_infusions',
+      branch: 'mixology',
+      tier: 1,
+      name: 'Craft Infusions',
+      cost: 1,
+      desc: '+25% Back Bar cash flow.',
+      bonusType: 'bar_cash',
+      bonusVal: 0.25
+    },
+    {
+      id: 'automated_pourers',
+      branch: 'mixology',
+      tier: 2,
+      req: 'craft_infusions',
+      name: 'Automated Pourers',
+      cost: 2,
+      desc: 'Bar stock depletion rate -30% and cocktail throughput +20%.',
+      bonusType: 'bar_efficiency',
+      bonusVal: 0.30
+    },
+    {
+      id: 'master_distillery',
+      branch: 'mixology',
+      tier: 3,
+      req: 'automated_pourers',
+      name: 'Master Distillery',
+      cost: 4,
+      desc: 'High-tier cocktail margin +50% and +15% Bar Revenue.',
+      bonusType: 'distillery_margin',
+      bonusVal: 0.50
+    },
+
+    // Branch: Crowd Psychology ('crowd')
+    {
+      id: 'velvet_allure',
+      branch: 'crowd',
+      tier: 1,
+      name: 'Velvet Allure',
+      cost: 1,
+      desc: 'VIP regular conversion rate +25%.',
+      bonusType: 'vip_conversion',
+      bonusVal: 0.25
+    },
+    {
+      id: 'hype_viral_loop',
+      branch: 'crowd',
+      tier: 2,
+      req: 'velvet_allure',
+      name: 'Hype Viral Loop',
+      cost: 2,
+      desc: 'Buzz converts to patrons +40% faster and +20% Regular retention.',
+      bonusType: 'buzz_conversion',
+      bonusVal: 0.40
+    },
+    {
+      id: 'whale_syndicate',
+      branch: 'crowd',
+      tier: 3,
+      req: 'hype_viral_loop',
+      name: 'Whale Syndicate',
+      cost: 4,
+      desc: 'Whale visitor frequency x2.0 and cash reward +50%.',
+      bonusType: 'whale_boost',
+      bonusVal: 0.50
+    },
+
+    // Branch: Underground Syndicate ('syndicate')
+    {
+      id: 'shadow_patrols',
+      branch: 'syndicate',
+      tier: 1,
+      name: 'Shadow Patrols',
+      cost: 1,
+      desc: 'Police heat generation -25%.',
+      bonusType: 'heat_reduction',
+      bonusVal: 0.25
+    },
+    {
+      id: 'bribe_networks',
+      branch: 'syndicate',
+      tier: 2,
+      req: 'shadow_patrols',
+      name: 'Bribe Networks',
+      cost: 2,
+      desc: 'Bribe cost -40% and raid risk -50%.',
+      bonusType: 'bribe_discount',
+      bonusVal: 0.40
+    },
+    {
+      id: 'black_market_logistics',
+      branch: 'syndicate',
+      tier: 3,
+      req: 'bribe_networks',
+      name: 'Black Market Logistics',
+      cost: 4,
+      desc: 'Liquor restocking cost -50% and stealth operations +30%.',
+      bonusType: 'logistics_discount',
+      bonusVal: 0.50
+    }
+  ],
+
+  // City District Syndicate Map (PR 7 of Afterglow 2.0)
+  DISTRICTS: [
+    {
+      id: 'downtown',
+      clubId: 'main',
+      name: 'Downtown Neon Strip',
+      tagline: 'High volume walk-in traffic & classic neon energy',
+      perk: 'Neon Promenade (+10% Buzz Generation)',
+      bonusType: 'buzz',
+      bonusVal: 0.10
+    },
+    {
+      id: 'industrial',
+      clubId: 'annex',
+      name: 'Warehouse Underground',
+      tagline: 'Raw sound, dark basslines & underground raves',
+      perk: 'Bass Cavern (+20% Hype Generation)',
+      bonusType: 'hype',
+      bonusVal: 0.20
+    },
+    {
+      id: 'uptown',
+      clubId: 'rooftop',
+      name: 'Sky Tower Promenade',
+      tagline: 'Ultra-exclusive VIP lounge with panoramic city skyline',
+      perk: 'Skyline Penthouse (+25% VIP Cash Flow)',
+      bonusType: 'vip_cash',
+      bonusVal: 0.25
+    }
+  ],
+
+  // District Syndicate Logistics Links
+  DISTRICT_LINKS: [
+    {
+      id: 'vip_shuttles',
+      name: 'VIP Shuttles',
+      source: 'downtown',
+      target: 'uptown',
+      cost: 500,
+      desc: 'Transfers high-roller patrons between Downtown and Uptown (+20% VIP Cash Flow in both clubs).',
+      bonusType: 'vip_cash_dual',
+      bonusVal: 0.20
+    },
+    {
+      id: 'touring_djs',
+      name: 'Touring DJ Circuit',
+      source: 'downtown',
+      target: 'industrial',
+      cost: 450,
+      desc: 'Circulates headline DJs between Downtown and Warehouse (+25% Stage Hype & DJ Frenzy in both clubs).',
+      bonusType: 'dj_hype_dual',
+      bonusVal: 0.25
+    },
+    {
+      id: 'supply_corridor',
+      name: 'Syndicate Supply Corridor',
+      source: 'industrial',
+      target: 'uptown',
+      cost: 600,
+      desc: 'Shared bulk inventory pipeline reducing liquor restocking cost by 30% across all venues.',
+      bonusType: 'bulk_restock',
+      bonusVal: 0.30
+    }
   ]
 };
 
