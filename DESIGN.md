@@ -740,6 +740,8 @@ Purely CSS; the `game.js` render path, palette, and fonts are untouched, so the 
 - `#stage` is a CSS **size container**: neon sign drops under 660px stage width and **hides under 300px**. The whole panel is hidden below a 900px *viewport* (§14.1), so those container queries only ever fire on a narrow desktop column now, not on phones  
 - Empty-stage badge text still routes crew assignment: hire / assign / nobody on stage (badge → Crew tab)  
 - The crowd silhouette row grows from a pair of wallflowers up to 14 bodies as `patrons` increases, bobbing faster as `hype` rises; container queries hide later silhouettes below 600/420px stage widths (v0.7.3)  
+- **Canvas Floorboard Engine (`src/ui/floorboard.js`, 0.12.2, PR 3):** 60 FPS HTML5 Canvas floorboard mounted on `<canvas id="stage-canvas">`. Simulates dynamic perspective neon floor grid, spotlight and laser sweeps, crowd particle physics responsive to patrons/hype, and interactive click/buy ripples. Automatically pauses requestAnimationFrame loop when `document.visibilityState === 'hidden'`.
+- **Procedural Web Audio Synthesizer (`src/core/audio.js`, 0.12.2, PR 3):** Zero-asset Web Audio API synthwave generator (<4KB). Features 4-on-the-floor sub-bass kick, highpass noise hi-hats, and 24dB resonant lowpass modulated synth bass notes synced to club hype. Provides tactile pitch-envelope click SFX on "Work the room" and chime arpeggio on "Buy a round". Muted by default, user-toggled via header `#header-sound-btn` / Settings modal, persisted in `localStorage['afterglow.sound']`.
 
 **Removed (do not restore without an explicit ask):** `dancerHTML()`, `perfStyle`, `#performer-stage` preservation, `state.stageH` / ResizeObserver fit, `.performer` / `.pole` / `dn*` CSS.
 

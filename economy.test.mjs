@@ -6,6 +6,10 @@
 import { ok, strictEqual } from 'node:assert';
 import { readFileSync, writeSync } from 'node:fs';
 import { format } from 'node:util';
+import AudioPkg from './src/core/audio.js';
+import FloorboardPkg from './src/ui/floorboard.js';
+const { createAudio, SynthAudio } = AudioPkg;
+const { createFloorboard, Floorboard } = FloorboardPkg;
 
 // Flush every line to stdout synchronously (issue #92): on POSIX console.log to
 // a pipe is asynchronous and can buffer, which is how the slow 10-night §3 sim
@@ -6904,6 +6908,94 @@ test('Responsive Layout: style.css contains mobile bottom-cockpit and touch-acti
   ok(css.includes('.thumb-cockpit'), 'style.css defines .thumb-cockpit styles');
   ok(css.includes('.modal-dialog'), 'style.css defines .modal-dialog drawer rules');
   ok(css.includes('slideUpDrawer'), 'style.css includes slideUpDrawer animation for mobile bottom sheets');
+  ok(css.includes('.stage-canvas'), 'style.css defines .stage-canvas layout rule');
+});
+
+test('Web Audio Synthesizer: creates audio instance, toggles sound state, and triggers SFX without throwing', () => {
+  const audio = createAudio();
+  ok(audio instanceof SynthAudio, 'createAudio returns SynthAudio instance');
+  strictEqual(typeof audio.setEnabled, 'function', 'has setEnabled method');
+  strictEqual(typeof audio.playClick, 'function', 'has playClick method');
+  strictEqual(typeof audio.playRoundBuy, 'function', 'has playRoundBuy method');
+  strictEqual(typeof audio.tickRhythm, 'function', 'has tickRhythm method');
+
+  audio.setEnabled(false);
+  strictEqual(audio.enabled, false, 'audio starts disabled by default');
+  audio.playClick();
+  audio.playRoundBuy();
+  audio.tickRhythm(0.8);
+  audio.toggle();
+  strictEqual(audio.enabled, true, 'toggle() inverts audio enabled state');
+  audio.setEnabled(false);
+});
+
+test('Canvas Floorboard Engine: initializes, manages particles, handles updates and pulse ripples', () => {
+  const mockContext = {
+    fillStyle: '',
+    strokeStyle: '',
+    lineWidth: 1,
+    globalAlpha: 1,
+    globalCompositeOperation: '',
+    shadowColor: '',
+    shadowBlur: 0,
+    fillRect() {},
+    beginPath() {},
+    moveTo() {},
+    lineTo() {},
+    stroke() {},
+    closePath() {},
+    fill() {},
+    arc() {},
+    save() {},
+    restore() {},
+    setTransform() {},
+    createLinearGradient() {
+      return { addColorStop() {} };
+    }
+  };
+  const mockCanvas = {
+    width: 400,
+    height: 260,
+    getContext(type) {
+      if (type === '2d') return mockContext;
+      return null;
+    },
+    getBoundingClientRect() {
+      return { width: 400, height: 260 };
+    }
+  };
+
+  const floorboard = createFloorboard(mockCanvas);
+  ok(floorboard instanceof Floorboard, 'createFloorboard returns Floorboard instance');
+  floorboard.update({ patrons: 20, regulars: 5, hype: 0.75, beamOpacity: 0.6, signLit: true });
+  ok(floorboard.particles.length >= 6, 'particles initialized based on patron crowd count');
+
+  floorboard.triggerPulse(200, 150, '#ff2d78');
+  strictEqual(floorboard.ripples.length, 1, 'triggerPulse adds active ripple');
+  floorboard.render();
+  floorboard.pause();
+  floorboard.destroy();
+});
+
+test('Game Integration: renders #stage-canvas, #header-sound-btn and settings sound toggle', () => {
+  const root = {
+    innerHTML: '',
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    querySelectorAll() { return []; },
+    querySelector() { return null; }
+  };
+  const game = new Game(root);
+  game.init();
+
+  const v = game.renderVals();
+  const templateHtml = game.renderTemplate(v);
+  ok(templateHtml.includes('id="stage-canvas"'), 'template includes #stage-canvas element');
+  ok(templateHtml.includes('id="header-sound-btn"'), 'template includes #header-sound-btn in header');
+
+  v.showSettings = true;
+  const modalsHtml = game.renderModals(v);
+  ok(modalsHtml.includes('id="settings-sound-btn"'), 'settings modal includes #settings-sound-btn');
 });
 
 if (pendingTests.length > 0) await Promise.all(pendingTests);
