@@ -327,6 +327,7 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
   .shell-grid {
     grid-template-columns: 1fr;
     max-width: none;
+    padding-inline: 0;
     overflow-y: auto;
     overflow-x: hidden;
     /* min-content, not the `auto` default. As a scroll container inside the

@@ -4128,7 +4128,7 @@ class Game {
             // When affordable is 0 the player cannot buy anything — render
             // "Max (0)" with disabled styling instead of the unhelpful ×0,
             // which reads like a broken multiplier rather than a real state.
-            max: { act: () => this.buyBuildingMax(d), locked: true, label: affordable > 0 ? ('×' + affordable) : 'Max (0)', style: btn(canMax, '#ff2d78') }
+            max: { act: () => this.buyBuildingMax(d), locked: !canMax, label: affordable > 0 ? ('×' + affordable) : 'Max (0)', style: btn(canMax, '#ff2d78') }
           }
         };
       });
