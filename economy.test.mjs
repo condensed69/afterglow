@@ -6999,6 +6999,81 @@ test('Game Integration: renders #stage-canvas, #header-sound-btn and settings so
   ok(modalsHtml.includes('id="settings-sound-btn"'), 'settings modal includes #settings-sound-btn');
 });
 
+test('Shift & Police Heat Engine: computes shift heat rates and door security mitigation', () => {
+  const root = {
+    innerHTML: '',
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    querySelectorAll() { return []; },
+    querySelector() { return null; }
+  };
+  const game = new Game(root);
+  const g = game.fresh();
+  const c = game.club(g);
+
+  // Early Doors
+  c.shiftIdx = 0;
+  const rEarly = game.rates(g);
+  strictEqual(typeof rEarly.heatRate, 'number', 'rates returns numeric heatRate');
+
+  // Peak Hours has higher heat generation
+  c.shiftIdx = 1;
+  const rPeak = game.rates(g);
+  ok(rPeak.heatRate > rEarly.heatRate, 'Peak Hours generates more heat than Early Doors');
+
+  // Door staff mitigates heat
+  c.b.door = 4;
+  const rSecured = game.rates(g);
+  ok(rSecured.heatRate < rPeak.heatRate, 'Door staff reduces heat generation');
+});
+
+test('Police Heat Engine: advances heat in step() and handles Bribe Chief action', () => {
+  localStorage.clear();
+  const root = {
+    innerHTML: '',
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    querySelectorAll() { return []; },
+    querySelector() { return null; }
+  };
+  const game = new Game(root);
+  game.forceUpdate = () => {};
+  game.init();
+  if (game.timer) clearInterval(game.timer);
+  if (game.saver) clearInterval(game.saver);
+
+  const g = game.state.g;
+  const c = game.club(g);
+
+  c.heat = 50;
+  c.cash = 200;
+  game.step(10);
+  ok(c.heat >= 50, 'heat advances in step simulation');
+
+  const beforeHeat = c.heat;
+  const beforeCash = c.cash;
+  game.bribePolice();
+  strictEqual(Math.round(c.heat * 10) / 10, Math.round(Math.max(0, beforeHeat - 35) * 10) / 10, 'bribePolice reduces heat by 35');
+  ok(c.cash < beforeCash, 'bribePolice deducts cash bribe cost');
+});
+
+test('Game Integration: renders #header-heat-meter and #header-heat-val', () => {
+  const root = {
+    innerHTML: '',
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    querySelectorAll() { return []; },
+    querySelector() { return null; }
+  };
+  const game = new Game(root);
+  game.init();
+
+  const v = game.renderVals();
+  const templateHtml = game.renderTemplate(v);
+  ok(templateHtml.includes('id="header-heat-meter"'), 'header includes #header-heat-meter');
+  ok(templateHtml.includes('id="header-heat-val"'), 'header includes #header-heat-val');
+});
+
 if (pendingTests.length > 0) await Promise.all(pendingTests);
 
 console.log(`Results: ${passed} passed, ${skipped} skipped, ${failed} failed`);

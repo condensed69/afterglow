@@ -1,7 +1,7 @@
 # DESIGN.md — Afterglow Club Idle
 
 **Game:** Afterglow Club Idle (repo: afterglow)  
-**Spec target:** all shipped systems through 0.12.2 — file save, Owner's List, balance + `pacing.mjs`, prestige, achievements, managers, special shifts, whales, multi-tab ownership, second room + rooftop, research tree, challenge tiers, manager levels, Renown/Brand perks/Endorsement, Vision ladder, location extras, ledger session strip (earned vs spent), challenge HUD chip, golden-over-modals, reactive UI signal store, mobile bottom-cockpit (.thumb-cockpit), canvas floorboard engine & procedural web audio synthesizer (`game.js` v0.12.2, SAVE_VER 13)  
+**Spec target:** all shipped systems through 0.12.3 — file save, Owner's List, balance + `pacing.mjs`, prestige, achievements, managers, special shifts, whales, multi-tab ownership, second room + rooftop, research tree, challenge tiers, manager levels, Renown/Brand perks/Endorsement, Vision ladder, location extras, ledger session strip (earned vs spent), challenge HUD chip, golden-over-modals, reactive UI signal store, mobile bottom-cockpit (.thumb-cockpit), canvas floorboard engine & procedural web audio synthesizer, 4-phase operational shifts & police heat engine (`game.js` v0.12.3, SAVE_VER 13)  
 **Source of truth for numbers:** `game.js` (`caps()`, `rates()`, constant tables) — re-diff this file when those change  
 **Related:** `PRESTIGE.md` (prestige deep design, shipped 0.8.0), `PLAN.md` (logic-fix predecessor, shipped), `AGENTS.md` (repo gates). Workstream sequencing lived in a local orchestrator plan (not published in the repo tree).  
 **Ancestry:** this branch stacks A (file save) → B (Owner's List) → C (`pacing.mjs` + balance) → D (`PRESTIGE.md`) → 0.7.x stage work → 0.8.x prestige/achievements/whale → 0.9.x managers/special shifts/perk tree → 0.9.5 legacyTotal fix → 0.10.x second room / burst events / golden ticket → 0.11.x research tree, challenges + tiers, manager levels, Renown unlocks, Vision ladder → 0.11.29 challenge-renown preserve, 0.11.30 buy-round reason, 0.11.31 mobile ledger/tabs, 0.11.32 manager-log aggregation, 0.11.33 session strip earned vs spent, 0.11.34 challenge HUD chip, 0.11.35 golden-over-modals, so every claim below is present in-tree.
@@ -69,6 +69,17 @@ Four phases in `SHIFTS`. Wall-clock `shiftT` advances fully in live and offline;
 - **Late Kitchen** research (`r.latemenu`): while After Hours, effective mult becomes **0.95** instead of 0.45.  
 - Cash multipliers include shift mult (`sm`) for non-crew cash, VIP crew cash, and regular conversion.  
 - Live `step()` can log chatty shift/night lines when remaining dt ≤ 0.5s; `catchUp()` is silent on rollover.
+
+### 3.1 Police Heat Engine (`catalogs.js` / `rates(g)`) — 0.12.3
+
+Club operation attracts law enforcement attention as shifts progress. Each location tracks independent `c.heat` ($0 \le \text{heat} \le 100$).
+
+- **Base Heat per Shift:** Early Doors (`+0.02/s`), Peak Hours (`+0.08/s`), Last Call (`+0.05/s`), After Hours (`+0.12/s`).
+- **Security Score Mitigation:** Each Door Staff (`b.door`) provides `-0.015/s` heat suppression:  
+  $$\text{HeatRate} = \max(-0.04, \text{BaseHeat}(\text{Shift}) - 0.015 \times \text{DoorStaff})$$
+- **Live Incidents:** During live sessions (`_live = true`), random disruptions (Bar Fight $+8$, Noise Complaint $+5$, Fire Marshal $+12$) occur dynamically.
+- **Bribe Chief:** Active CTA (`bribePolice()`) allows paying $\$30 + 4 \times \text{night}$ (min $\$25$) to instantly dissipate $-35$ Heat.
+- **Police Raid:** Reaching $100\%$ Heat in live play triggers a police raid, fining cash ($\$20 + 5 \times \text{night}$) and resetting Heat to $45\%$.
 
 ---
 

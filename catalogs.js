@@ -376,6 +376,22 @@ const AfterglowCatalogs = {
       progress: g => ({ cur: Math.min(g.regulars || 0, 25), max: 25 })
     }
   ],
+
+  // Police Heat Engine (PR 4 of Afterglow 2.0)
+  HEAT: {
+    SHIFT_BASE: [0.02, 0.08, 0.05, 0.12], // Early Doors, Peak Hours, Last Call, After Hours
+    DOOR_SECURITY: 0.015, // Heat reduction per door staff
+    MAX_HEAT: 100,
+    BRIBE_REDUCTION: 35,
+    RAID_THRESHOLD: 100
+  },
+
+  INCIDENTS: [
+    { id: 'brawl', name: 'Bar Fight', heat: 8, text: 'Rowdy patrons broke glassware at the bar. +8 Heat.' },
+    { id: 'noise', name: 'Noise Complaint', heat: 5, text: 'Neighbors called in the subwoofers. +5 Heat.' },
+    { id: 'inspection', name: 'Fire Marshal Check', heat: 12, text: 'Fire Marshal spotted an over-capacity VIP line. +12 Heat.' }
+  ]
 };
 
-window.AfterglowCatalogs = AfterglowCatalogs;
+if (typeof window !== 'undefined') window.AfterglowCatalogs = AfterglowCatalogs;
+if (typeof module !== 'undefined' && module.exports) module.exports = AfterglowCatalogs;
