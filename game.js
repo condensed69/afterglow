@@ -5556,7 +5556,7 @@ class Game {
           <span id="header-shift-mult" style="color:#ffc94a">${v.shiftMultLabel}</span>
         </div>
       </div>
-      <button id="header-heat-meter" data-h="${this.bind(v.bribePolice)}" class="hv-pink" aria-label="Police Heat ${v.heat}% - Tap to bribe Chief" title="Police Heat: ${v.heat}% (${v.heatRate}) — tap to bribe Chief ($${v.bribeCost})" style="display:flex;align-items:center;gap:5px;height:34px;padding:0 8px;border:1px solid #2f1c42;border-radius:6px;background:#100a19;cursor:pointer;${v.heatWarning ? 'box-shadow:0 0 10px rgba(255,45,120,.55),inset 0 0 8px rgba(255,45,120,.25)' : ''}">
+      <button id="header-heat-meter" data-h="${this.bind(v.bribePolice)}" class="hv-pink" aria-label="Police Heat ${v.heat}% - Tap to bribe Chief" title="Police Heat: ${v.heat}% (${v.heatRate}) — tap to bribe Chief ($${v.bribeCost})" style="display:flex;align-items:center;gap:5px;height:34px;padding:0 8px;border:1px solid #2f1c42;border-radius:6px;background:#100a19;cursor:pointer;${v.heatWarning ? 'box-shadow:0 0 10px rgba(255,45,120,.55),inset 0 0 8px rgba(255,45,120,.25);' : ''}">
         <span style="font-size:12px">🚨</span>
         <span id="header-heat-val" style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:${v.heatColor};font-weight:700">${v.heat}%</span>
       </button>

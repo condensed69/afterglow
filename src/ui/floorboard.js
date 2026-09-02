@@ -107,7 +107,7 @@
       // them in a fixed 720px zone. On a fluid widescreen stage the canvas can
       // stretch to 1fr of the remaining viewport, so horizontal bounds must
       // scale with the actual canvas width.
-      const spreadX = Math.max(this.width || 400, 400);
+      const spreadX = Math.max(this.width, 400);
       while (this.particles.length < targetCount) {
         this.particles.push({
           x: Math.random() * spreadX,
