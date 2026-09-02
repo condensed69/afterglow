@@ -1,7 +1,7 @@
 # DESIGN.md — Afterglow Club Idle
 
 **Game:** Afterglow Club Idle (repo: afterglow)  
-**Spec target:** all shipped systems through 0.13.0 — file save, Owner's List, balance + `pacing.mjs`, prestige, achievements, managers, special shifts, whales, multi-tab ownership, second room + rooftop, research tree, challenge tiers, manager levels, Renown/Brand perks/Endorsement, Vision ladder, location extras, ledger session strip (earned vs spent), challenge HUD chip, golden-over-modals, reactive UI signal store, mobile bottom-cockpit (.thumb-cockpit), canvas floorboard engine & procedural web audio synthesizer, 4-phase operational shifts & police heat engine, station subsystems (mixology bar inventory & DJ beat-sync), club personas & named talent roster 2.0 (`game.js` v0.13.0, SAVE_VER 14)  
+**Spec target:** all shipped systems through 0.14.0 — file save, Owner's List, balance + `pacing.mjs`, prestige, achievements, managers, special shifts, whales, multi-tab ownership, second room + rooftop, research tree, challenge tiers, manager levels, Renown/Brand perks/Endorsement, Vision ladder, location extras, ledger session strip (earned vs spent), challenge HUD chip, golden-over-modals, reactive UI signal store, mobile bottom-cockpit (.thumb-cockpit), canvas floorboard engine & procedural web audio synthesizer, 4-phase operational shifts & police heat engine, station subsystems (mixology bar inventory & DJ beat-sync), club personas & named talent roster 2.0, branching blueprint skill tree & district syndicate map (`game.js` v0.14.0, SAVE_VER 15)  
 **Source of truth for numbers:** `game.js` (`caps()`, `rates()`, constant tables) — re-diff this file when those change  
 **Related:** `PRESTIGE.md` (prestige deep design, shipped 0.8.0), `PLAN.md` (logic-fix predecessor, shipped), `AGENTS.md` (repo gates). Workstream sequencing lived in a local orchestrator plan (not published in the repo tree).  
 **Ancestry:** this branch stacks A (file save) → B (Owner's List) → C (`pacing.mjs` + balance) → D (`PRESTIGE.md`) → 0.7.x stage work → 0.8.x prestige/achievements/whale → 0.9.x managers/special shifts/perk tree → 0.9.5 legacyTotal fix → 0.10.x second room / burst events / golden ticket → 0.11.x research tree, challenges + tiers, manager levels, Renown unlocks, Vision ladder → 0.11.29 challenge-renown preserve, 0.11.30 buy-round reason, 0.11.31 mobile ledger/tabs, 0.11.32 manager-log aggregation, 0.11.33 session strip earned vs spent, 0.11.34 challenge HUD chip, 0.11.35 golden-over-modals, 0.12.0 reactive DOM, 0.12.1 dual surface, 0.12.2 canvas synth, 0.12.3 shifts heat, 0.12.4 station subsystems, 0.13.0 personas & talent roster, so every claim below is present in-tree.
@@ -670,7 +670,7 @@ Permanent unlocks with small Clout/Legacy rewards.
 | Field | Value |
 |-------|--------|
 | localStorage key | `afterglow.save` |
-| SAVE_VER | **14** |
+| SAVE_VER | **15** |
 | Envelope | `{ saveVer, ver, build, g }` |
 | Autosave | every 10 s (`save('auto')`) |
 | Manual | Settings → Save now |
