@@ -51,9 +51,48 @@ function sanitizeFlagMap(map, catalog) {
   return clean;
 }
 
+function normalizePacks(g) {
+  if (!g || typeof g !== 'object') return;
+  if (!g.packs || typeof g.packs !== 'object' || Array.isArray(g.packs)) {
+    g.packs = { active: 'season1-miami', progress: { 'season1-miami': { tier: 0, xp: 0, claimed: {} } } };
+    return;
+  }
+  if (!g.packs.active || typeof g.packs.active !== 'string' || g.packs.active.trim() === '') {
+    g.packs.active = 'season1-miami';
+  }
+  if (!g.packs.progress || typeof g.packs.progress !== 'object' || Array.isArray(g.packs.progress)) {
+    g.packs.progress = { 'season1-miami': { tier: 0, xp: 0, claimed: {} } };
+  }
+  for (const k of Object.keys(g.packs.progress)) {
+    const p = g.packs.progress[k];
+    if (!p || typeof p !== 'object' || Array.isArray(p)) {
+      g.packs.progress[k] = { tier: 0, xp: 0, claimed: {} };
+      continue;
+    }
+    if (typeof p.tier !== 'number' || !Number.isFinite(p.tier) || p.tier < 0) p.tier = 0;
+    else p.tier = Math.min(30, Math.floor(p.tier));
+    if (typeof p.xp !== 'number' || !Number.isFinite(p.xp) || p.xp < 0) p.xp = 0;
+    else p.xp = p.tier >= 30 ? 0 : Math.min(99, Math.floor(p.xp));
+
+    const cleanClaimed = {};
+    if (p.claimed && typeof p.claimed === 'object' && !Array.isArray(p.claimed)) {
+      for (const [ck, cv] of Object.entries(p.claimed)) {
+        const tNum = Math.floor(Number(ck));
+        if (Number.isFinite(tNum) && tNum >= 1 && tNum <= 30 && cv === true) {
+          cleanClaimed[tNum] = true;
+        }
+      }
+    }
+    p.claimed = cleanClaimed;
+  }
+  if (!g.packs.progress[g.packs.active]) {
+    g.packs.progress[g.packs.active] = { tier: 0, xp: 0, claimed: {} };
+  }
+}
+
 class Game {
-  VERSION = { num: '0.14.0', build: 280, channel: 'alpha', date: '2026-09-02', codename: 'Blueprints & Syndicate' };
-  SAVE_VER = 15;
+  VERSION = { num: '0.15.0', build: 290, channel: 'alpha', date: '2026-09-02', codename: 'Content Packs & Miami Vice' };
+  SAVE_VER = 16;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
   // A plain boolean is copied when the browser duplicates a tab, so a duplicate would
@@ -243,10 +282,19 @@ class Game {
       const dls = (typeof AfterglowCatalogs !== 'undefined') ? AfterglowCatalogs.DISTRICT_LINKS : null;
       g.blueprints = sanitizeFlagMap(g.blueprints, bps);
       g.districtLinks = sanitizeFlagMap(g.districtLinks, dls);
+    },
+    // v15 → v16: Pluggable Content Pack Engine & Season 1: Miami Vice '86 (PR 8 of Afterglow 2.0)
+    15(g) {
+      normalizePacks(g);
+      const relicsCat = (typeof AfterglowCatalogs !== 'undefined') ? AfterglowCatalogs.RELICS : null;
+      g.relics = sanitizeFlagMap(g.relics, relicsCat);
     }
   };
 
   CHANGELOG = [
+      { v: '0.15.0', date: '2026-09-02', codename: 'Content Packs & Miami Vice', notes: [
+        'PLUGGABLE CONTENT PACK ENGINE & SEASON 1: MIAMI VICE \'86 (PR 8 of Afterglow 2.0): introduced pluggable modular content pack engine (src/core/packs.js) with runtime pack registry, customizable theme aesthetics, and 30-tier seasonal progression track. Ships Season 1: Miami Vice \'86 (src/catalogs/packs/season1-miami.js) featuring South Beach Dayclub venue, synthwave tracks, and the permanent Golden Flamingo Relic (+15% VIP cash flow, +10% prestige Legacy yield) carrying across all timelines. Bumps SAVE_VER to 16 with fail-closed migration in MIGRATIONS[15], pacing bit-identical.'
+      ] },
       { v: '0.14.0', date: '2026-09-02', codename: 'Blueprints & Syndicate', notes: [
         'BRANCHING BLUEPRINT SKILL TREE & DISTRICT SYNDICATE MAP (PR 7 of Afterglow 2.0): introduced 4 specialized blueprint branches (Audio Engine, Mixology Lab, Crowd Psychology, Underground Syndicate) with tier prerequisites and permanent operational bonuses. Added interactive City District Syndicate Map with inter-club logistics links (VIP Shuttles, Touring DJ Circuits, Syndicate Supply Corridors) connecting Downtown, Warehouse Underground, and Sky Tower venues. Bumps SAVE_VER to 15 with fail-closed migration in MIGRATIONS[14], pacing bit-identical.'
       ] },
@@ -936,11 +984,28 @@ class Game {
 
   // Legacy earned on prestige: floor(sqrt(regulars) + night / 7). Regulars and
   // night are per-club — the active club's progress gates the franchise.
+  // Seasonal relics (e.g. golden_flamingo) apply standard multiplicative scaling
+  // floor(base * relicMult), consistent with the floor(base * mult) convention in rates().
   legacyGain(g) {
     const c = this.club(g);
     const reg = Math.max(0, c.regulars || 0);
     const nights = Math.max(0, c.night || 0);
-    return Math.floor(Math.sqrt(reg) + nights / 7);
+    const base = Math.floor(Math.sqrt(reg) + nights / 7);
+    let relicMult = 1.0;
+    if (g.relics && typeof g.relics === 'object') {
+      const relicsCat = (typeof AfterglowCatalogs !== 'undefined' && Array.isArray(AfterglowCatalogs.RELICS)) ? AfterglowCatalogs.RELICS : [];
+      for (const [rId, active] of Object.entries(g.relics)) {
+        if (active === true) {
+          const rDef = relicsCat.find(r => r.id === rId);
+          if (rDef && typeof rDef.legacyMult === 'number') {
+            relicMult *= rDef.legacyMult;
+          } else if (rId === 'golden_flamingo') {
+            relicMult *= 1.10;
+          }
+        }
+      }
+    }
+    return Math.floor(base * relicMult);
   }
 
   // Renown earned by selling the franchise (REPLAY_ROADMAP.md §8.3): the
@@ -1291,7 +1356,10 @@ class Game {
       roster: [],
       // Branching Blueprint Skill Tree & District Syndicate Map (PR 7 of Afterglow 2.0)
       blueprints: {},
-      districtLinks: {}
+      districtLinks: {},
+      // Pluggable Content Pack Engine & Seasonal Relics (PR 8 of Afterglow 2.0)
+      packs: { active: 'season1-miami', progress: { 'season1-miami': { tier: 0, xp: 0, claimed: {} } } },
+      relics: {}
     };
     this.applyStartPerks(g);
     return g;
@@ -1528,6 +1596,10 @@ class Game {
     const dls = (typeof AfterglowCatalogs !== 'undefined') ? AfterglowCatalogs.DISTRICT_LINKS : null;
     g.blueprints = sanitizeFlagMap(g.blueprints, bps);
     g.districtLinks = sanitizeFlagMap(g.districtLinks, dls);
+    // Pluggable Content Pack Engine & Seasonal Relics (PR 8 of Afterglow 2.0)
+    normalizePacks(g);
+    const relicsCat = (typeof AfterglowCatalogs !== 'undefined') ? AfterglowCatalogs.RELICS : null;
+    g.relics = sanitizeFlagMap(g.relics, relicsCat);
     return g;
   }
 
@@ -1801,6 +1873,11 @@ class Game {
     const dls = (typeof AfterglowCatalogs !== 'undefined') ? AfterglowCatalogs.DISTRICT_LINKS : null;
     g.blueprints = sanitizeFlagMap(g.blueprints, bps);
     g.districtLinks = sanitizeFlagMap(g.districtLinks, dls);
+
+    // Pluggable Content Pack Engine & Seasonal Relics (PR 8 of Afterglow 2.0)
+    normalizePacks(g);
+    const relicsCat = (typeof AfterglowCatalogs !== 'undefined') ? AfterglowCatalogs.RELICS : null;
+    g.relics = sanitizeFlagMap(g.relics, relicsCat);
 
     if (!Array.isArray(g.log)) g.log = [];
     // Keep raw validated t/msg (length-capped) so export→import is idempotent.
@@ -2442,6 +2519,22 @@ class Game {
     const dlVipMult = (hasVipShuttles && (activeLoc === 'main' || activeLoc === 'rooftop')) ? 1.20 : 1.0;
     const dlDjHypeMult = (hasTouringDjs && (activeLoc === 'main' || activeLoc === 'annex')) ? 1.25 : 1.0;
 
+    // Permanent Relics (PR 8 of Afterglow 2.0: data-driven via RELICS catalog)
+    let relicVipMult = 1.0;
+    if (g.relics && typeof g.relics === 'object') {
+      const relicsCat = (typeof AfterglowCatalogs !== 'undefined' && Array.isArray(AfterglowCatalogs.RELICS)) ? AfterglowCatalogs.RELICS : [];
+      for (const [rId, active] of Object.entries(g.relics)) {
+        if (active === true) {
+          const rDef = relicsCat.find(r => r.id === rId);
+          if (rDef && typeof rDef.vipCashMult === 'number') {
+            relicVipMult *= rDef.vipCashMult;
+          } else if (rId === 'golden_flamingo') {
+            relicVipMult *= 1.15;
+          }
+        }
+      }
+    }
+
     barMult = (barMult + talentBarBonus) * (personaObj ? personaObj.barMult : 1.0) * bpDistillery;
 
     const railCap = c.b.rail * 6;
@@ -2457,13 +2550,13 @@ class Game {
     const coverRate = g.r.cover ? 0.03 : 0.02;
     const personaCashMult = (personaObj ? personaObj.cashMult : 1.0) * (1 + talentCashBonus);
     let nonCrewCash = (c.patrons * coverRate + Math.min(c.patrons, railCap) * 0.06 + c.b.bar * 0.45 * barMult * bpBarCash) * cashMult * houseCut * personaCashMult * bpCashOverdrive;
-    nonCrewCash += c.b.vip * 1.25 * (g.r.concierge ? 1.5 : 1) * bottle * cashMult * houseCut * personaCashMult * bpCashOverdrive * dlVipMult;
+    nonCrewCash += c.b.vip * 1.25 * (g.r.concierge ? 1.5 : 1) * bottle * cashMult * houseCut * personaCashMult * bpCashOverdrive * dlVipMult * relicVipMult;
     // Location extras (REPLAY_ROADMAP.md §9): per-location cash buildings.
     nonCrewCash += ((c.b.pool || 0) * 0.60 + (c.b.roofbar || 0) * 0.90 + (c.b.heli || 0) * 1.50) * cashMult * houseCut * personaCashMult * bpCashOverdrive;
     if (g.r.loop) nonCrewCash += c.regulars * 0.04 * cashMult * houseCut * personaCashMult * bpCashOverdrive;
 
     let wage = (g.crew - g.jobs.off) * 0.20 * (g.r.payroll ? 0.6 : 1) * (g.r.scheduling ? 0.75 : 1);
-    let vipCrewCash = g.jobs.vipjob * 1.35 * crewMult * bottle * cashMult * houseCut * personaCashMult * bpCashOverdrive * dlVipMult;
+    let vipCrewCash = g.jobs.vipjob * 1.35 * crewMult * bottle * cashMult * houseCut * personaCashMult * bpCashOverdrive * dlVipMult * relicVipMult;
     let stageHype = g.jobs.stage * 0.24 * crewMult;
     let floorBuzz = g.jobs.floor * 0.035 * crewMult;
 
@@ -3138,6 +3231,7 @@ class Game {
     const reduction = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.HEAT && AfterglowCatalogs.HEAT.BRIBE_REDUCTION) || 35;
     c.heat = Math.max(0, (c.heat || 0) - reduction);
     this.push(g, 'Greased the Chief. -' + reduction + ' Heat.', '#22d3ee');
+    this.addSeasonalXp(20);
     this.forceUpdate();
   }
 
@@ -3181,6 +3275,7 @@ class Game {
     const size = this.restockBatchSize(g);
     c.barStock = (c.barStock || 0) + size;
     this.push(g, 'Restocked ' + bev.name + ' (+' + size + ' stock).', '#4ade80');
+    this.addSeasonalXp(10);
     this.forceUpdate();
   }
 
@@ -3223,6 +3318,7 @@ class Game {
     let hypeBonusVal = (trk.hypeBonus || 1.25) - 1;
     if (g.blueprints && g.blueprints.drop_synchronizer) hypeBonusVal *= 1.5;
     this.push(g, '🎵 Beat-Sync Frenzy on ' + trk.name + '! +' + Math.round(hypeBonusVal * 100) + '% Hype, +15% Cash.', '#e879f9');
+    this.addSeasonalXp(15);
     this.forceUpdate();
   }
 
@@ -3281,6 +3377,30 @@ class Game {
       this.push(g, 'Activated Syndicate Link: ' + link.name + '! ' + link.desc, '#a855f7');
     }
     this.forceUpdate();
+  }
+
+  // Pluggable Content Pack Engine & Seasonal Progression (PR 8 of Afterglow 2.0)
+  addSeasonalXp(amount) {
+    if (this.state.tabStale) return;
+    const g = this.state.g;
+    if (!g || typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) return;
+    const Packs = typeof AfterglowPacks !== 'undefined' ? AfterglowPacks : (typeof require !== 'undefined' ? (()=>{ try { return require('./src/core/packs.js'); } catch (_) { return null; } })() : null);
+    if (!Packs || typeof Packs.addXp !== 'function') return;
+    const activeId = (g.packs && typeof g.packs.active === 'string') ? g.packs.active : 'season1-miami';
+    const res = Packs.addXp(g, activeId, amount);
+    if (res && res.leveledUp) {
+      this.push(g, '⭐ Seasonal Track Level Up! Reached Tier ' + res.tier + '!', '#ff71ce');
+    }
+  }
+
+  claimSeasonReward(tierNum) {
+    if (this.state.tabStale) return;
+    const g = this.state.g;
+    if (!g) return;
+    const Packs = typeof AfterglowPacks !== 'undefined' ? AfterglowPacks : (typeof require !== 'undefined' ? (()=>{ try { return require('./src/core/packs.js'); } catch (_) { return null; } })() : null);
+    if (!Packs || typeof Packs.claimReward !== 'function') return;
+    const activeId = (g.packs && typeof g.packs.active === 'string') ? g.packs.active : 'season1-miami';
+    Packs.claimReward(this, activeId, tierNum);
   }
 
   // Club Personas & Named Talent Roster 2.0 (PR 6)
@@ -3381,7 +3501,9 @@ class Game {
       lifetimeEarned: this.lifetimeEarned(g),
       roster: Array.isArray(g.roster) ? g.roster.slice() : [],
       blueprints: (g.blueprints && typeof g.blueprints === 'object' && !Array.isArray(g.blueprints)) ? { ...g.blueprints } : {},
-      districtLinks: (g.districtLinks && typeof g.districtLinks === 'object' && !Array.isArray(g.districtLinks)) ? { ...g.districtLinks } : {}
+      districtLinks: (g.districtLinks && typeof g.districtLinks === 'object' && !Array.isArray(g.districtLinks)) ? { ...g.districtLinks } : {},
+      packs: (g.packs && typeof g.packs === 'object') ? JSON.parse(JSON.stringify(g.packs)) : { active: 'season1-miami', progress: {} },
+      relics: (g.relics && typeof g.relics === 'object') ? { ...g.relics } : {}
     };
     for (const def of this.PRESTIGE_PERKS) snapshot.perks[def.id] = this.perk(g, def.id);
     for (const def of this.MANAGERS) snapshot.managers[def.id] = g.managers && g.managers[def.id] === true;
@@ -3406,6 +3528,8 @@ class Game {
     next.roster = snapshot.roster;
     next.blueprints = snapshot.blueprints;
     next.districtLinks = snapshot.districtLinks;
+    next.packs = snapshot.packs;
+    next.relics = snapshot.relics;
     next.legacy = snapshot.legacy + gain;
     next.legacyTotal = snapshot.legacyTotal + gain;
     next.perks = snapshot.perks;
@@ -3492,7 +3616,9 @@ class Game {
       achievements: Array.isArray(g.achievements) ? g.achievements.slice() : [],
       brand: (g.brand && typeof g.brand === 'object' && !Array.isArray(g.brand)) ? { ...g.brand } : {},
       brandLevel: this.brandLevel(g),
-      lifetimeEarned: this.lifetimeEarned(g)
+      lifetimeEarned: this.lifetimeEarned(g),
+      packs: (g.packs && typeof g.packs === 'object') ? JSON.parse(JSON.stringify(g.packs)) : { active: 'season1-miami', progress: {} },
+      relics: (g.relics && typeof g.relics === 'object') ? { ...g.relics } : {}
     };
 
     // Build the post-sale candidate from fresh() defaults — wipes both clubs
@@ -3503,6 +3629,8 @@ class Game {
     next.renownTotal = snapshot.renownTotal + gain;
     next.achievements = snapshot.achievements;
     next.brand = snapshot.brand;
+    next.packs = snapshot.packs;
+    next.relics = snapshot.relics;
     // Brand Endorsement level (next-roadmap PR 1) — permanent like brand ranks:
     // the repeatable Renown sink is the reason the NEXT sale has a spend.
     next.brandLevel = snapshot.brandLevel;
@@ -3626,7 +3754,9 @@ class Game {
       // inherit fresh()'s zeros (RED-1: it silently zeroed both before).
       renown: (g.renown || 0), renownTotal: (g.renownTotal || 0),
       challengeTiers: {},
-      lifetimeEarned: this.lifetimeEarned(g)
+      lifetimeEarned: this.lifetimeEarned(g),
+      packs: (g.packs && typeof g.packs === 'object') ? JSON.parse(JSON.stringify(g.packs)) : { active: 'season1-miami', progress: {} },
+      relics: (g.relics && typeof g.relics === 'object') ? { ...g.relics } : {}
     };
     for (const p of this.PRESTIGE_PERKS) snapshot.perks[p.id] = this.perk(g, p.id);
     for (const m of this.MANAGERS) {
@@ -3645,6 +3775,8 @@ class Game {
     next.challengeTier = nextTier;
     next.challengeTiers = snapshot.challengeTiers;
     next.challengesDone = Array.isArray(g.challengesDone) ? g.challengesDone.slice() : [];
+    next.packs = snapshot.packs;
+    next.relics = snapshot.relics;
     next.legacy = snapshot.legacy;
     next.legacyTotal = snapshot.legacyTotal;
     next.perks = snapshot.perks;
@@ -4211,7 +4343,68 @@ class Game {
         };
       });
 
-      cards = cards.concat(brandCards, blueprintCards, districtCards, districtLinkCards);
+      // Pluggable Content Pack Engine & Seasonal Track (PR 8 of Afterglow 2.0)
+      const packId = (g.packs && typeof g.packs.active === 'string') ? g.packs.active : 'season1-miami';
+      const packsEngine = typeof AfterglowPacks !== 'undefined' ? AfterglowPacks : (typeof require !== 'undefined' ? (()=>{ try { return require('./src/core/packs.js'); } catch (_) { return null; } })() : null);
+      const packDef = packsEngine && packsEngine.get ? packsEngine.get(packId) : (typeof AfterglowSeason1Miami !== 'undefined' ? AfterglowSeason1Miami : null);
+      const prog = (g.packs && g.packs.progress && g.packs.progress[packId]) ? g.packs.progress[packId] : { tier: 0, xp: 0, claimed: {} };
+      const xpReq = (packDef && packDef.progression && packDef.progression.xpPerTier) || 100;
+      const totalTiers = (packDef && packDef.progression && packDef.progression.tiers && packDef.progression.tiers.length) || 30;
+      const curTier = prog.tier || 0;
+      const curXp = prog.xp || 0;
+
+      const seasonalCards = [];
+      if (packDef) {
+        seasonalCards.push({
+          id: 'season_track_overview',
+          name: packDef.name + ' [Track]',
+          desc: packDef.desc || packDef.tagline,
+          owned: 'Tier ' + curTier + '/' + totalTiers + ' (' + curXp + '/' + xpReq + ' XP)',
+          btn: curTier >= totalTiers ? 'Complete' : 'Tier ' + (curTier + 1) + ' (' + (xpReq - curXp) + ' XP left)',
+          meta: curTier >= totalTiers ? 'Season completed! All rewards unlocked.' : 'Earn XP by serving drinks, beat drops, and room rounds',
+          locked: true,
+          wrapStyle: cardWrap(true),
+          btnStyle: btn(false, '#ff71ce'),
+          act: () => {}
+        });
+
+        const nextClaimable = (packDef.progression && Array.isArray(packDef.progression.tiers))
+          ? packDef.progression.tiers.find(t => curTier >= t.tier && !(prog.claimed && prog.claimed[t.tier]))
+          : null;
+        if (nextClaimable) {
+          seasonalCards.push({
+            id: 'season_claim_' + nextClaimable.tier,
+            name: 'Claim Tier ' + nextClaimable.tier + ' Reward',
+            desc: nextClaimable.reward ? nextClaimable.reward.label : 'Tier ' + nextClaimable.tier + ' Seasonal Cache',
+            owned: 'unclaimed',
+            btn: 'Claim Reward',
+            meta: 'ready to claim',
+            locked: false,
+            wrapStyle: cardWrap(true),
+            btnStyle: btn(true, '#ff71ce'),
+            act: () => this.claimSeasonReward(nextClaimable.tier)
+          });
+        }
+      }
+
+      // Permanent Relics Cards
+      const relicCards = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.RELICS ? AfterglowCatalogs.RELICS : []).map(relic => {
+        const owned = !!(g.relics && g.relics[relic.id] === true);
+        return {
+          id: relic.id,
+          name: relic.name + ' [Artifact]',
+          desc: relic.desc,
+          owned: owned ? 'ACTIVE (Permanent)' : 'Locked',
+          btn: owned ? 'Active' : 'Locked',
+          meta: owned ? relic.perk + ' · persists across resets' : 'reach Season 1 Tier 30 to claim',
+          locked: !owned,
+          wrapStyle: cardWrap(owned),
+          btnStyle: btn(owned, '#facc15'),
+          act: () => {}
+        };
+      });
+
+      cards = cards.concat(brandCards, blueprintCards, districtCards, districtLinkCards, seasonalCards, relicCards);
     } else {
       tabHint = 'Research is paid in Clout. Clout comes from Regulars. Regulars are made at Tip Rails and VIP Booths. Permanent, global effects.';
       cards = this.RESEARCH.map(d => {
@@ -4441,6 +4634,44 @@ class Game {
         };
       }) : [],
 
+      // Pluggable Content Pack Engine & Season 1 Track (PR 8 of Afterglow 2.0)
+      activePackId: (g.packs && typeof g.packs.active === 'string') ? g.packs.active : 'season1-miami',
+      relics: g.relics || {},
+      hasGoldenFlamingo: !!(g.relics && g.relics.golden_flamingo === true),
+      seasonTrack: (() => {
+        const pEngine = typeof AfterglowPacks !== 'undefined' ? AfterglowPacks : (typeof require !== 'undefined' ? (()=>{ try { return require('./src/core/packs.js'); } catch (_) { return null; } })() : null);
+        const pId = (g.packs && typeof g.packs.active === 'string') ? g.packs.active : 'season1-miami';
+        const pDef = pEngine && pEngine.get ? pEngine.get(pId) : (typeof AfterglowSeason1Miami !== 'undefined' ? AfterglowSeason1Miami : null);
+        const pProg = (g.packs && g.packs.progress && g.packs.progress[pId]) ? g.packs.progress[pId] : { tier: 0, xp: 0, claimed: {} };
+        const reqXp = (pDef && pDef.progression && pDef.progression.xpPerTier) || 100;
+        const tierList = (pDef && pDef.progression && Array.isArray(pDef.progression.tiers)) ? pDef.progression.tiers.map(t => {
+          const reached = (pProg.tier || 0) >= t.tier;
+          const claimed = !!(pProg.claimed && pProg.claimed[t.tier]);
+          return {
+            tier: t.tier,
+            reward: t.reward,
+            reached,
+            claimed,
+            canClaim: reached && !claimed,
+            claim: () => this.claimSeasonReward(t.tier)
+          };
+        }) : [];
+        return {
+          packId: pId,
+          name: (pDef && pDef.name) || "Season 1: Miami Vice '86",
+          codename: (pDef && pDef.codename) || "Miami Vice",
+          tagline: (pDef && pDef.tagline) || "South Beach 1986",
+          currentTier: pProg.tier || 0,
+          currentXp: pProg.xp || 0,
+          xpPerTier: reqXp,
+          totalTiers: tierList.length || 30,
+          progressPercent: Math.min(100, Math.round(((pProg.tier || 0) / (tierList.length || 30)) * 100)),
+          tiers: tierList,
+          activeTheme: (pDef && pDef.theme) || null,
+          unclaimedCount: tierList.filter(t => t.canClaim).length
+        };
+      })(),
+
       soundEnabled: Boolean(this.audio && this.audio.enabled),
       toggleSound: () => {
         if (this.audio) {
@@ -4471,6 +4702,7 @@ class Game {
         g.clicks = (g.clicks || 0) + 1;
         this.noteGoals(g);
         this.checkAchievements(g);
+        this.addSeasonalXp(1);
         this.forceUpdate();
         this.spawnTipFloater(e, val);
       },
@@ -4493,6 +4725,7 @@ class Game {
         this.push(g, 'Bought the room a round. +' + this.fmt(roundGain) + ' Hype.', '#ffc94a');
         this.noteGoals(g);
         this.checkAchievements(g);
+        this.addSeasonalXp(25);
         this.forceUpdate();
       },
       // 0.10.2 golden ticket: compact side badge on the stage. The badge is
@@ -4890,7 +5123,7 @@ class Game {
   }
 
   bind(fn) {
-    this.handlers.push(fn);
+    this.handlers.push(typeof fn === 'function' ? fn : () => {});
     return this.handlers.length - 1;
   }
 
