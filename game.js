@@ -3158,6 +3158,15 @@ class Game {
     return Math.floor(bev.batchCost * mult);
   }
 
+  restockBatchSize(g) {
+    const bevs = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.BEVERAGES) ? AfterglowCatalogs.BEVERAGES : [];
+    const c = this.club(g);
+    const bev = bevs[c.barTier || 0] || { batchCost: 15, batchSize: 50, name: 'Well Spirits' };
+    let size = bev.batchSize;
+    if (g.blueprints && g.blueprints.automated_pourers) size = Math.floor(size * 1.30);
+    return size;
+  }
+
   restockBar() {
     const g = this.state.g;
     if (!g || this.state.tabStale) return;
@@ -3169,8 +3178,7 @@ class Game {
     this.sessionSpent += cost;
     const bevs = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.BEVERAGES) ? AfterglowCatalogs.BEVERAGES : [];
     const bev = bevs[c.barTier || 0] || { batchCost: 15, batchSize: 50, name: 'Well Spirits' };
-    let size = bev.batchSize;
-    if (g.blueprints && g.blueprints.automated_pourers) size = Math.floor(size * 1.30);
+    const size = this.restockBatchSize(g);
     c.barStock = (c.barStock || 0) + size;
     this.push(g, 'Restocked ' + bev.name + ' (+' + size + ' stock).', '#4ade80');
     this.forceUpdate();
@@ -4346,6 +4354,7 @@ class Game {
       curBeverage: ((typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.BEVERAGES) ? AfterglowCatalogs.BEVERAGES[c.barTier || 0] : null) || { name: 'Well Spirits', batchCost: 15, batchSize: 50, revMult: 1.20 },
       canRestock: c.cash >= this.restockCost(g) && (c.b.bar || 0) > 0 && !this.state.tabStale,
       restockCostVal: this.restockCost(g),
+      restockBatchSizeVal: this.restockBatchSize(g),
       restockBar: () => this.restockBar(),
 
       djTrack: c.djTrack || 0,
@@ -5444,7 +5453,7 @@ class Game {
         <button id="cta-work-crowd" data-h="${this.bind(v.workCrowd)}" class="cta" style="flex:1 1 240px;background:linear-gradient(180deg,#ff3d85,#d81259);border:0;border-radius:8px;color:#fff;font-weight:700;font-size:13px;letter-spacing:1.2px;text-transform:uppercase;padding:13px 16px;cursor:pointer;box-shadow:0 0 22px rgba(255,45,120,.35)">Work the room <span style="font-family:'IBM Plex Mono',monospace;opacity:.85;text-transform:none;letter-spacing:0">+${v.clickValue}</span></button>
         <button id="cta-buy-round" data-h="${this.bind(v.buyRound)}" ${v.roundLocked ? 'disabled' : ''} title="${v.roundReason || v.roundLabel}" aria-label="${v.roundReason || v.roundLabel}" style="${css(v.roundStyle)}">${v.roundLabel}</button>
         <div id="station-controls-wrap" style="display:flex;gap:8px;align-items:center">
-          <button id="cta-restock-bar" data-h="${this.bind(v.restockBar)}" ${!v.canRestock ? 'disabled' : ''} class="hv-pink" title="Restock ${v.curBeverage.name} (+${v.curBeverage.batchSize} stock for $${v.restockCostVal}) · currently ${v.barStock} in stock" aria-label="Restock bar" style="display:flex;align-items:center;gap:6px;background:${v.canRestock ? '#170e22' : '#100a18'};border:1px solid ${v.canRestock ? '#3a2350' : '#221434'};border-radius:8px;padding:10px 12px;color:${v.canRestock ? '#4ade80' : '#8f6f9c'};cursor:${v.canRestock ? 'pointer' : 'not-allowed'};font-size:11px;font-weight:700">
+          <button id="cta-restock-bar" data-h="${this.bind(v.restockBar)}" ${!v.canRestock ? 'disabled' : ''} class="hv-pink" title="Restock ${v.curBeverage.name} (+${v.restockBatchSizeVal} stock for $${v.restockCostVal}) · currently ${v.barStock} in stock" aria-label="Restock bar" style="display:flex;align-items:center;gap:6px;background:${v.canRestock ? '#170e22' : '#100a18'};border:1px solid ${v.canRestock ? '#3a2350' : '#221434'};border-radius:8px;padding:10px 12px;color:${v.canRestock ? '#4ade80' : '#8f6f9c'};cursor:${v.canRestock ? 'pointer' : 'not-allowed'};font-size:11px;font-weight:700">
             <span>🍸 Stock: ${v.barStock}</span>
             <span style="font-size:9.5px;color:#9c86ab">+$${v.restockCostVal}</span>
           </button>
@@ -5782,7 +5791,7 @@ class Game {
       ctaRestock.style.borderColor = v.canRestock ? '#3a2350' : '#221434';
       ctaRestock.style.color = v.canRestock ? '#4ade80' : '#8f6f9c';
       ctaRestock.style.cursor = v.canRestock ? 'pointer' : 'not-allowed';
-      ctaRestock.title = `Restock ${v.curBeverage.name} (+${v.curBeverage.batchSize} stock for $${v.restockCostVal}) · currently ${v.barStock} in stock`;
+      ctaRestock.title = `Restock ${v.curBeverage.name} (+${v.restockBatchSizeVal} stock for $${v.restockCostVal}) · currently ${v.barStock} in stock`;
     }
     const ctaBeat = this.dom('#cta-dj-beatsync');
     if (ctaBeat) {

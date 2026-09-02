@@ -7629,6 +7629,10 @@ test('PR 7: UI view models expose blueprints, districts, and district links in r
   strictEqual(v.districts.length, 3, '3 city districts defined');
   ok(Array.isArray(v.districtLinks), 'renderVals exposes districtLinks list');
   strictEqual(v.districtLinks.length, 3, '3 syndicate logistics links defined');
+  strictEqual(v.restockBatchSizeVal, 50, 'Base restock batch size is 50');
+  game.state.g.blueprints.automated_pourers = true;
+  const vBoosted = game.renderVals();
+  strictEqual(vBoosted.restockBatchSizeVal, 65, 'Boosted restock batch size is 65 with automated_pourers');
 
   game.state.tab = 'perks';
   const vPerks = game.renderVals();
