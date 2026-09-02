@@ -6811,6 +6811,10 @@ test('Game DOM engine preserves root structure across render ticks without full 
         if (selector === '#cta-buy-round') return elements.get('cta-buy-round');
         if (selector === '#cards-container') return elements.get('cards-container');
         if (selector === '#modals-container') return elements.get('modals-container');
+        if (selector === '#thumb-cockpit') return elements.get('thumb-cockpit');
+        if (selector === '#thumb-cta-work') return elements.get('thumb-cta-work');
+        if (selector === '#thumb-cta-round') return elements.get('thumb-cta-round');
+        if (selector === '#thumb-tabs-container') return elements.get('thumb-tabs-container');
         if (selector === '#footer-ver-full') return elements.get('footer-ver-full');
         if (selector === '#footer-tick-count') return elements.get('footer-tick-count');
         return null;
@@ -6826,6 +6830,10 @@ test('Game DOM engine preserves root structure across render ticks without full 
   const ctaBtn = createMockElement('button', 'cta-work-crowd');
   const roundBtn = createMockElement('button', 'cta-buy-round');
   const cardsCont = createMockElement('div', 'cards-container');
+  const thumbCockpit = createMockElement('nav', 'thumb-cockpit');
+  const thumbCtaWork = createMockElement('button', 'thumb-cta-work');
+  const thumbCtaRound = createMockElement('button', 'thumb-cta-round');
+  const thumbTabs = createMockElement('div', 'thumb-tabs-container');
   const tickSpan = createMockElement('span', 'footer-tick-count');
 
   const root = {
@@ -6847,9 +6855,11 @@ test('Game DOM engine preserves root structure across render ticks without full 
   // First render: mounts initial template into root
   game.render();
   ok(root.innerHTML.includes('app-root'), 'first render populates template HTML');
+  ok(root.innerHTML.includes('thumb-cockpit'), 'first render mounts #thumb-cockpit');
   ok(game._mounted, 'game._mounted set to true after mounting app-root');
 
   const ctaRefBefore = appRoot.querySelector('#cta-work-crowd');
+  const thumbWorkRefBefore = appRoot.querySelector('#thumb-cta-work');
   const tickSpanRefBefore = appRoot.querySelector('#footer-tick-count');
 
   // Next render: updates DOM elements fine-grained without wiping root.innerHTML
@@ -6863,7 +6873,37 @@ test('Game DOM engine preserves root structure across render ticks without full 
 
   // Verify element reference identity is preserved under pointer
   strictEqual(appRoot.querySelector('#cta-work-crowd'), ctaRefBefore, 'CTA button element identity preserved across renders');
+  strictEqual(appRoot.querySelector('#thumb-cta-work'), thumbWorkRefBefore, 'thumb CTA work button identity preserved across renders');
   strictEqual(appRoot.querySelector('#footer-tick-count'), tickSpanRefBefore, 'tickSpan element identity preserved across renders');
+});
+
+test('Responsive Layout: modals render with .modal-overlay and .modal-dialog classes', () => {
+  const root = {
+    innerHTML: '',
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    querySelectorAll() { return []; },
+    querySelector() { return null; }
+  };
+  const game = new Game(root);
+  game.init();
+
+  const v = game.renderVals();
+  v.showChangelog = true;
+  v.showSettings = true;
+  v.showAchievements = true;
+
+  const modalsHtml = game.renderModals(v);
+  ok(modalsHtml.includes('modal-overlay'), 'modal container has .modal-overlay class');
+  ok(modalsHtml.includes('modal-dialog'), 'modal box has .modal-dialog class for mobile bottom-sheet drawer styling');
+});
+
+test('Responsive Layout: style.css contains mobile bottom-cockpit and touch-action rules', () => {
+  const css = readFileSync(new URL('./style.css', import.meta.url), 'utf8');
+  ok(css.includes('touch-action: manipulation'), 'style.css enforces touch-action: manipulation');
+  ok(css.includes('.thumb-cockpit'), 'style.css defines .thumb-cockpit styles');
+  ok(css.includes('.modal-dialog'), 'style.css defines .modal-dialog drawer rules');
+  ok(css.includes('slideUpDrawer'), 'style.css includes slideUpDrawer animation for mobile bottom sheets');
 });
 
 if (pendingTests.length > 0) await Promise.all(pendingTests);

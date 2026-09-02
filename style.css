@@ -7,6 +7,9 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 * { box-sizing: border-box; }
+button, input, select, textarea, a {
+  touch-action: manipulation;
+}
 button { font-family: inherit; }
 /* Custom scrollbars are desktop-only (0.11.19). Styling ::-webkit-scrollbar on
    a touch device forces Chrome Android to render a persistent classic scrollbar
@@ -23,6 +26,11 @@ button { font-family: inherit; }
 a { color: #22d3ee; text-decoration: none; }
 a:hover { color: #67e8f9; }
 
+.app-root {
+  height: 100vh;
+  height: 100dvh;
+}
+
 /* Premium pass (0.11.18) — film grain over the whole app to break the flat,
    purely-digital panels. Fixed, pointer-events-none SVG noise at low opacity
    with mix-blend-mode:overlay so it adds texture without washing out the neon.
@@ -38,6 +46,18 @@ body::after {
   opacity: .035;
   mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Global Keyframes */
+@keyframes slideUpDrawer {
+  from {
+    transform: translateY(100%);
+    opacity: 0.7;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 /* Touch devices: the fixed full-viewport grain layer blends with the scrolling
@@ -216,6 +236,32 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
 /* Ledger collapse toggle: hidden on desktop (the Ledger is always expanded
    ≥901px and the button only appears inside the narrow-screen media query). */
 .ledger-toggle {
+  display: none;
+}
+
+/* Desktop Modal Overlay & Dialog styles (v0.12 PR 2) */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 3, 9, .82);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 60;
+  padding: 32px;
+}
+.modal-dialog {
+  background: #0e0918;
+  border: 1px solid #3a2350;
+  border-radius: 12px;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, .7);
+  max-height: 80vh;
+  overflow-y: auto;
+}
+/* Thumb Cockpit is mobile-only; hidden on desktop */
+.thumb-cockpit {
   display: none;
 }
 
@@ -424,33 +470,87 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
     min-height: 20px;
   }
 
-  /* Sticky CTA footer on mobile (v0.12): Work the room / Buy a round bar
-     stays pinned above the 28px footer while mobile scrolls. The bar sits
-     at bottom:28px so the app footer remains visible; shell-grid padding
-     keeps the last Night-log lines and Systems cards from hiding behind it.
-     At 390px the two buttons wrap (240px + 190px + 10px gap > 364px
-     content), making the bar ~116px tall (44+44+10+24 padding) — reserve
-     two rows plus a little headroom. z-index 20 sits under modals (60),
-     golden/challenge banners (65), and Look panel (70), on par with the header. */
-  .stage-cta {
+  /* Bottom Thumb Cockpit (v0.12 PR 2): Pinned mobile bottom bar for one-thumb play */
+  .thumb-cockpit {
+    display: flex !important;
+    flex-direction: column;
+    gap: 6px;
     position: fixed;
     left: 0;
     right: 0;
     bottom: 28px;
-    z-index: 20;
-    background: #0b0712;
-    border-top: 1px solid #2a1738;
-    box-shadow: 0 -4px 12px rgba(0,0,0,.3);
+    z-index: 30;
+    background: #0b0713;
+    border-top: 1px solid #2d1840;
+    padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -6px 20px rgba(0, 0, 0, .55);
   }
-  /* Premium pass (0.11.18): the primary CTA's 22px pink bloom is glare on an
-     OLED panel an idle game sits on for hours. Pull the glow in tight and lift
-     the button off the bar with a short, colored shadow instead. !important
-     beats the inline box-shadow. */
-  .stage-cta button.cta {
-    box-shadow: 0 3px 14px rgba(255,45,120,.22) !important;
+  .thumb-cta-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .thumb-cta-row button {
+    flex: 1;
+    min-height: 44px !important;
+    border-radius: 8px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    font-size: 12px;
+  }
+  .thumb-tabs-row {
+    display: flex;
+    gap: 5px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .thumb-tabs-row::-webkit-scrollbar {
+    display: none;
+  }
+  .thumb-tabs-row button {
+    flex: 1 0 auto;
+    min-height: 44px !important;
+    min-width: 44px !important;
+    padding: 6px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    border-radius: 6px;
+  }
+  .stage-cta {
+    display: none !important;
   }
   .shell-grid {
-    padding-bottom: 130px !important;
+    padding-bottom: 140px !important;
+  }
+
+  /* Slide-up bottom drawers for mobile modals (v0.12 PR 2) */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(5, 3, 9, .82);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    z-index: 60;
+    padding: 0;
+  }
+  .modal-dialog {
+    width: 100% !important;
+    max-width: 100vw !important;
+    max-height: 85vh;
+    overflow-y: auto;
+    background: #0e0918;
+    border: 1px solid #3a2350;
+    border-bottom: 0;
+    border-radius: 16px 16px 0 0 !important;
+    box-shadow: 0 -10px 40px rgba(0, 0, 0, .8);
+    animation: slideUpDrawer 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   }
 
   /* Font scaling (v0.12): intentionally minimal. The two prior selectors
