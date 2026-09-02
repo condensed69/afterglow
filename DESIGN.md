@@ -1,10 +1,10 @@
 # DESIGN.md — Afterglow Club Idle
 
 **Game:** Afterglow Club Idle (repo: afterglow)  
-**Spec target:** all shipped systems through 0.12.4 — file save, Owner's List, balance + `pacing.mjs`, prestige, achievements, managers, special shifts, whales, multi-tab ownership, second room + rooftop, research tree, challenge tiers, manager levels, Renown/Brand perks/Endorsement, Vision ladder, location extras, ledger session strip (earned vs spent), challenge HUD chip, golden-over-modals, reactive UI signal store, mobile bottom-cockpit (.thumb-cockpit), canvas floorboard engine & procedural web audio synthesizer, 4-phase operational shifts & police heat engine, station subsystems (mixology bar inventory & DJ beat-sync) (`game.js` v0.12.4, SAVE_VER 13)  
+**Spec target:** all shipped systems through 0.13.0 — file save, Owner's List, balance + `pacing.mjs`, prestige, achievements, managers, special shifts, whales, multi-tab ownership, second room + rooftop, research tree, challenge tiers, manager levels, Renown/Brand perks/Endorsement, Vision ladder, location extras, ledger session strip (earned vs spent), challenge HUD chip, golden-over-modals, reactive UI signal store, mobile bottom-cockpit (.thumb-cockpit), canvas floorboard engine & procedural web audio synthesizer, 4-phase operational shifts & police heat engine, station subsystems (mixology bar inventory & DJ beat-sync), club personas & named talent roster 2.0 (`game.js` v0.13.0, SAVE_VER 14)  
 **Source of truth for numbers:** `game.js` (`caps()`, `rates()`, constant tables) — re-diff this file when those change  
 **Related:** `PRESTIGE.md` (prestige deep design, shipped 0.8.0), `PLAN.md` (logic-fix predecessor, shipped), `AGENTS.md` (repo gates). Workstream sequencing lived in a local orchestrator plan (not published in the repo tree).  
-**Ancestry:** this branch stacks A (file save) → B (Owner's List) → C (`pacing.mjs` + balance) → D (`PRESTIGE.md`) → 0.7.x stage work → 0.8.x prestige/achievements/whale → 0.9.x managers/special shifts/perk tree → 0.9.5 legacyTotal fix → 0.10.x second room / burst events / golden ticket → 0.11.x research tree, challenges + tiers, manager levels, Renown unlocks, Vision ladder → 0.11.29 challenge-renown preserve, 0.11.30 buy-round reason, 0.11.31 mobile ledger/tabs, 0.11.32 manager-log aggregation, 0.11.33 session strip earned vs spent, 0.11.34 challenge HUD chip, 0.11.35 golden-over-modals, so every claim below is present in-tree.
+**Ancestry:** this branch stacks A (file save) → B (Owner's List) → C (`pacing.mjs` + balance) → D (`PRESTIGE.md`) → 0.7.x stage work → 0.8.x prestige/achievements/whale → 0.9.x managers/special shifts/perk tree → 0.9.5 legacyTotal fix → 0.10.x second room / burst events / golden ticket → 0.11.x research tree, challenges + tiers, manager levels, Renown unlocks, Vision ladder → 0.11.29 challenge-renown preserve, 0.11.30 buy-round reason, 0.11.31 mobile ledger/tabs, 0.11.32 manager-log aggregation, 0.11.33 session strip earned vs spent, 0.11.34 challenge HUD chip, 0.11.35 golden-over-modals, 0.12.0 reactive DOM, 0.12.1 dual surface, 0.12.2 canvas synth, 0.12.3 shifts heat, 0.12.4 station subsystems, 0.13.0 personas & talent roster, so every claim below is present in-tree.
 
 This document describes what the shipped neon-noir club-management idle **actually does**, not aspirational UI kits.
 
@@ -98,6 +98,30 @@ Active station mechanics enhance floor management:
   - *Acid Rain* (128 BPM, Req DJ 3): 8s Frenzy ($+35\%$ Hype gain).
   - *Midnight Laser Storm* (140 BPM, Req DJ 5): 10s Frenzy ($+50\%$ Hype gain).
 - **Pacing Invariant:** Pacing bot does not execute manual Beat-Sync or restock loops, keeping reference bot baselines 100% deterministic.
+
+### 3.3 Club Personas & Named Talent Roster 2.0 — 0.13.0 (PR 6)
+
+Introduces thematic club identity and collectible talent management with compounding synergy tags:
+
+- **Club Personas (`catalogs.js: PERSONAS`):**
+  Each club location can adopt an identity (`c.persona`) that applies distinct operational multipliers:
+  - *Techno Bunker* (`techno_bunker`, tags: `techno, cyber, underground`): $+30\%$ Hype Gain, $+5\%$ Cash Flow, $-15\%$ Bar Revenue, $+10\%$ Heat Generation.
+  - *Velvet VIP Lounge* (`velvet_lounge`, tags: `vip, lounge, luxury`): $-20\%$ Hype Gain, $+25\%$ Cash Flow, $+20\%$ Bar Revenue, $-10\%$ Heat Generation.
+  - *Cyber Speakeasy* (`cyber_speakeasy`, tags: `speakeasy, mixology, stealth`): $-5\%$ Hype Gain, $+15\%$ Cash Flow, $+50\%$ Bar Revenue, $-50\%$ Heat Generation.
+  - *Heat Multiplier Application:* `persona.heatMult` and `talentHeatReduction` scale heat generation strictly when $\text{rawHeat} > 0$; passive security cooling ($\text{rawHeat} \le 0$) is unaffected.
+- **Named Talent Cards (`catalogs.js: TALENT`):**
+  A global talent roster (`g.roster`) can be hired for cash and assigned up to 2 active performers per club (`c.activeTalent`):
+  - *Nova Cyan* (Stage Headliner, Rare, \$250, tags: `techno, cyber`): Trait "Overdrive Beat" (+20% Stage Hype).
+  - *Roxie Spark* (Lead Mixologist, Rare, \$200, tags: `mixology, speakeasy`): Trait "Craft Infusion" (+30% Bar Revenue).
+  - *Blade Thorne* (Head of Security, Uncommon, \$150, tags: `stealth, underground`): Trait "Discreet Perimeter" (-30% Heat Gain).
+  - *Velvet Vixen* (VIP Host, Legendary, \$500, tags: `vip, luxury, lounge`): Trait "Whale Magnet" (+35% Cash Flow).
+  - *DJ Klaus* (Resident DJ, Uncommon, \$180, tags: `techno, underground`): Trait "Bass Resonance" (+15% Hype, +10% Cash).
+- **Compounding Synergy Mechanic:**
+  When an assigned talent's tags share at least one tag with the club's active persona, their trait effectiveness increases by $+50\%$ compounding (`synMult = 1.50`).
+- **Slot Capacity & Multi-Club Assignment:**
+  Each club supports up to 2 active talent slots. Attempting to assign into a full lineup is rejected with an explicit notification. Assigning a talent currently active in another venue automatically transfers them to the active club.
+- **Save Migration & Pacing Invariants:**
+  Bumps `SAVE_VER` from 13 to 14 with `MIGRATIONS[13]` (backfills `g.roster = []`, `c.persona = null`, `c.activeTalent = []`). Default unselected state preserves 100% bit-identical pacing benchmark output.
 
 ---
 
@@ -585,12 +609,21 @@ Permanent unlocks with small Clout/Legacy rewards. `checkAchievements(g)` iterat
 | challenge_t3_all | Legendary | all 4 challenges tier ≥ 3 | 3 Legacy |
 | endorse_5 | Endorsed | brandLevel ≥ 5 | 3 Legacy |
 | vista_1 | Panorama | rooftop `u.vista === true` | 3 Legacy |
-| heli_2 | Sky Armada | rooftop heli ≥ 2 | 5 Legacy |
-| endorse_10 | Sponsored | brandLevel ≥ 10 | 4 Legacy |
-| endorse_25 | Household Name | brandLevel ≥ 25 | 8 Legacy |
-| endorse_50 | Icon | brandLevel ≥ 50 | 16 Legacy |
+---
 
-Achievements live in the Settings modal. Backfill on load credits already-earned unlocks without double-paying (v6→v7 migration runs `checkAchievements`).
+## 11. Burst events & visitors
+
+Three live-session burst opportunities keep active play rewarding:
+
+### 11.1 The Whale (`spawnWhale`) — shipped 0.8.0
+
+Spawns during live sessions with cash reward and particle bursts.
+
+---
+
+## 12. Achievements (`ACHIEVEMENTS`)
+
+Permanent unlocks with small Clout/Legacy rewards.
 
 ---
 
@@ -599,17 +632,19 @@ Achievements live in the Settings modal. Backfill on load credits already-earned
 | Field | Value |
 |-------|--------|
 | localStorage key | `afterglow.save` |
-| SAVE_VER | **13** |
+| SAVE_VER | **14** |
 | Envelope | `{ saveVer, ver, build, g }` |
 | Autosave | every 10 s (`save('auto')`) |
 | Manual | Settings → Save now |
 
-### 13.1 `g` shape (v13 — Vision ladder 0.11.15)
+### 13.1 `g` shape (v14 — Personas & Named Talent Roster 0.13.0)
 
 ```
 clubs: {
   main: {
-    cash, hype, buzz, patrons, regulars,
+    cash, hype, buzz, patrons, regulars, heat,
+    barStock, barTier, djTrack, _frenzyT, _beatCooldown,
+    persona, activeTalent,
     b: { …building counts }, u: { …upgrade bools },
     elapsed, night, shiftIdx, shiftT,
     _specialShift, _whaleCooldown
@@ -629,12 +664,13 @@ renown, renownTotal,        // 0.11.9 Renown meta (second prestige layer)
 brand: { perkId: rank },    // 0.11.9 Brand-perk ranks (PR 7 spends Renown)
 brandLevel,                 // 0.11.12 Brand Endorsement level (repeatable Renown sink)
 challengeTier, challengeTiers, // 0.11.13 challenge tier ladder (SAVE_VER 12)
-lifetimeEarned              // 0.11.15 Vision ladder accumulator (SAVE_VER 13)
+lifetimeEarned,             // 0.11.15 Vision ladder accumulator (SAVE_VER 13)
+roster                      // 0.13.0 Named Talent global roster (SAVE_VER 14)
 ```
 
-Club-level run fields live under `g.clubs[<id>]`; account/shared fields stay top-level. `club(g)` reads/writes the active club (SECOND_LOCATION.md §5), so club fields must never be treated as top-level. Flat `g.cash`-style access exists only through the `wrapState` compat proxy (same shape on disk: `JSON.stringify` emits the real v13 layout).
+Club-level run fields live under `g.clubs[<id>]`; account/shared fields stay top-level. `club(g)` reads/writes the active club (SECOND_LOCATION.md §5), so club fields must never be treated as top-level. Flat `g.cash`-style access exists only through the `wrapState` compat proxy (same shape on disk: `JSON.stringify` emits the real v14 layout).
 
-Additive fields (`managerPaused`, the 0.10.1 counters `whalesCount` / `specialsCount`, and the 0.10.2 `golden` offer) default to 0/false/null when absent — not required by `isValidSavePayload`, so they never force a SAVE_VER bump on their own. The 0.11.9 Renown fields (`renown`, `renownTotal`, `brand`) are part of SAVE_VER 10 itself — `MIGRATIONS[9]` defaults them, `sanitizeG` / `completeImportedG` fail close on malformed values, and `isValidSavePayload` still does not require them (migration fills them). The 0.11.12 Brand Endorsement level (`brandLevel`) is part of SAVE_VER 11 — `MIGRATIONS[10]` defaults it, same fail-closed shape. The 0.11.13 challenge tier fields (`challengeTier`, `challengeTiers`) are part of SAVE_VER 12 — `MIGRATIONS[11]` defaults them and backfills tier 1 from `challengesDone` (the repo convention: a new persisted field bumps, even when additive — PR 6/PR 1 review precedent). The 0.11.15 Vision accumulator (`lifetimeEarned`) is part of SAVE_VER 13 — `MIGRATIONS[12]` defaults it to 0 (no-clobber) and the ladder starts measuring from the migration (history cannot be reconstructed).
+Additive fields (`managerPaused`, the 0.10.1 counters `whalesCount` / `specialsCount`, and the 0.10.2 `golden` offer) default to 0/false/null when absent — not required by `isValidSavePayload`, so they never force a SAVE_VER bump on their own. The 0.11.9 Renown fields (`renown`, `renownTotal`, `brand`) are part of SAVE_VER 10 itself — `MIGRATIONS[9]` defaults them, `sanitizeG` / `completeImportedG` fail close on malformed values, and `isValidSavePayload` still does not require them (migration fills them). The 0.11.12 Brand Endorsement level (`brandLevel`) is part of SAVE_VER 11 — `MIGRATIONS[10]` defaults it, same fail-closed shape. The 0.11.13 challenge tier fields (`challengeTier`, `challengeTiers`) are part of SAVE_VER 12 — `MIGRATIONS[11]` defaults them and backfills tier 1 from `challengesDone` (the repo convention: a new persisted field bumps, even when additive — PR 6/PR 1 review precedent). The 0.11.15 Vision accumulator (`lifetimeEarned`) is part of SAVE_VER 13 — `MIGRATIONS[12]` defaults it to 0 (no-clobber) and the ladder starts measuring from the migration (history cannot be reconstructed). The 0.13.0 Personas & Talent fields (`roster`, per-club `persona`/`activeTalent`) are part of SAVE_VER 14 — `MIGRATIONS[13]` defaults and normalizes them.
 
 ### 13.2 Paths
 
@@ -676,6 +712,7 @@ If `setItem` throws (or any earlier step fails) → `saveState: 'import failed'`
 | 10 → 11 | Brand Endorsement: `brandLevel` defaulted to 0 when missing/malformed — no-clobber |
 | 11 → 12 | Challenge tiers: `challengeTier` / `challengeTiers` defaulted; tier 1 backfilled from `challengesDone` |
 | 12 → 13 | Vision ladder: `lifetimeEarned` defaulted to 0 when missing/malformed — no-clobber (history cannot be reconstructed; the ladder starts measuring from migration) |
+| 13 → 14 | Club Personas & Named Talent: `g.roster` defaulted to `[]` and filtered; per-club `persona` and `activeTalent` initialized and fail-closed |
 
 Future saveVer or missing step → wipe on load (localStorage path) or import failed (clipboard/file).
 

@@ -403,6 +403,101 @@ const AfterglowCatalogs = {
     { id: 'neon_pulse', name: 'Neon Pulse', bpm: 120, hypeBonus: 1.25, frenzySec: 6, reqDj: 1 },
     { id: 'acid_rain', name: 'Acid Rain', bpm: 128, hypeBonus: 1.35, frenzySec: 8, reqDj: 3 },
     { id: 'midnight_storm', name: 'Midnight Laser Storm', bpm: 140, hypeBonus: 1.50, frenzySec: 10, reqDj: 5 }
+  ],
+
+  // Club Personas & Named Talent Roster 2.0 (PR 6 of Afterglow 2.0)
+  PERSONAS: [
+    {
+      id: 'techno_bunker',
+      name: 'Techno Bunker',
+      tagline: 'Underground pulse, heavy bass, relentless hype.',
+      tags: ['techno', 'cyber', 'underground'],
+      color: '#22d3ee',
+      hypeMult: 1.30,
+      cashMult: 1.05,
+      barMult: 0.85,
+      heatMult: 1.10
+    },
+    {
+      id: 'velvet_lounge',
+      name: 'Velvet VIP Lounge',
+      tagline: 'Opulent suites, premium champagne, high-roller clientele.',
+      tags: ['vip', 'lounge', 'luxury'],
+      color: '#f472b6',
+      hypeMult: 0.80,
+      cashMult: 1.25,
+      barMult: 1.20,
+      heatMult: 0.90
+    },
+    {
+      id: 'cyber_speakeasy',
+      name: 'Cyber Speakeasy',
+      tagline: 'Secret entry, artisanal mixology, suppressed police radar.',
+      tags: ['speakeasy', 'mixology', 'stealth'],
+      color: '#ffc94a',
+      hypeMult: 0.95,
+      cashMult: 1.15,
+      barMult: 1.50,
+      heatMult: 0.50
+    }
+  ],
+
+  TALENT: [
+    {
+      id: 'nova_cyan',
+      name: 'Nova Cyan',
+      role: 'Stage Headliner',
+      rarity: 'rare',
+      tags: ['techno', 'cyber'],
+      trait: 'Overdrive Beat (+20% Stage Hype)',
+      bonusType: 'hype',
+      bonusVal: 0.20,
+      hireCost: 250
+    },
+    {
+      id: 'roxie_spark',
+      name: 'Roxie Spark',
+      role: 'Lead Mixologist',
+      rarity: 'rare',
+      tags: ['mixology', 'speakeasy'],
+      trait: 'Craft Infusion (+30% Bar Revenue)',
+      bonusType: 'bar',
+      bonusVal: 0.30,
+      hireCost: 200
+    },
+    {
+      id: 'blade_thorne',
+      name: 'Blade Thorne',
+      role: 'Chief of Security',
+      rarity: 'uncommon',
+      tags: ['stealth', 'underground'],
+      trait: 'Discreet Perimeter (-30% Heat Gain)',
+      bonusType: 'heat',
+      bonusVal: 0.30,
+      hireCost: 150
+    },
+    {
+      id: 'velvet_vixen',
+      name: 'Velvet Vixen',
+      role: 'VIP Concierge',
+      rarity: 'legendary',
+      tags: ['vip', 'luxury', 'lounge'],
+      trait: 'Whale Magnet (+35% Cash Flow)',
+      bonusType: 'cash',
+      bonusVal: 0.35,
+      hireCost: 500
+    },
+    {
+      id: 'dj_klaus',
+      name: 'DJ Klaus',
+      role: 'Resident DJ',
+      rarity: 'uncommon',
+      tags: ['techno', 'underground'],
+      trait: 'Bass Resonance (+15% Hype, +10% Cash)',
+      bonusType: 'hype_cash',
+      bonusVal: 0.15,
+      hireCost: 180
+    }
   ]
 };
 

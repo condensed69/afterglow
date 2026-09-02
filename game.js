@@ -35,12 +35,12 @@ function clubProxy(g) {
   });
 }
 
-const FLAT_RUN_FIELDS = Object.freeze(['cash', 'hype', 'buzz', 'patrons', 'regulars', 'heat', 'barStock', 'barTier', 'djTrack', '_frenzyT', '_beatCooldown', 'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown']);
-const STRAY_FIELDS = Object.freeze(['cash', 'hype', 'buzz', 'patrons', 'regulars', 'heat', 'barStock', 'barTier', 'djTrack', '_frenzyT', '_beatCooldown', 'b', 'u', 'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown']);
+const FLAT_RUN_FIELDS = Object.freeze(['cash', 'hype', 'buzz', 'patrons', 'regulars', 'heat', 'barStock', 'barTier', 'djTrack', '_frenzyT', '_beatCooldown', 'persona', 'activeTalent', 'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown']);
+const STRAY_FIELDS = Object.freeze(['cash', 'hype', 'buzz', 'patrons', 'regulars', 'heat', 'barStock', 'barTier', 'djTrack', '_frenzyT', '_beatCooldown', 'persona', 'activeTalent', 'b', 'u', 'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown']);
 
 class Game {
-  VERSION = { num: '0.12.4', build: 260, channel: 'alpha', date: '2026-09-02', codename: 'Station Subsystems' };
-  SAVE_VER = 13;
+  VERSION = { num: '0.13.0', build: 270, channel: 'alpha', date: '2026-09-02', codename: 'Personas & Talent' };
+  SAVE_VER = 14;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
   // A plain boolean is copied when the browser duplicates a tab, so a duplicate would
@@ -207,10 +207,29 @@ class Game {
     // same shape after the chain.
     12(g) {
       if (typeof g.lifetimeEarned !== 'number' || !Number.isFinite(g.lifetimeEarned) || g.lifetimeEarned < 0) g.lifetimeEarned = 0;
+    },
+    // v13 → v14: Club Personas & Named Talent Roster (PR 6 of Afterglow 2.0)
+    13(g) {
+      if (!Array.isArray(g.roster)) g.roster = [];
+      else {
+        g.roster = g.roster.filter(id => typeof id === 'string' && (typeof AfterglowCatalogs === 'undefined' || !AfterglowCatalogs.TALENT || AfterglowCatalogs.TALENT.some(t => t.id === id)));
+      }
+      if (!g.clubs || typeof g.clubs !== 'object') return;
+      for (const clubId of Object.keys(g.clubs)) {
+        const c = g.clubs[clubId];
+        if (!c || typeof c !== 'object') continue;
+        c.persona = (typeof c.persona === 'string' && typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.PERSONAS && AfterglowCatalogs.PERSONAS.some(p => p.id === c.persona)) ? c.persona : null;
+        c.activeTalent = (Array.isArray(c.activeTalent) && typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.TALENT)
+          ? c.activeTalent.filter(id => typeof id === 'string' && AfterglowCatalogs.TALENT.some(t => t.id === id)).slice(0, 2)
+          : [];
+      }
     }
   };
 
   CHANGELOG = [
+      { v: '0.13.0', date: '2026-09-02', codename: 'Personas & Talent', notes: [
+        'CLUB PERSONAS & NAMED TALENT ROSTER 2.0 (PR 6 of Afterglow 2.0): introduced 3 selectable Club Personas (Techno Bunker, Velvet VIP Lounge, Cyber Speakeasy) with distinct operational multipliers and synergy tags. Added Named Talent Cards roster with unique traits and compounding +50% persona tag synergies. Bumps SAVE_VER to 14 with backward-compatible migration in MIGRATIONS[13], pacing bit-identical.'
+      ] },
       { v: '0.12.4', date: '2026-09-02', codename: 'Station Subsystems', notes: [
         'STATION SUBSYSTEMS (MIXOLOGY BAR INVENTORY & DJ BEAT-SYNC) (PR 5 of Afterglow 2.0): introduced active station mechanics for bar and stage. Mixology inventory system (Well Spirits, Craft Cocktails, Top-Shelf Champagne) supplies bar stock to boost drink revenue by up to 1.60x when stocked. DJ Beat-Sync minigame allows triggering rhythmic Beat Sync Frenzies (+25% to +50% hype, +15% cash) during live play with synth audio pulse and floorboard particle bursts. SAVE_VER stays 13, pacing bit-identical.'
       ] },
@@ -1241,7 +1260,9 @@ class Game {
       // Lifetime gross cash earned (next-roadmap PR 4) — the Vision ladder's
       // input. Monotonic accumulator; survives every reset (prestige, challenge
       // start, franchise sale) — lifetime is the brand's cumulative footprint.
-      lifetimeEarned: 0
+      lifetimeEarned: 0,
+      // Club Personas & Named Talent Roster (PR 6 of Afterglow 2.0)
+      roster: []
     };
     this.applyStartPerks(g);
     return g;
@@ -1262,6 +1283,7 @@ class Game {
     return {
       cash: (this.props && this.props.startingCash) ?? 20, hype: 0, buzz: 0, patrons: 0, regulars: 0, heat: 0,
       barStock: 0, barTier: 0, djTrack: 0, _frenzyT: 0, _beatCooldown: 0,
+      persona: null, activeTalent: [],
       b, u, elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0,
       _specialShift: null, _whaleCooldown: 0
     };
@@ -1370,6 +1392,9 @@ class Game {
       if (c.heat > 100) c.heat = 100;
       c.barTier = Math.max(0, Math.min(2, Math.floor(c.barTier || 0)));
       c.djTrack = Math.max(0, Math.min(2, Math.floor(c.djTrack || 0)));
+      c.persona = (typeof c.persona === 'string' && typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.PERSONAS && AfterglowCatalogs.PERSONAS.some(p => p.id === c.persona)) ? c.persona : null;
+      if (!Array.isArray(c.activeTalent)) c.activeTalent = [];
+      else c.activeTalent = c.activeTalent.filter(id => typeof id === 'string' && typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.TALENT && AfterglowCatalogs.TALENT.some(t => t.id === id)).slice(0, 2);
       if (c.night < 1) c.night = 1;
       if (!c.b || typeof c.b !== 'object' || Array.isArray(c.b)) c.b = {};
       for (const def of this.BUILDINGS) {
@@ -1466,6 +1491,9 @@ class Game {
     // c.cash); the tiers compare against 1e7+, where a fraction of a cent is
     // noise, and flooring a hot-loop accumulator would just lose precision.
     if (typeof g.lifetimeEarned !== 'number' || !Number.isFinite(g.lifetimeEarned) || g.lifetimeEarned < 0) g.lifetimeEarned = 0;
+    // Club Personas & Named Talent Roster (PR 6 of Afterglow 2.0)
+    if (!Array.isArray(g.roster)) g.roster = [];
+    else g.roster = g.roster.filter(id => typeof id === 'string' && typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.TALENT && AfterglowCatalogs.TALENT.some(t => t.id === id));
     return g;
   }
 
@@ -1600,6 +1628,10 @@ class Game {
         if (c.shiftT < 0 || c.shiftT >= this.SHIFTS[c.shiftIdx].len) return false;
       }
       if (c.elapsed < 0 || c.night < 1) return false;
+      c.persona = (typeof c.persona === 'string' && typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.PERSONAS && AfterglowCatalogs.PERSONAS.some(p => p.id === c.persona)) ? c.persona : null;
+      c.activeTalent = (Array.isArray(c.activeTalent) && typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.TALENT)
+        ? c.activeTalent.filter(id => typeof id === 'string' && AfterglowCatalogs.TALENT.some(t => t.id === id)).slice(0, 2)
+        : [];
 
       // Rebuild from known IDs only — unknown keys (e.g. string-valued XSS bait under
       // c.b) must not survive into Object.values(c.b) / Structures or other paths.
@@ -1725,6 +1757,10 @@ class Game {
     // from MIGRATIONS[12] before this runs; the lenient fill is for hand-edited
     // current-version payloads, same class as the brandLevel handling above.
     if (typeof g.lifetimeEarned !== 'number' || !Number.isFinite(g.lifetimeEarned) || g.lifetimeEarned < 0) g.lifetimeEarned = 0;
+
+    // Club Personas & Named Talent Roster (PR 6 of Afterglow 2.0)
+    if (!Array.isArray(g.roster)) g.roster = [];
+    else g.roster = g.roster.filter(id => typeof id === 'string' && typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.TALENT && AfterglowCatalogs.TALENT.some(t => t.id === id));
 
     if (!Array.isArray(g.log)) g.log = [];
     // Keep raw validated t/msg (length-capped) so export→import is idempotent.
@@ -2318,6 +2354,37 @@ class Game {
       if (bev) barMult = bev.revMult;
     }
 
+    // Club Personas & Named Talent Roster 2.0 (PR 6)
+    let personaObj = null;
+    if (c.persona && typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.PERSONAS) {
+      personaObj = AfterglowCatalogs.PERSONAS.find(p => p.id === c.persona) || null;
+    }
+    const pTags = personaObj?.tags || [];
+
+    let talentHypeBonus = 0;
+    let talentCashBonus = 0;
+    let talentBarBonus = 0;
+    let talentHeatReduction = 0;
+
+    if (Array.isArray(c.activeTalent) && typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.TALENT) {
+      for (const tId of c.activeTalent) {
+        const t = AfterglowCatalogs.TALENT.find(x => x.id === tId);
+        if (!t) continue;
+        const hasSynergy = t.tags && t.tags.some(tag => pTags.includes(tag));
+        const synMult = hasSynergy ? 1.50 : 1.0;
+        if (t.bonusType === 'hype') talentHypeBonus += t.bonusVal * synMult;
+        else if (t.bonusType === 'cash') talentCashBonus += t.bonusVal * synMult;
+        else if (t.bonusType === 'bar') talentBarBonus += t.bonusVal * synMult;
+        else if (t.bonusType === 'heat') talentHeatReduction += t.bonusVal * synMult;
+        else if (t.bonusType === 'hype_cash') {
+          talentHypeBonus += t.bonusVal * synMult;
+          talentCashBonus += (t.bonusVal * 0.67) * synMult;
+        }
+      }
+    }
+
+    barMult = (barMult + talentBarBonus) * (personaObj ? personaObj.barMult : 1.0);
+
     const railCap = c.b.rail * 6;
     // Non-crew cash: door cover + tip rail + bar + VIP rooms + regulars loop.
     // 0.10.19: the door take scales with the crowd (cover = patrons × 0.02) instead
@@ -2329,14 +2396,15 @@ class Game {
     // rail (PLAN §1.6). House cut prestige perk multiplies all cash income.
     const houseCut = this.totalCashMult(g);
     const coverRate = g.r.cover ? 0.03 : 0.02;
-    let nonCrewCash = (c.patrons * coverRate + Math.min(c.patrons, railCap) * 0.06 + c.b.bar * 0.45 * barMult) * cashMult * houseCut;
-    nonCrewCash += c.b.vip * 1.25 * (g.r.concierge ? 1.5 : 1) * bottle * cashMult * houseCut;
+    const personaCashMult = (personaObj ? personaObj.cashMult : 1.0) * (1 + talentCashBonus);
+    let nonCrewCash = (c.patrons * coverRate + Math.min(c.patrons, railCap) * 0.06 + c.b.bar * 0.45 * barMult) * cashMult * houseCut * personaCashMult;
+    nonCrewCash += c.b.vip * 1.25 * (g.r.concierge ? 1.5 : 1) * bottle * cashMult * houseCut * personaCashMult;
     // Location extras (REPLAY_ROADMAP.md §9): per-location cash buildings.
-    nonCrewCash += ((c.b.pool || 0) * 0.60 + (c.b.roofbar || 0) * 0.90 + (c.b.heli || 0) * 1.50) * cashMult * houseCut;
-    if (g.r.loop) nonCrewCash += c.regulars * 0.04 * cashMult * houseCut;
+    nonCrewCash += ((c.b.pool || 0) * 0.60 + (c.b.roofbar || 0) * 0.90 + (c.b.heli || 0) * 1.50) * cashMult * houseCut * personaCashMult;
+    if (g.r.loop) nonCrewCash += c.regulars * 0.04 * cashMult * houseCut * personaCashMult;
 
     let wage = (g.crew - g.jobs.off) * 0.20 * (g.r.payroll ? 0.6 : 1) * (g.r.scheduling ? 0.75 : 1);
-    let vipCrewCash = g.jobs.vipjob * 1.35 * crewMult * bottle * cashMult * houseCut;
+    let vipCrewCash = g.jobs.vipjob * 1.35 * crewMult * bottle * cashMult * houseCut * personaCashMult;
     let stageHype = g.jobs.stage * 0.24 * crewMult;
     let floorBuzz = g.jobs.floor * 0.035 * crewMult;
 
@@ -2354,7 +2422,8 @@ class Game {
 
     const cash = nonCrewCash + vipCrewCash - wage;
 
-    const hypeGain = (c.b.dj * 0.10 + stageHype) * (c.u.led ? 1.3 : 1) * (c.u.vista ? 1.4 : 1) * frenzyHypeGain;
+    const personaHypeMult = (personaObj ? personaObj.hypeMult : 1.0) * (1 + talentHypeBonus);
+    const hypeGain = (c.b.dj * 0.10 + stageHype) * (c.u.led ? 1.3 : 1) * (c.u.vista ? 1.4 : 1) * frenzyHypeGain * personaHypeMult;
     const decay = c.hype * 0.014 * Math.max(0.25, 1 - c.b.door * 0.12);
     const hype = hypeGain - decay;
 
@@ -2377,12 +2446,15 @@ class Game {
     const regulars = c.patrons * 0.00045 * (1 + c.b.vip * 0.18) * sm * (g.r.playbook ? 1.25 : 1);
     const clout = c.regulars * 0.0011 * (1 + 0.25 * this.perk(g, 'clout25')) * (g.r.network ? 1.25 : 1);
 
-    // Police Heat Engine (PR 4)
+    // Police Heat Engine (PR 4) & Personas/Talent heat tuning (PR 6)
     const shiftHeatMap = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.HEAT) ? AfterglowCatalogs.HEAT.SHIFT_BASE : [0.02, 0.08, 0.05, 0.12];
     const baseHeat = shiftHeatMap[c.shiftIdx] ?? 0.05;
     const doorSec = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.HEAT) ? AfterglowCatalogs.HEAT.DOOR_SECURITY : 0.015;
     const securityScore = (c.b.door || 0) * doorSec;
-    const heatRate = Math.max(-0.04, baseHeat - securityScore);
+    const rawHeat = Math.max(-0.04, baseHeat - securityScore);
+    const heatRate = rawHeat > 0
+      ? rawHeat * Math.max(0.1, 1 - talentHeatReduction) * (personaObj ? personaObj.heatMult : 1.0)
+      : rawHeat;
 
     return { cash, hype, buzz, patrons, regulars, clout, wage, cap, shift, sm, pull, buzzSpent, strike, heatRate, heat: c.heat || 0 };
   }
@@ -3073,6 +3145,77 @@ class Game {
     this.forceUpdate();
   }
 
+  // Club Personas & Named Talent Roster 2.0 (PR 6)
+  setPersona(personaId) {
+    const g = this.state.g;
+    if (!g || this.state.tabStale) return;
+    const c = this.club(g);
+    if (personaId !== null) {
+      const p = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.PERSONAS) ? AfterglowCatalogs.PERSONAS.find(x => x.id === personaId) : null;
+      if (!p) return;
+    }
+    c.persona = personaId;
+    if (personaId && typeof AfterglowCatalogs !== 'undefined') {
+      const p = AfterglowCatalogs.PERSONAS.find(x => x.id === personaId);
+      if (p) this.push(g, 'Adopted ' + p.name + ' persona.', p.color || '#22d3ee');
+    } else {
+      this.push(g, 'Reset club persona to standard.', '#8f6f9c');
+    }
+    this.forceUpdate();
+  }
+
+  hireTalent(talentId) {
+    const g = this.state.g;
+    if (!g || this.state.tabStale) return;
+    const c = this.club(g);
+    if (!Array.isArray(g.roster)) g.roster = [];
+    if (g.roster.includes(talentId)) return;
+    const talent = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.TALENT) ? AfterglowCatalogs.TALENT.find(x => x.id === talentId) : null;
+    if (!talent || c.cash < talent.hireCost) return;
+    c.cash -= talent.hireCost;
+    this.sessionSpent += talent.hireCost;
+    g.roster.push(talentId);
+    if (!Array.isArray(c.activeTalent)) c.activeTalent = [];
+    if (c.activeTalent.length < 2 && !c.activeTalent.includes(talentId)) {
+      c.activeTalent.push(talentId);
+    }
+    this.push(g, 'Signed ' + talent.name + ' (' + talent.role + ') to roster!', '#e879f9');
+    this.forceUpdate();
+  }
+
+  assignTalent(talentId) {
+    const g = this.state.g;
+    if (!g || this.state.tabStale) return;
+    const c = this.club(g);
+    if (!Array.isArray(g.roster) || !g.roster.includes(talentId)) return;
+    if (!Array.isArray(c.activeTalent)) c.activeTalent = [];
+    if (c.activeTalent.includes(talentId)) return;
+    if (c.activeTalent.length >= 2) {
+      this.push(g, 'Active talent full (max 2) — unassign a performer first.', '#ff7aa8');
+      this.forceUpdate();
+      return;
+    }
+    // If assigned to another club, transfer them to this club
+    for (const cid of Object.keys(g.clubs || {})) {
+      if (cid === g.activeClub) continue;
+      const other = g.clubs[cid];
+      if (other && Array.isArray(other.activeTalent) && other.activeTalent.includes(talentId)) {
+        other.activeTalent = other.activeTalent.filter(id => id !== talentId);
+      }
+    }
+    c.activeTalent.push(talentId);
+    this.forceUpdate();
+  }
+
+  unassignTalent(talentId) {
+    const g = this.state.g;
+    if (!g || this.state.tabStale) return;
+    const c = this.club(g);
+    if (!Array.isArray(c.activeTalent)) return;
+    c.activeTalent = c.activeTalent.filter(id => id !== talentId);
+    this.forceUpdate();
+  }
+
   confirmPrestige() {
     // Candidate → setItem must succeed → live replace (fail-closed).
     if (this.state.tabStale) return;
@@ -3097,7 +3240,8 @@ class Game {
       renown: (g.renown || 0),
       renownTotal: (g.renownTotal || 0),
       challengeTiers: {},
-      lifetimeEarned: this.lifetimeEarned(g)
+      lifetimeEarned: this.lifetimeEarned(g),
+      roster: Array.isArray(g.roster) ? g.roster.slice() : []
     };
     for (const def of this.PRESTIGE_PERKS) snapshot.perks[def.id] = this.perk(g, def.id);
     for (const def of this.MANAGERS) snapshot.managers[def.id] = g.managers && g.managers[def.id] === true;
@@ -3114,23 +3258,12 @@ class Game {
     // its club — prestige resets run state, it does not delete rooms.
     for (const id of Object.keys(g.clubs)) {
       if (id === 'main') continue;
-      const b2 = {}, u2 = {};
-      this.BUILDINGS.forEach(x => b2[x.id] = 0);
-      this.UPGRADES.forEach(x => u2[x.id] = false);
-      // Location extras (REPLAY_ROADMAP.md §9) survive prestige reset, zeroed.
-      for (const x of this.locationExtras(id)) {
-        if (x.kind === 'b') b2[x.id] = 0;
-        else u2[x.id] = false;
-      }
-      next.clubs[id] = {
-        cash: (this.props && this.props.startingCash) ?? 20, hype: 0, buzz: 0, patrons: 0, regulars: 0,
-        b: b2, u: u2, elapsed: 0, night: 1, shiftIdx: 0, shiftT: 0,
-        _specialShift: null, _whaleCooldown: 0
-      };
+      next.clubs[id] = this.freshClubState(id);
     }
     if (typeof g.activeClub === 'string' && Object.prototype.hasOwnProperty.call(next.clubs, g.activeClub)) {
       next.activeClub = g.activeClub;
     }
+    next.roster = snapshot.roster;
     next.legacy = snapshot.legacy + gain;
     next.legacyTotal = snapshot.legacyTotal + gain;
     next.perks = snapshot.perks;
@@ -4034,6 +4167,35 @@ class Game {
       beatCooldown: Math.ceil(c._beatCooldown || 0),
       canBeatSync: (c._beatCooldown || 0) <= 0 && (c.b.dj || 0) > 0 && !this.state.tabStale,
       djBeatSync: (e) => this.djBeatSync(e),
+
+      // Club Personas & Named Talent Roster 2.0 (PR 6)
+      persona: c.persona || null,
+      personas: (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.PERSONAS) ? AfterglowCatalogs.PERSONAS.map(p => ({
+        ...p,
+        active: c.persona === p.id,
+        select: () => this.setPersona(c.persona === p.id ? null : p.id)
+      })) : [],
+      curPersona: (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.PERSONAS && c.persona)
+        ? (AfterglowCatalogs.PERSONAS.find(x => x.id === c.persona) || null)
+        : null,
+      roster: g.roster || [],
+      activeTalent: c.activeTalent || [],
+      talentList: (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.TALENT) ? AfterglowCatalogs.TALENT.map(t => {
+        const owned = (g.roster || []).includes(t.id);
+        const assigned = (c.activeTalent || []).includes(t.id);
+        const curP = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.PERSONAS && c.persona) ? AfterglowCatalogs.PERSONAS.find(x => x.id === c.persona) : null;
+        const hasSynergy = curP && t.tags && t.tags.some(tag => curP.tags.includes(tag));
+        return {
+          ...t,
+          owned,
+          assigned,
+          hasSynergy,
+          canHire: !owned && c.cash >= t.hireCost && !this.state.tabStale,
+          hire: () => this.hireTalent(t.id),
+          toggleAssign: () => assigned ? this.unassignTalent(t.id) : this.assignTalent(t.id)
+        };
+      }) : [],
+
       soundEnabled: Boolean(this.audio && this.audio.enabled),
       toggleSound: () => {
         if (this.audio) {
@@ -4805,6 +4967,46 @@ class Game {
         <div id="job-rows" style="display:flex;flex-direction:column;gap:7px">${jobRows}</div>
       </div>` : '<div id="assignments-wrap"></div>';
 
+    const personasAndTalent = (this.state.tab === 'crew' || this.state.tab === 'club') ? `
+      <div id="personas-talent-wrap" style="margin-top:14px;border-top:1px solid #221434;padding-top:12px;display:flex;flex-direction:column;gap:12px">
+        <div>
+          <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700;margin-bottom:8px">Club Persona</div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px">
+            ${v.personas.map(p => `
+              <button data-h="${this.bind(p.select)}" class="hv-pink persona-btn" data-persona-id="${p.id}" style="flex:1 1 120px;display:flex;flex-direction:column;gap:4px;padding:8px 10px;border-radius:7px;border:1px solid ${p.active ? p.color : '#2a1738'};background:${p.active ? '#180f24' : '#0c0714'};cursor:pointer;text-align:left">
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                  <span style="font-size:11px;font-weight:700;color:${p.color}">${p.name}</span>
+                  ${p.active ? `<span style="font-size:9px;color:${p.color};font-weight:700">ACTIVE</span>` : ''}
+                </div>
+                <div style="font-size:9.5px;color:#9c86ab;line-height:1.3">${p.tagline}</div>
+                <div style="font-size:9px;color:#8f6f9c;font-family:'IBM Plex Mono',monospace">${p.tags.join(' · ')}</div>
+              </button>`).join('')}
+          </div>
+        </div>
+        <div>
+          <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700;margin-bottom:8px">Named Talent Roster</div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            ${v.talentList.map(t => `
+              <div class="talent-card" data-talent-id="${t.id}" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;border-radius:7px;border:1px solid ${t.assigned ? '#22d3ee' : (t.owned ? '#2a1738' : '#1a0f26')};background:${t.assigned ? '#101726' : (t.owned ? '#0f0a18' : '#090510')}">
+                <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <span style="font-size:11.5px;font-weight:700;color:${t.rarity === 'legendary' ? '#ffd700' : (t.rarity === 'rare' ? '#e879f9' : '#22d3ee')}">${t.name}</span>
+                    <span style="font-size:9.5px;color:#8f6f9c;text-transform:uppercase">${t.role}</span>
+                    ${t.hasSynergy ? `<span style="font-size:8.5px;padding:1px 4px;border-radius:3px;background:rgba(232,121,249,.2);border:1px solid #e879f9;color:#e879f9;font-weight:700">SYN +50%</span>` : ''}
+                  </div>
+                  <div style="font-size:10px;color:#b9a5c9">${t.trait}</div>
+                  <div style="font-size:9px;color:#8f6f9c;font-family:'IBM Plex Mono',monospace">${t.tags.join(' · ')}</div>
+                </div>
+                <div style="flex-shrink:0">
+                  ${t.owned
+                    ? `<button data-h="${this.bind(t.toggleAssign)}" class="hv-cyan talent-assign-btn" style="padding:6px 10px;border-radius:6px;border:1px solid ${t.assigned ? '#22d3ee' : '#3a2350'};background:${t.assigned ? '#162238' : '#170e22'};color:${t.assigned ? '#22d3ee' : '#e7d8f2'};font-size:10px;font-weight:700;cursor:pointer">${t.assigned ? 'Active' : 'Assign'}</button>`
+                    : `<button data-h="${this.bind(t.hire)}" ${!t.canHire ? 'disabled' : ''} class="hv-pink talent-hire-btn" style="padding:6px 10px;border-radius:6px;border:1px solid ${t.canHire ? '#e879f9' : '#2a1738'};background:${t.canHire ? '#200f2e' : '#120a1a'};color:${t.canHire ? '#e879f9' : '#8f6f9c'};font-size:10px;font-weight:700;cursor:${t.canHire ? 'pointer' : 'not-allowed'}">Sign $${t.hireCost}</button>`}
+                </div>
+              </div>`).join('')}
+          </div>
+        </div>
+      </div>` : '<div id="personas-talent-wrap"></div>';
+
     const allModals = this.renderModals(v);
 
     return `
@@ -5035,7 +5237,7 @@ class Game {
 
         <div id="cards-container" style="display:flex;flex-direction:column;gap:8px">${cardRows}</div>
 
-        <div id="sys-assignments-container">${assignments}</div>
+        <div id="sys-assignments-container">${assignments}${personasAndTalent}</div>
       </div>
     </aside>
   </main>
@@ -5427,31 +5629,75 @@ class Game {
     }
     const sac = this.dom('#sys-assignments-container');
     if (sac) {
-      if (v.crewOpen) {
+      const showAssignments = v.crewOpen;
+      const showPersonasTalent = (this.state.tab === 'crew' || this.state.tab === 'club');
+      if (showAssignments || showPersonasTalent) {
         const jobRows = v.jobs.map(j => j.passive ? `
-          <div style="display:flex;align-items:center;gap:9px;border:1px solid #1a1228;border-radius:7px;background:#0c0814;padding:8px 9px;opacity:0.88">
+          <div class="job-row" data-job-id="${this.escapeHtml(j.name)}" style="display:flex;align-items:center;gap:9px;border:1px solid #1a1228;border-radius:7px;background:#0c0814;padding:8px 9px;opacity:0.88">
             <div style="flex:1;min-width:0">
               <div style="font-size:12px;font-weight:700;color:#9c86ab">${j.name}</div>
               <div style="font-size:10px;color:#9c86ab">${j.desc}</div>
             </div>
-            <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#8f6f9c;min-width:20px;text-align:center;font-weight:600">${j.n}</span>
+            <span class="job-n" style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#8f6f9c;min-width:20px;text-align:center;font-weight:600">${j.n}</span>
           </div>` : `
-          <div style="display:flex;align-items:center;gap:9px;border:1px solid #221434;border-radius:7px;background:#0f0a18;padding:8px 9px">
+          <div class="job-row" data-job-id="${this.escapeHtml(j.name)}" style="display:flex;align-items:center;gap:9px;border:1px solid #221434;border-radius:7px;background:#0f0a18;padding:8px 9px">
             <div style="flex:1;min-width:0">
               <div style="font-size:12px;font-weight:700;color:#e7d8f2">${j.name}</div>
               <div style="font-size:10px;color:#8f6f9c">${j.desc}</div>
             </div>
             ${j.locked
-              ? `<span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#8f6f9c;font-weight:600;text-align:right">requires ${j.unlockName}</span>`
-              : `<button data-h="${this.bind(j.dec)}" ${j.decLocked ? 'disabled' : ''} aria-label="${this.escapeHtml(j.decLocked ? 'No crew assigned here' : j.decLabel)}" title="${this.escapeHtml(j.decLocked ? 'No crew assigned here' : j.decLabel)}" style="${css(j.stepStyle(j.decLocked))}">−</button>
-            <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#ffc94a;min-width:48px;text-align:center;font-weight:600">${j.n}</span>
-            <button data-h="${this.bind(j.inc)}" ${j.incLocked ? 'disabled' : ''} aria-label="${this.escapeHtml(j.incLocked ? 'No free crew available' : j.incLabel)}" title="${this.escapeHtml(j.incLocked ? 'No free crew available' : j.incLabel)}" style="${css(j.stepStyle(j.incLocked))}">+</button>`}
+              ? `<span class="job-req" style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#8f6f9c;font-weight:600;text-align:right">requires ${j.unlockName}</span>`
+              : `<button data-h="${this.bind(j.dec)}" class="job-dec-btn" ${j.decLocked ? 'disabled' : ''} aria-label="${this.escapeHtml(j.decLocked ? 'No crew assigned here' : j.decLabel)}" title="${this.escapeHtml(j.decLocked ? 'No crew assigned here' : j.decLabel)}" style="${css(j.stepStyle(j.decLocked))}">−</button>
+            <span class="job-n" style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#ffc94a;min-width:48px;text-align:center;font-weight:600">${j.n}</span>
+            <button data-h="${this.bind(j.inc)}" class="job-inc-btn" ${j.incLocked ? 'disabled' : ''} aria-label="${this.escapeHtml(j.incLocked ? 'No free crew available' : j.incLabel)}" title="${this.escapeHtml(j.incLocked ? 'No free crew available' : j.incLabel)}" style="${css(j.stepStyle(j.incLocked))}">+</button>`}
           </div>`).join('');
-        sac.innerHTML = `
-          <div style="margin-top:14px;border-top:1px solid #221434;padding-top:12px">
+        const assignHtml = showAssignments ? `
+          <div id="assignments-wrap" style="margin-top:14px;border-top:1px solid #221434;padding-top:12px">
             <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700;margin-bottom:9px">Assignments</div>
-            <div style="display:flex;flex-direction:column;gap:7px">${jobRows}</div>
-          </div>`;
+            <div id="job-rows" style="display:flex;flex-direction:column;gap:7px">${jobRows}</div>
+          </div>` : '<div id="assignments-wrap"></div>';
+
+        const ptHtml = showPersonasTalent ? `
+          <div id="personas-talent-wrap" style="margin-top:14px;border-top:1px solid #221434;padding-top:12px;display:flex;flex-direction:column;gap:12px">
+            <div>
+              <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700;margin-bottom:8px">Club Persona</div>
+              <div style="display:flex;flex-wrap:wrap;gap:8px">
+                ${v.personas.map(p => `
+                  <button data-h="${this.bind(p.select)}" class="hv-pink persona-btn" data-persona-id="${p.id}" style="flex:1 1 120px;display:flex;flex-direction:column;gap:4px;padding:8px 10px;border-radius:7px;border:1px solid ${p.active ? p.color : '#2a1738'};background:${p.active ? '#180f24' : '#0c0714'};cursor:pointer;text-align:left">
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                      <span style="font-size:11px;font-weight:700;color:${p.color}">${p.name}</span>
+                      ${p.active ? `<span style="font-size:9px;color:${p.color};font-weight:700">ACTIVE</span>` : ''}
+                    </div>
+                    <div style="font-size:9.5px;color:#9c86ab;line-height:1.3">${p.tagline}</div>
+                    <div style="font-size:9px;color:#8f6f9c;font-family:'IBM Plex Mono',monospace">${p.tags.join(' · ')}</div>
+                  </button>`).join('')}
+              </div>
+            </div>
+            <div>
+              <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700;margin-bottom:8px">Named Talent Roster</div>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                ${v.talentList.map(t => `
+                  <div class="talent-card" data-talent-id="${t.id}" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;border-radius:7px;border:1px solid ${t.assigned ? '#22d3ee' : (t.owned ? '#2a1738' : '#1a0f26')};background:${t.assigned ? '#101726' : (t.owned ? '#0f0a18' : '#090510')}">
+                    <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                      <div style="display:flex;align-items:center;gap:6px">
+                        <span style="font-size:11.5px;font-weight:700;color:${t.rarity === 'legendary' ? '#ffd700' : (t.rarity === 'rare' ? '#e879f9' : '#22d3ee')}">${t.name}</span>
+                        <span style="font-size:9.5px;color:#8f6f9c;text-transform:uppercase">${t.role}</span>
+                        ${t.hasSynergy ? `<span style="font-size:8.5px;padding:1px 4px;border-radius:3px;background:rgba(232,121,249,.2);border:1px solid #e879f9;color:#e879f9;font-weight:700">SYN +50%</span>` : ''}
+                      </div>
+                      <div style="font-size:10px;color:#b9a5c9">${t.trait}</div>
+                      <div style="font-size:9px;color:#8f6f9c;font-family:'IBM Plex Mono',monospace">${t.tags.join(' · ')}</div>
+                    </div>
+                    <div style="flex-shrink:0">
+                      ${t.owned
+                        ? `<button data-h="${this.bind(t.toggleAssign)}" class="hv-cyan talent-assign-btn" style="padding:6px 10px;border-radius:6px;border:1px solid ${t.assigned ? '#22d3ee' : '#3a2350'};background:${t.assigned ? '#162238' : '#170e22'};color:${t.assigned ? '#22d3ee' : '#e7d8f2'};font-size:10px;font-weight:700;cursor:pointer">${t.assigned ? 'Active' : 'Assign'}</button>`
+                        : `<button data-h="${this.bind(t.hire)}" ${!t.canHire ? 'disabled' : ''} class="hv-pink talent-hire-btn" style="padding:6px 10px;border-radius:6px;border:1px solid ${t.canHire ? '#e879f9' : '#2a1738'};background:${t.canHire ? '#200f2e' : '#120a1a'};color:${t.canHire ? '#e879f9' : '#8f6f9c'};font-size:10px;font-weight:700;cursor:${t.canHire ? 'pointer' : 'not-allowed'}">Sign $${t.hireCost}</button>`}
+                    </div>
+                  </div>`).join('')}
+              </div>
+            </div>
+          </div>` : '<div id="personas-talent-wrap"></div>';
+
+        sac.innerHTML = assignHtml + ptHtml;
       } else if (sac.innerHTML !== '') {
         sac.innerHTML = '';
       }

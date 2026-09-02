@@ -69,6 +69,8 @@ On confirm of Franchise offer:
 |---------------|----------------|
 | `cash` | starting cash (`props.startingCash`, default 20), then apply start perks (see §5) — **per club** |
 | `hype`, `buzz`, `patrons`, `regulars`, `clout` | 0 — **per club** for the club fields (`clout` is account-level) |
+| `heat`, `barStock`, `barTier`, `djTrack`, `_frenzyT`, `_beatCooldown` | reset to defaults — **per club** (0.12.3/0.12.4) |
+| `persona`, `activeTalent` | `null` / `[]` — reset to unassigned — **per club** (0.13.0) |
 | `b` (buildings) | all 0, then apply start perks (e.g. free Flyer Crew) — **per club** |
 | `u` (upgrades) | all false — **per club** |
 | `r` (research) | all false (account-level) |
@@ -89,6 +91,7 @@ On confirm of Franchise offer:
 | `legacyTotal` | += newly earned this reset (never decreases) |
 | `perks` | unchanged (purchases permanent until a future redesign) |
 | `prestiges` | += 1 |
+| `roster` | unchanged — global talent signings survive ordinary prestige (0.13.0) |
 | `lifetimeEarned` | unchanged — the Vision ladder's accumulator is the brand's cumulative footprint, not run state (0.11.15) |
 | Save-format / version fields | as always on write (`saveVer`, `ver`, `build`) |
 
@@ -458,8 +461,9 @@ On the confirmed sale — the confirm is **two-click armed** (`state.franchiseAr
 
 | Field / group | After sale |
 |---------------|------------|
-| `g.clubs` | `{ main: freshClubState() }` — the annex re-locks; only `main` remains |
+| `g.clubs` | `{ main: freshClubState() }` — the annex re-locks; only `main` remains; per-club `persona`/`activeTalent` wipe |
 | `g.activeClub` | `'main'` |
+| `g.roster` | `[]` — hired talent wiped on franchise sale |
 | `g.legacy` / `g.legacyTotal` | `0` / `0` |
 | `g.perks` / `g.prestiges` | `{}` / `0` |
 | `g.clout` | `0` |
