@@ -91,7 +91,7 @@ function normalizePacks(g) {
 }
 
 class Game {
-  VERSION = { num: '0.15.0', build: 290, channel: 'alpha', date: '2026-09-02', codename: 'Content Packs & Miami Vice' };
+  VERSION = { num: '0.15.1', build: 291, channel: 'alpha', date: '2026-09-02', codename: 'Fluid Widescreen Layout' };
   SAVE_VER = 16;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -292,6 +292,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.15.1', date: '2026-09-02', codename: 'Fluid Widescreen Layout', notes: [
+        'FLUID WIDESCREEN LAYOUT & SIDEGUTTER ELIMINATION: replaced the hard-capped 1460px `.shell-grid` box (which wasted 460px+ of dead side gutters on every desktop monitor) with a full-viewport 3-column grid `minmax(260px, 320px) minmax(440px, 1fr) minmax(360px, 480px)` + `padding-inline: 18px` matching header/ticker. Added `min-width: 2160px` ultrawide media-query guard that re-caps at 2200px to keep text readable on 3440/4K. Floorboard canvas now scales crowd-particle spread and spotlight beam separation with canvas width instead of clustering in a 720px zone. Right-panel `×0` Max button now renders `Max (0)` with disabled styling when no units are affordable. Ticker bar gains a 4px left pad so the initial letter no longer clips the overflow bounds. Header Police Heat meter adds a subtle pink glow above 50% so players anchored to the center action bar notice an impending raid. SAVE_VER stays 16 (no save migration needed), pacing bit-identical.'
+      ] },
       { v: '0.15.0', date: '2026-09-02', codename: 'Content Packs & Miami Vice', notes: [
         'PLUGGABLE CONTENT PACK ENGINE & SEASON 1: MIAMI VICE \'86 (PR 8 of Afterglow 2.0): introduced pluggable modular content pack engine (src/core/packs.js) with runtime pack registry, customizable theme aesthetics, and 30-tier seasonal progression track. Ships Season 1: Miami Vice \'86 (src/catalogs/packs/season1-miami.js) featuring South Beach Dayclub venue, synthwave tracks, and the permanent Golden Flamingo Relic (+15% VIP cash flow, +10% prestige Legacy yield) carrying across all timelines. Bumps SAVE_VER to 16 with fail-closed migration in MIGRATIONS[15], pacing bit-identical.'
       ] },
@@ -4122,7 +4125,10 @@ class Game {
             x1: { act: () => this.buyBuilding(d, 1), locked: !ok, style: btn(ok, '#ff2d78') },
             x5: { act: () => this.buyBuilding(d, 5), locked: !can5, label: '×5', style: btn(can5, '#ff2d78') },
             x10: { act: () => this.buyBuilding(d, 10), locked: !can10, label: '×10', style: btn(can10, '#ff2d78') },
-            max: { act: () => this.buyBuildingMax(d), locked: !canMax, label: '×' + affordable, style: btn(canMax, '#ff2d78') }
+            // When affordable is 0 the player cannot buy anything — render
+            // "Max (0)" with disabled styling instead of the unhelpful ×0,
+            // which reads like a broken multiplier rather than a real state.
+            max: { act: () => this.buyBuildingMax(d), locked: true, label: affordable > 0 ? ('×' + affordable) : 'Max (0)', style: btn(canMax, '#ff2d78') }
           }
         };
       });
@@ -4530,6 +4536,10 @@ class Game {
       heatVal: Number((c.heat || 0).toFixed(1)),
       heatRate: (r.heatRate > 0 ? '+' : '') + r.heatRate.toFixed(2) + '/s',
       heatColor: (c.heat || 0) >= 70 ? '#ff2d78' : ((c.heat || 0) >= 40 ? '#ffc94a' : '#4ade80'),
+      // Warning glow on the Heat meter when police attention is high (>50%),
+      // so players anchored to the center action bar notice an impending raid
+      // without scanning the header edge.
+      heatWarning: (c.heat || 0) > 50,
       bribeCost: this.bribeCost(g),
       canBribe: c.cash >= this.bribeCost(g) && (c.heat || 0) > 0 && !this.state.tabStale,
       bribePolice: () => this.bribePolice(),
@@ -5546,7 +5556,7 @@ class Game {
           <span id="header-shift-mult" style="color:#ffc94a">${v.shiftMultLabel}</span>
         </div>
       </div>
-      <button id="header-heat-meter" data-h="${this.bind(v.bribePolice)}" class="hv-pink" aria-label="Police Heat ${v.heat}% - Tap to bribe Chief" title="Police Heat: ${v.heat}% (${v.heatRate}) — tap to bribe Chief ($${v.bribeCost})" style="display:flex;align-items:center;gap:5px;height:34px;padding:0 8px;border:1px solid #2f1c42;border-radius:6px;background:#100a19;cursor:pointer">
+      <button id="header-heat-meter" data-h="${this.bind(v.bribePolice)}" class="hv-pink" aria-label="Police Heat ${v.heat}% - Tap to bribe Chief" title="Police Heat: ${v.heat}% (${v.heatRate}) — tap to bribe Chief ($${v.bribeCost})" style="display:flex;align-items:center;gap:5px;height:34px;padding:0 8px;border:1px solid #2f1c42;border-radius:6px;background:#100a19;cursor:pointer;${v.heatWarning ? 'box-shadow:0 0 10px rgba(255,45,120,.55),inset 0 0 8px rgba(255,45,120,.25)' : ''}">
         <span style="font-size:12px">🚨</span>
         <span id="header-heat-val" style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:${v.heatColor};font-weight:700">${v.heat}%</span>
       </button>
@@ -5557,7 +5567,7 @@ class Game {
 
   <div class="ticker-bar" style="display:flex;align-items:center;gap:9px;padding:3px 18px;background:#0d0814;border-bottom:1px solid #2a1738;overflow:hidden;white-space:nowrap">
     <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:2px;color:#ff2d78;font-weight:700;flex-shrink:0">TODAY</span>
-    <span class="ticker-text" style="font-size:11px;color:#9c86ab;text-overflow:ellipsis;overflow:hidden">${v.ticker}</span>
+    <span class="ticker-text" style="font-size:11px;color:#9c86ab;text-overflow:ellipsis;overflow:hidden;padding-left:4px">${v.ticker}</span>
   </div>
 
   <div id="challenge-chip-wrap">

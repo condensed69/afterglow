@@ -103,9 +103,14 @@
 
     _initParticles() {
       const targetCount = Math.min(this.maxParticles, Math.max(6, Math.floor(this.patrons * 1.5) + this.regulars));
+      // Spread particles across the full floor width rather than clustering
+      // them in a fixed 720px zone. On a fluid widescreen stage the canvas can
+      // stretch to 1fr of the remaining viewport, so horizontal bounds must
+      // scale with the actual canvas width.
+      const spreadX = Math.max(this.width || 400, 400);
       while (this.particles.length < targetCount) {
         this.particles.push({
-          x: Math.random() * (this.width || 400),
+          x: Math.random() * spreadX,
           y: (this.height * 0.55) + Math.random() * (this.height * 0.4),
           vx: (Math.random() - 0.5) * 0.6,
           vy: (Math.random() - 0.5) * 0.3,
@@ -223,6 +228,10 @@
     _drawBeams(ctx, w, h) {
       const horizon = h * 0.48;
       const centerX = w * 0.5;
+      // Beam separation scales with canvas width so the two sweeping
+      // spotlights stay proportionally spaced on a fluid widescreen stage
+      // instead of collapsing into a fixed 60px offset from center.
+      const beamOffset = w * 0.08;
       const speed = 0.8 + this.hype * 1.2;
       const angleL = Math.sin(this.time * speed) * 0.35 - 0.2;
       const angleR = Math.cos(this.time * speed * 0.9) * 0.35 + 0.2;
@@ -232,26 +241,26 @@
       ctx.globalCompositeOperation = 'screen';
 
       // Left Sweeping Beam
-      const gradL = ctx.createLinearGradient(centerX - 60, horizon, centerX - 60 + Math.tan(angleL) * h, h);
+      const gradL = ctx.createLinearGradient(centerX - beamOffset, horizon, centerX - beamOffset + Math.tan(angleL) * h, h);
       gradL.addColorStop(0, `rgba(255, 45, 120, ${beamAlpha})`);
       gradL.addColorStop(1, 'rgba(255, 45, 120, 0)');
       ctx.fillStyle = gradL;
       ctx.beginPath();
-      ctx.moveTo(centerX - 60, horizon);
-      ctx.lineTo(centerX - 90 + Math.tan(angleL) * h, h);
-      ctx.lineTo(centerX - 30 + Math.tan(angleL) * h, h);
+      ctx.moveTo(centerX - beamOffset, horizon);
+      ctx.lineTo(centerX - beamOffset * 1.5 + Math.tan(angleL) * h, h);
+      ctx.lineTo(centerX - beamOffset * 0.5 + Math.tan(angleL) * h, h);
       ctx.closePath();
       ctx.fill();
 
       // Right Sweeping Beam
-      const gradR = ctx.createLinearGradient(centerX + 60, horizon, centerX + 60 + Math.tan(angleR) * h, h);
+      const gradR = ctx.createLinearGradient(centerX + beamOffset, horizon, centerX + beamOffset + Math.tan(angleR) * h, h);
       gradR.addColorStop(0, `rgba(34, 211, 238, ${beamAlpha})`);
       gradR.addColorStop(1, 'rgba(34, 211, 238, 0)');
       ctx.fillStyle = gradR;
       ctx.beginPath();
-      ctx.moveTo(centerX + 60, horizon);
-      ctx.lineTo(centerX + 30 + Math.tan(angleR) * h, h);
-      ctx.lineTo(centerX + 90 + Math.tan(angleR) * h, h);
+      ctx.moveTo(centerX + beamOffset, horizon);
+      ctx.lineTo(centerX + beamOffset * 0.5 + Math.tan(angleR) * h, h);
+      ctx.lineTo(centerX + beamOffset * 1.5 + Math.tan(angleR) * h, h);
       ctx.closePath();
       ctx.fill();
 
