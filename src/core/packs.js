@@ -107,7 +107,7 @@
      * @returns {Object|null} { tier, xp, leveledUp }
      */
     addXp(g, packId, amount) {
-      if (!g || typeof amount !== 'number' || amount <= 0) return null;
+      if (!g || typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) return null;
       const targetId = packId || this.activePackId;
       const pack = this.get(targetId);
       if (!pack || !pack.progression || !Array.isArray(pack.progression.tiers)) return null;
@@ -164,9 +164,13 @@
         return { ok: false, error: 'Pack or progression not found' };
       }
 
-      const prog = (g.packs && g.packs.progress && g.packs.progress[targetId])
-        ? g.packs.progress[targetId]
-        : { tier: 0, xp: 0, claimed: {} };
+      if (!g.packs || typeof g.packs !== 'object') g.packs = { active: targetId, progress: {} };
+      if (!g.packs.progress || typeof g.packs.progress !== 'object') g.packs.progress = {};
+      if (!g.packs.progress[targetId] || typeof g.packs.progress[targetId] !== 'object') {
+        g.packs.progress[targetId] = { tier: 0, xp: 0, claimed: {} };
+      }
+      const prog = g.packs.progress[targetId];
+      if (!prog.claimed || typeof prog.claimed !== 'object') prog.claimed = {};
 
       if (prog.tier < tierNum) {
         return { ok: false, error: 'Tier not yet reached' };

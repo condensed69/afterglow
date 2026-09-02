@@ -7899,6 +7899,19 @@ test('PR 8: Data-driven getRelicMultipliers dynamically checks catalog definitio
   strictEqual(baseMults.legacyMult, 1.0, 'base legacyMult is 1.0');
 });
 
+test('PR 8: addXp rejects non-finite XP amounts (Infinity, NaN, negative, zero)', () => {
+  const game = newGame(500);
+  const g = game.state.g;
+
+  strictEqual(PacksPkg.addXp(g, 'season1-miami', Infinity), null, 'Infinity XP rejected');
+  strictEqual(PacksPkg.addXp(g, 'season1-miami', NaN), null, 'NaN XP rejected');
+  strictEqual(PacksPkg.addXp(g, 'season1-miami', -50), null, 'Negative XP rejected');
+  strictEqual(PacksPkg.addXp(g, 'season1-miami', 0), null, 'Zero XP rejected');
+  strictEqual(PacksPkg.addXp(g, 'season1-miami', '100'), null, 'String XP rejected');
+  strictEqual(g.packs.progress['season1-miami'].tier, 0, 'Tier stays 0');
+  strictEqual(g.packs.progress['season1-miami'].xp, 0, 'XP stays 0');
+});
+
 if (pendingTests.length > 0) await Promise.all(pendingTests);
 
 console.log(`Results: ${passed} passed, ${skipped} skipped, ${failed} failed`);

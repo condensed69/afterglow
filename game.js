@@ -2506,8 +2506,21 @@ class Game {
     const dlVipMult = (hasVipShuttles && (activeLoc === 'main' || activeLoc === 'rooftop')) ? 1.20 : 1.0;
     const dlDjHypeMult = (hasTouringDjs && (activeLoc === 'main' || activeLoc === 'annex')) ? 1.25 : 1.0;
 
-    // Permanent Relics (PR 8 of Afterglow 2.0: Golden Flamingo Relic)
-    const relicVipMult = (g.relics && g.relics.golden_flamingo === true) ? 1.15 : 1.0;
+    // Permanent Relics (PR 8 of Afterglow 2.0: data-driven via RELICS catalog)
+    let relicVipMult = 1.0;
+    if (g.relics && typeof g.relics === 'object') {
+      const relicsCat = (typeof AfterglowCatalogs !== 'undefined' && Array.isArray(AfterglowCatalogs.RELICS)) ? AfterglowCatalogs.RELICS : [];
+      for (const [rId, active] of Object.entries(g.relics)) {
+        if (active === true) {
+          const rDef = relicsCat.find(r => r.id === rId);
+          if (rDef && typeof rDef.vipCashMult === 'number') {
+            relicVipMult *= rDef.vipCashMult;
+          } else if (rId === 'golden_flamingo') {
+            relicVipMult *= 1.15;
+          }
+        }
+      }
+    }
 
     barMult = (barMult + talentBarBonus) * (personaObj ? personaObj.barMult : 1.0) * bpDistillery;
 
