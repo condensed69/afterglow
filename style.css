@@ -265,6 +265,16 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
   display: none;
 }
 
+/* Canvas Floorboard (v0.12 PR 3) */
+.stage-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
 /* Flavor ticker (REPLAY_ROADMAP.md §4) — slim rotating line under the header.
    Inline-styled; this only guarantees a stable row height and text selection
    hygiene. Never affects the sim (render-only). */

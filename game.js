@@ -39,7 +39,7 @@ const FLAT_RUN_FIELDS = Object.freeze(['cash', 'hype', 'buzz', 'patrons', 'regul
 const STRAY_FIELDS = Object.freeze(['cash', 'hype', 'buzz', 'patrons', 'regulars', 'b', 'u', 'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown']);
 
 class Game {
-  VERSION = { num: '0.12.1', build: 257, channel: 'alpha', date: '2026-09-02', codename: 'Neon Syndicate' };
+  VERSION = { num: '0.12.2', build: 258, channel: 'alpha', date: '2026-09-02', codename: 'Neon Syndicate' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -211,6 +211,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.12.2', date: '2026-09-02', codename: 'Neon Syndicate', notes: [
+        'CANVAS FLOORBOARD & WEB AUDIO SYNTHESIZER (PR 3 of Afterglow 2.0): replaced static stage art with an interactive 60 FPS HTML5 Canvas floorboard (src/ui/floorboard.js) featuring perspective neon floor grid, responsive crowd particles, dynamic sweeping spotlights, and click ripples. Integrated a zero-asset procedural Web Audio API synthwave rhythm & SFX generator (src/core/audio.js) with 4-on-the-floor kick, hi-hat, and hype-modulated synth bass. Auto-pauses on document visibility hide. SAVE_VER stays 13, pacing bit-identical.'
+      ] },
       { v: '0.12.1', date: '2026-09-02', codename: 'Neon Syndicate', notes: [
         'RESPONSIVE DUAL-SURFACE LAYOUT & MOBILE BOTTOM-COCKPIT (PR 2 of Afterglow 2.0): implemented responsive dual-surface architecture supporting the 3-Column Desktop Command Deck and Mobile Bottom-Cockpit (.thumb-cockpit). Modals slide up as bottom sheets (.modal-dialog) on mobile with touch-friendly dismiss. Enforced 100dvh dynamic viewport sizing, touch-action: manipulation for zero tap latency, and >=44x44px minimum touch hitboxes. SAVE_VER stays 13, pacing bit-identical.'
       ] },
@@ -1082,6 +1085,16 @@ class Game {
     this.root = root;
     this.state.g = this.wrapState(this.fresh());
     this.handlers = [];
+
+    // Procedural Audio Synthesizer (PR 3)
+    const AudioEngine = typeof AfterglowAudio !== 'undefined' ? AfterglowAudio : (typeof require !== 'undefined' ? (()=>{ try { return require('./src/core/audio.js'); } catch (_) { return null; } })() : null);
+    this.audio = AudioEngine && AudioEngine.createAudio ? AudioEngine.createAudio() : null;
+
+    // Canvas Floorboard Engine (PR 3)
+    const FloorboardEngine = typeof AfterglowFloorboard !== 'undefined' ? AfterglowFloorboard : (typeof require !== 'undefined' ? (()=>{ try { return require('./src/ui/floorboard.js'); } catch (_) { return null; } })() : null);
+    this.FloorboardEngine = FloorboardEngine;
+    this.floorboard = null;
+
     // Unique per page context — not copied across tab duplicates the way a
     // sessionStorage boolean is. Paired with OWNER_KEY / RELOAD_KEY for claim.
     this.tabToken = this.generateTabToken();
@@ -2424,6 +2437,12 @@ class Game {
     this._live = true;
     try {
       this.step(dt);
+      if (this.audio && this.audio.enabled) {
+        const c = this.club(g);
+        const cap = this.caps(g, c);
+        const hypeRatio = cap.hype > 0 ? (c.hype / cap.hype) : 0.5;
+        this.audio.tickRhythm(hypeRatio);
+      }
     } finally {
       this._live = false;
     }
@@ -3821,15 +3840,37 @@ class Game {
       // Empty-stage badge jumps to Crew so the next action is one click away.
       stageLineAct: g.jobs.stage > 0 ? null : () => this.setState({ tab: 'crew' }),
       energyPct: Math.round(c.hype / cap.hype * 100) + '%',
+      hypeRatio: cap.hype > 0 ? (c.hype / cap.hype) : 0.5,
       // Stage visuals derived from live state (Task 2).
       crowdN: Math.min(14, 2 + Math.floor(c.patrons / 2)),
       crowdBobDur: (2.4 + 1.2 * (1 - Math.min(1, c.hype / cap.hype))).toFixed(2) + 's',
       beamOpacity: (0.25 + 0.55 * Math.min(1, c.hype / cap.hype)).toFixed(2),
       spotOpacity: (0.14 + 0.46 * Math.min(1, c.hype / cap.hype)).toFixed(2),
       signLit: g.jobs.stage > 0,
+      soundEnabled: Boolean(this.audio && this.audio.enabled),
+      toggleSound: () => {
+        if (this.audio) {
+          this.audio.toggle();
+          this.forceUpdate();
+        }
+      },
       clickValue: '$' + this.fmt(clickGrant),
       workCrowd: (e) => {
         if (this.state.tabStale) return;
+        if (this.audio) this.audio.playClick();
+        if (this.floorboard) {
+          if (e && typeof e.clientX === 'number') {
+            const canvas = this.dom('#stage-canvas');
+            if (canvas && canvas.getBoundingClientRect) {
+              const rect = canvas.getBoundingClientRect();
+              this.floorboard.triggerPulse(e.clientX - rect.left, e.clientY - rect.top, '#ff2d78');
+            } else {
+              this.floorboard.triggerPulse();
+            }
+          } else {
+            this.floorboard.triggerPulse();
+          }
+        }
         const val = clickGrant;
         c.cash += val;
         c.buzz = Math.min(cap.buzz, c.buzz + 0.12);
@@ -3849,6 +3890,8 @@ class Game {
       },
       buyRound: () => {
         if (this.state.tabStale || !roundOk) return;
+        if (this.audio) this.audio.playRoundBuy();
+        if (this.floorboard) this.floorboard.triggerPulse(undefined, undefined, '#22d3ee');
         c.cash -= roundPrice;
         this.sessionSpent += roundPrice;
         c.hype = Math.max(0, Math.min(cap.hype, c.hype + 14));
@@ -4452,6 +4495,7 @@ class Game {
           <div style="padding:16px 18px;display:flex;flex-direction:column;gap:10px">
             <button data-h="${this.bind(v.saveNow)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Save now</button>
             <button data-h="${this.bind(v.downloadSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Download save (.json)</button>
+            <button id="settings-sound-btn" data-h="${this.bind(v.toggleSound)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Sound & synthwave: <span style="color:${v.soundEnabled ? '#22d3ee' : '#8f6f9c'}">${v.soundEnabled ? 'ON 🔊' : 'OFF 🔇'}</span></button>
             <button data-h="${this.bind(v.importSaveFile)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Load save from file…</button>
             <button data-h="${this.bind(v.exportSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Copy save to clipboard</button>
             <button data-h="${this.bind(v.importSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Restore save from clipboard</button>
@@ -4633,6 +4677,7 @@ class Game {
           <span id="header-shift-mult" style="color:#ffc94a">${v.shiftMultLabel}</span>
         </div>
       </div>
+      <button id="header-sound-btn" data-h="${this.bind(v.toggleSound)}" class="hv-pink" aria-label="Toggle sound and procedural synthwave" title="${v.soundEnabled ? 'Mute sound & procedural synth' : 'Enable sound & procedural synth'}" style="width:34px;height:34px;border:1px solid #2f1c42;border-radius:6px;background:#100a19;color:${v.soundEnabled ? '#ffc94a' : '#8f6f9c'};cursor:pointer;font-size:15px">${v.soundEnabled ? '🔊' : '🔇'}</button>
       <button id="header-settings-btn" data-h="${this.bind(v.toggleSettings)}" class="hv-pink" style="width:34px;height:34px;border:1px solid #2f1c42;border-radius:6px;background:#100a19;color:#9c86ab;cursor:pointer;font-size:15px">☰</button>
     </div>
   </header>
@@ -4694,7 +4739,8 @@ class Game {
     <section class="stage-col" style="display:grid;grid-template-rows:minmax(190px,1fr) auto 132px;min-height:0;min-width:0">
 
       <div id="stage" style="position:relative;overflow:hidden;min-height:0;background:linear-gradient(180deg,#12081c 0%,#1a0b26 55%,#0d0715 100%);border-bottom:1px solid #2a1738">
-        <div id="stage-beams" style="position:absolute;inset:0;background:repeating-linear-gradient(90deg,rgba(255,45,120,.05) 0 2px,transparent 2px 62px);opacity:${v.beamOpacity}"></div>
+        <canvas id="stage-canvas" class="stage-canvas" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1"></canvas>
+        <div id="stage-beams" style="position:absolute;inset:0;background:repeating-linear-gradient(90deg,rgba(255,45,120,.05) 0 2px,transparent 2px 62px);opacity:${v.beamOpacity};z-index:2"></div>
         <div id="stage-bulbs" style="position:absolute;top:0;left:0;right:0;height:22px;display:flex;justify-content:center;gap:16px;align-items:center;background:linear-gradient(180deg,#1e1029,transparent);opacity:${v.signLit ? 1 : 0.35}">
           <span style="width:5px;height:5px;border-radius:50%;background:#ffc94a;animation:bulb 1.6s infinite 0s;opacity:${v.signLit ? 1 : 0.45}"></span>
           <span style="width:5px;height:5px;border-radius:50%;background:#ffc94a;animation:bulb 1.6s infinite .2s;opacity:${v.signLit ? 1 : 0.45}"></span>
@@ -4891,6 +4937,12 @@ class Game {
     if (nno && nno.textContent !== 'night ' + v.nightNo) nno.textContent = 'night ' + v.nightNo;
     const sm = this.dom('#header-shift-mult');
     if (sm && sm.textContent !== v.shiftMultLabel) sm.textContent = v.shiftMultLabel;
+    const sndBtn = this.dom('#header-sound-btn');
+    if (sndBtn) {
+      sndBtn.textContent = v.soundEnabled ? '🔊' : '🔇';
+      sndBtn.title = v.soundEnabled ? 'Mute sound & procedural synth' : 'Enable sound & procedural synth';
+      sndBtn.style.color = v.soundEnabled ? '#ffc94a' : '#8f6f9c';
+    }
     const setBtn = this.dom('#header-settings-btn');
     if (setBtn) setBtn.setAttribute('data-h', String(this.bind(v.toggleSettings)));
 
@@ -4990,6 +5042,20 @@ class Game {
     }
 
     // 5. Stage Column
+    if (!this.floorboard && this.FloorboardEngine) {
+      const cv = this.dom('#stage-canvas');
+      if (cv) this.floorboard = this.FloorboardEngine.createFloorboard(cv);
+    }
+    if (this.floorboard) {
+      this.floorboard.update({
+        patrons: this.state.g ? (this.club(this.state.g).patrons || 0) : 0,
+        regulars: this.state.g ? (this.club(this.state.g).regulars || 0) : 0,
+        hype: typeof v.hypeRatio === 'number' ? v.hypeRatio : 0.5,
+        beamOpacity: Number(v.beamOpacity) || 0.5,
+        signLit: Boolean(v.signLit)
+      });
+    }
+
     const stBeams = this.dom('#stage-beams');
     if (stBeams) stBeams.style.opacity = String(v.beamOpacity);
     const stBulbs = this.dom('#stage-bulbs');
