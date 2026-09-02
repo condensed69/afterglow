@@ -1,8 +1,18 @@
 # Implementation Plans — index
 
-Status: **all planned work shipped.** This file is now an index of what landed
-and where each plan's details live, so future work starts from the roadmap
-audit instead of a stale brief.
+Status: **All legacy work shipped.** Active forward roadmap is defined in `AFTERGLOW_2.0_PLAN.md`.
+
+## Active Roadmap
+
+- **[Afterglow 2.0: Master Redesign & Agent Implementation Plan](AFTERGLOW_2.0_PLAN.md)** (PR 1 through PR 8)
+  - PR 1: Reactive UI Store & Granular DOM Engine
+  - PR 2: Responsive Dual-Surface Layout & Mobile Bottom-Cockpit
+  - PR 3: Canvas Floorboard & Web Audio Synthesizer
+  - PR 4: 4-Phase Operational Shifts & Police Heat Engine
+  - PR 5: Station Subsystems (Mixology Bar Inventory & DJ Beat-Sync)
+  - PR 6: Club Personas & Named Talent Roster 2.0
+  - PR 7: Branching Blueprint Skill Tree & District Syndicate Map
+  - PR 8: Pluggable Content Pack Engine & Season 1: Miami Vice '86
 
 ## Shipped (details in DESIGN.md / PRESTIGE.md / CHANGELOG)
 
@@ -13,21 +23,3 @@ audit instead of a stale brief.
 | Replay roadmap PRs 1–8 (achievements, flavor, research tree, challenges, manager levels, Renown, brand perks + third club, endgame horizon) | 0.11.x | REPLAY_ROADMAP.md §12 (all ticked), DESIGN.md §23 |
 | Adversarial-UX round GREEN/YELLOW/RED tickets | 0.11.34–0.11.41 | DESIGN.md §14.1, CHANGELOG |
 | Mobile scroll fixes (render-defer, scrollbars, overscroll containment) | 0.11.19–0.11.42 | DESIGN.md §14.1 |
-
-## Historical brief (for reference only — do not execute)
-
-The original stage-improvements brief (written 2026-08-05, executed 0.7.x) is
-preserved in git history: see `git log --follow -- IMPLEMENTATION_PLAN.md` for
-the pre-0.11.43 version. Its architecture notes that still hold:
-
-- Full-repaint render loop: `render()` replaces `this.root.innerHTML` every
-  tick — persistent nodes (FX layer, Look panel) must live **outside `#app`**.
-- Handlers bind via `data-h="${this.bind(fn)}"` + one delegated listener;
-  handlers receive the original event.
-- Motion prefs `html[data-motion="still"|"easy"]` pause CSS animations.
-- Stage invariant: no performer figure, ever (AGENTS.md).
-
-## Next work
-
-Start from the content-exhaustion audit (`.hermes/plans/` — 2026-08-30 audit
-session) rather than this file. AGENTS.md remains the rulebook.

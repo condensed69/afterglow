@@ -115,6 +115,7 @@ globalThis.sessionStorage = {
 // game.js ends with `const game = new Game(...); game.init();` which starts
 // setInterval timers. Strip that boot so the process can exit cleanly.
 const catSrc = readFileSync(new URL('./catalogs.js', import.meta.url), 'utf8');
+const reactSrc = readFileSync(new URL('./src/core/reactive.js', import.meta.url), 'utf8');
 const src = readFileSync(new URL('./game.js', import.meta.url), 'utf8');
 const stripped = src
   .replace(/\nconst game = new Game\(document\.getElementById\('app'\)\);\s*\ngame\.init\(\);\s*(?:\ngame\.mountLook\(\);)?\s*(?:\ngame\.mountFxLayer\(\);)?\n?$/, '');
@@ -122,7 +123,7 @@ if (stripped === src) {
   console.error('economy.test.mjs: failed to strip game.js boot lines — process may hang');
   process.exit(2);
 }
-const Game = new Function(catSrc + '\n' + stripped + ';\nreturn Game;')();
+const Game = new Function(catSrc + '\n' + reactSrc + '\n' + stripped + ';\nreturn Game;')();
 
 // ── Test Harness ─────────────────────────────────────────────────────────────
 let passed = 0, failed = 0, skipped = 0;
@@ -6635,6 +6636,218 @@ test('challenge HUD chip shows when g.challenge is active and End is invocable (
   strictEqual(g.challenge, null, 'challenge cleared after End');
   v = game.renderVals();
   strictEqual(v.challengeChip, null, 'chip gone after End');
+});
+
+// ===========================================================================
+// PR 1: Reactive UI Store & Fine-Grained DOM Engine (Afterglow 2.0)
+// ===========================================================================
+
+test('ReactiveCore: createSignal provides get/set and reactive notifications', () => {
+  const { createSignal, createEffect } = window.ReactiveCore;
+  const [count, setCount] = createSignal(10);
+  strictEqual(count(), 10, 'initial signal value');
+  let observed = 0;
+  createEffect(() => {
+    observed = count();
+  });
+  strictEqual(observed, 10, 'effect runs synchronously on registration');
+  setCount(25);
+  strictEqual(observed, 25, 'effect runs synchronously on signal change');
+  setCount(25); // no-op same value
+  strictEqual(observed, 25, 'effect does not re-trigger on identical value');
+});
+
+test('ReactiveCore: createComputed correctly derives and memoizes values', () => {
+  const { createSignal, createComputed } = window.ReactiveCore;
+  const [a, setA] = createSignal(2);
+  const [b, setB] = createSignal(3);
+  let evalCount = 0;
+  const sum = createComputed(() => {
+    evalCount++;
+    return a() + b();
+  });
+  strictEqual(sum(), 5, 'computed initial evaluation');
+  strictEqual(evalCount, 1, 'computed evaluated once');
+  strictEqual(sum(), 5, 'memoized value returned without re-evaluating');
+  strictEqual(evalCount, 1, 'evaluation count stays 1');
+  setA(10);
+  strictEqual(sum(), 13, 'computed updates on dependency change');
+  strictEqual(evalCount, 2, 'computed re-evaluated on read');
+});
+
+test('ReactiveCore: createStore tracks nested properties and notifies subscribers', () => {
+  const { createStore, createEffect } = window.ReactiveCore;
+  const store = createStore({
+    club: { cash: 100, name: 'Neon Void' },
+    counts: [1, 2, 3]
+  });
+  let observedCash = 0;
+  createEffect(() => {
+    observedCash = store.club.cash;
+  });
+  strictEqual(observedCash, 100, 'initial nested store value');
+  store.club.cash = 250;
+  strictEqual(observedCash, 250, 'store setter triggers effect');
+});
+
+test('ReactiveCore: batch delays effects until the batch function completes', () => {
+  const { createSignal, createEffect, batch } = window.ReactiveCore;
+  const [x, setX] = createSignal(1);
+  const [y, setY] = createSignal(2);
+  let runs = 0;
+  createEffect(() => {
+    x(); y();
+    runs++;
+  });
+  strictEqual(runs, 1, 'initial run');
+  batch(() => {
+    setX(10);
+    setY(20);
+    strictEqual(runs, 1, 'effects deferred during batch');
+  });
+  strictEqual(runs, 2, 'single consolidated effect run after batch');
+});
+
+test('ReactiveCore: DOM binding utilities update nodes in-place', () => {
+  const { createSignal, bindText, bindAttr, bindKeyedList } = window.ReactiveCore;
+  const [title, setTitle] = createSignal('Afterglow');
+  const [disabled, setDisabled] = createSignal(true);
+  const textNode = { textContent: '' };
+  const elemNode = {
+    attrs: {},
+    setAttribute(k, v) { this.attrs[k] = String(v); },
+    removeAttribute(k) { delete this.attrs[k]; }
+  };
+
+  bindText(textNode, () => title());
+  strictEqual(textNode.textContent, 'Afterglow', 'bindText initial');
+  setTitle('Afterglow 2.0');
+  strictEqual(textNode.textContent, 'Afterglow 2.0', 'bindText updated');
+
+  bindAttr(elemNode, 'disabled', () => disabled());
+  strictEqual(elemNode.attrs.disabled, '', 'bindAttr initial boolean');
+  setDisabled(false);
+  strictEqual(elemNode.attrs.disabled, undefined, 'bindAttr removed when falsy');
+
+  // Keyed list binding
+  const [items, setItems] = createSignal(['a', 'b', 'c']);
+  const parent = {
+    childNodes: [],
+    appendChild(child) {
+      const idx = this.childNodes.indexOf(child);
+      if (idx !== -1) this.childNodes.splice(idx, 1);
+      this.childNodes.push(child);
+    },
+    insertBefore(newChild, refChild) {
+      const existingIdx = this.childNodes.indexOf(newChild);
+      if (existingIdx !== -1) this.childNodes.splice(existingIdx, 1);
+      const idx = this.childNodes.indexOf(refChild);
+      if (idx === -1) this.childNodes.push(newChild);
+      else this.childNodes.splice(idx, 0, newChild);
+    },
+    removeChild(child) {
+      const idx = this.childNodes.indexOf(child);
+      if (idx !== -1) this.childNodes.splice(idx, 1);
+    }
+  };
+
+  bindKeyedList(
+    parent,
+    () => items(),
+    item => item,
+    item => ({ key: item, tag: 'div', setAttribute(k, v) { this[k] = v; } })
+  );
+  strictEqual(parent.childNodes.length, 3, 'keyed list creates initial child nodes');
+  strictEqual(parent.childNodes.map(n => n.key).join(','), 'a,b,c', 'keyed list child order');
+  const nodeA = parent.childNodes[0];
+  const nodeB = parent.childNodes[1];
+
+  // Reorder items
+  setItems(['b', 'a', 'c']);
+  strictEqual(parent.childNodes.map(n => n.key).join(','), 'b,a,c', 'keyed list updates order in-place');
+  strictEqual(parent.childNodes[0], nodeB, 'element reference nodeB preserved in-place');
+  strictEqual(parent.childNodes[1], nodeA, 'element reference nodeA preserved in-place');
+});
+
+test('Game DOM engine preserves root structure across render ticks without full innerHTML wipes', () => {
+  // Test with mock DOM structure
+  const elements = new Map();
+  function createMockElement(tag, id = '') {
+    const el = {
+      tagName: tag.toUpperCase(),
+      id,
+      className: '',
+      style: {},
+      attributes: {},
+      childNodes: [],
+      innerHTML: '',
+      textContent: '',
+      getAttribute(k) { return this.attributes[k]; },
+      setAttribute(k, v) { this.attributes[k] = String(v); },
+      removeAttribute(k) { delete this.attributes[k]; },
+      querySelectorAll() { return []; },
+      querySelector(selector) {
+        if (selector === '.app-root') return elements.get('app-root');
+        if (selector === '#app-header') return elements.get('app-header');
+        if (selector === '#header-changelog-btn') return elements.get('header-changelog-btn');
+        if (selector === '#header-autosave') return elements.get('header-autosave');
+        if (selector === '#header-shift-name') return elements.get('header-shift-name');
+        if (selector === '#header-shift-bar') return elements.get('header-shift-bar');
+        if (selector === '#header-night-no') return elements.get('header-night-no');
+        if (selector === '#header-shift-mult') return elements.get('header-shift-mult');
+        if (selector === '#header-settings-btn') return elements.get('header-settings-btn');
+        if (selector === '.ticker-text') return elements.get('ticker-text');
+        if (selector === '#stage') return elements.get('stage');
+        if (selector === '#cta-work-crowd') return elements.get('cta-work-crowd');
+        if (selector === '#cta-buy-round') return elements.get('cta-buy-round');
+        if (selector === '#cards-container') return elements.get('cards-container');
+        if (selector === '#modals-container') return elements.get('modals-container');
+        if (selector === '#footer-ver-full') return elements.get('footer-ver-full');
+        if (selector === '#footer-tick-count') return elements.get('footer-tick-count');
+        return null;
+      }
+    };
+    if (id) elements.set(id, el);
+    return el;
+  }
+
+  const appRoot = createMockElement('div', 'app-root');
+  elements.set('app-root', appRoot);
+  const header = createMockElement('header', 'app-header');
+  const ctaBtn = createMockElement('button', 'cta-work-crowd');
+  const roundBtn = createMockElement('button', 'cta-buy-round');
+  const cardsCont = createMockElement('div', 'cards-container');
+  const tickSpan = createMockElement('span', 'footer-tick-count');
+
+  const root = {
+    innerHTML: '',
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    querySelectorAll() { return []; },
+    querySelector(selector) {
+      if (this.innerHTML && this.innerHTML.includes('app-root')) {
+        return appRoot.querySelector(selector);
+      }
+      return null;
+    }
+  };
+
+  const game = new Game(root);
+  game.init();
+
+  // First render: mounts initial template into root
+  game.render();
+  ok(root.innerHTML.includes('app-root'), 'first render populates template HTML');
+  ok(game._mounted, 'game._mounted set to true after mounting app-root');
+
+  // Next render: updates DOM elements fine-grained without wiping root.innerHTML
+  game.state.g.cash = 500;
+  game.state.tick = 42;
+  game.render();
+
+  // Verify in-place elements were updated
+  strictEqual(game._mounted, true, 'stays mounted across subsequent renders');
+  strictEqual(tickSpan.textContent, 'ticks 42', 'fine-grained update directly mutated footer-tick-count element');
 });
 
 if (pendingTests.length > 0) await Promise.all(pendingTests);

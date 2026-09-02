@@ -60,6 +60,7 @@ globalThis.localStorage = {
 
 // Strip page boot so the process can exit cleanly.
 const catSrc = readFileSync(new URL('./catalogs.js', import.meta.url), 'utf8');
+const reactSrc = readFileSync(new URL('./src/core/reactive.js', import.meta.url), 'utf8');
 const src = readFileSync(new URL('./game.js', import.meta.url), 'utf8');
 const stripped = src
   .replace(/\nconst game = new Game\(document\.getElementById\('app'\)\);\s*\ngame\.init\(\);\s*(?:\ngame\.mountLook\(\);)?\s*(?:\ngame\.mountFxLayer\(\);)?\n?$/, '');
@@ -67,7 +68,7 @@ if (stripped === src) {
   console.error('pacing.mjs: failed to strip game.js boot lines — process may hang');
   process.exit(2);
 }
-const Game = new Function(catSrc + '\n' + stripped + ';\nreturn Game;')();
+const Game = new Function(catSrc + '\n' + reactSrc + '\n' + stripped + ';\nreturn Game;')();
 
 // ── Milestone bands (PLAN-NEXT §C.1) ─────────────────────────────────────────
 // Where the plan gives a ~center, apply ±band. Where it gives a range
