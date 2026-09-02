@@ -4,27 +4,28 @@
  * Zero-dependency, lightweight, high-performance.
  */
 
-(function (root, factory) {
+(function (factory) {
+  'use strict';
   if (typeof define === 'function' && define.amd) {
     define([], factory);
   } else if (typeof module === 'object' && module.exports) {
     module.exports = factory();
   } else {
     const exports = factory();
-    if (root) {
-      root.ReactiveCore = exports;
-      root.AfterglowReactive = exports;
+    if (typeof globalThis !== 'undefined') {
+      globalThis.ReactiveCore = exports;
+      globalThis.AfterglowReactive = exports;
+      if (globalThis.window) {
+        globalThis.window.ReactiveCore = exports;
+        globalThis.window.AfterglowReactive = exports;
+      }
     }
     if (typeof window !== 'undefined') {
       window.ReactiveCore = exports;
       window.AfterglowReactive = exports;
     }
-    if (typeof globalThis !== 'undefined') {
-      globalThis.ReactiveCore = exports;
-      globalThis.AfterglowReactive = exports;
-    }
   }
-})(typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : this, function () {
+})(function () {
   'use strict';
 
   let activeEffect = null;
@@ -32,7 +33,7 @@
   const pendingEffects = new Set();
 
   /**
-   * Run a function while batching reactive updates.
+   * Run a function while batching reactive updates (synchronous execution only).
    * All effects triggered during fn() will execute once after fn() completes.
    */
   function batch(fn) {
@@ -62,27 +63,27 @@
     function get() {
       if (activeEffect) {
         subscribers.add(activeEffect);
-        activeEffect.deps.add(subscribers);
+        activeEffect.dependencies.add(subscribers);
       }
       return value;
     }
 
-    function set(next) {
-      const newValue = typeof next === 'function' ? next(value) : next;
-      if (!Object.is(value, newValue)) {
-        value = newValue;
-        if (subscribers.size > 0) {
-          const toRun = Array.from(subscribers);
-          for (const eff of toRun) {
-            if (isBatching) {
-              pendingEffects.add(eff);
-            } else {
-              eff.run();
-            }
-          }
+    function set(nextValue) {
+      const resolved = typeof nextValue === 'function' ? nextValue(value) : nextValue;
+      if (Object.is(value, resolved)) return;
+      value = resolved;
+      notify();
+    }
+
+    function notify() {
+      const subs = Array.from(subscribers);
+      for (const sub of subs) {
+        if (isBatching) {
+          pendingEffects.add(sub);
+        } else {
+          sub.run();
         }
       }
-      return value;
     }
 
     // Convenience properties
@@ -97,59 +98,66 @@
   }
 
   /**
-   * Creates a reactive effect that automatically tracks signals/computeds read within fn.
+   * Runs an effect function reactively whenever its signal dependencies change.
    * @param {function} fn
-   * @returns {function} dispose function
+   * @returns {function} cleanup / dispose function
    */
   function createEffect(fn) {
+    let cleanup = null;
+
     const effectRecord = {
-      deps: new Set(),
-      active: true,
+      dependencies: new Set(),
       run() {
-        if (!this.active) return;
-        cleanup(this);
-        const prev = activeEffect;
+        // Clean up previous dependencies
+        this.cleanup();
+
+        const prevEffect = activeEffect;
         activeEffect = this;
         try {
-          fn();
+          cleanup = fn();
         } finally {
-          activeEffect = prev;
+          activeEffect = prevEffect;
         }
+      },
+      cleanup() {
+        if (typeof cleanup === 'function') {
+          try { cleanup(); } catch (e) { console.error('Effect cleanup error:', e); }
+          cleanup = null;
+        }
+        for (const dep of this.dependencies) {
+          dep.delete(this);
+        }
+        this.dependencies.clear();
       }
     };
 
-    function cleanup(eff) {
-      for (const subSet of eff.deps) {
-        subSet.delete(eff);
-      }
-      eff.deps.clear();
-    }
-
+    // Run synchronously on initial registration
     effectRecord.run();
 
     return function dispose() {
-      effectRecord.active = false;
-      cleanup(effectRecord);
+      effectRecord.cleanup();
+      pendingEffects.delete(effectRecord);
     };
   }
 
   /**
-   * Creates a derived reactive computed value.
+   * Creates a derived computed signal.
+   * Memoizes its value and only recalculates when dependency signals change.
    * @param {function} fn
-   * @returns {function} getter
+   * @returns {function} getter function
    */
   function createComputed(fn) {
-    let cachedValue;
+    let value;
     let dirty = true;
     const subscribers = new Set();
 
     const effectRecord = {
-      deps: new Set(),
-      active: true,
+      dependencies: new Set(),
       run() {
         if (!dirty) {
           dirty = true;
-          for (const sub of Array.from(subscribers)) {
+          const subs = Array.from(subscribers);
+          for (const sub of subs) {
             if (isBatching) {
               pendingEffects.add(sub);
             } else {
@@ -157,33 +165,34 @@
             }
           }
         }
+      },
+      cleanup() {
+        for (const dep of this.dependencies) {
+          dep.delete(this);
+        }
+        this.dependencies.clear();
       }
     };
 
-    function cleanup(eff) {
-      for (const subSet of eff.deps) {
-        subSet.delete(eff);
-      }
-      eff.deps.clear();
-    }
-
     function get() {
-      if (activeEffect) {
-        subscribers.add(activeEffect);
-        activeEffect.deps.add(subscribers);
-      }
       if (dirty) {
-        cleanup(effectRecord);
-        const prev = activeEffect;
+        effectRecord.cleanup();
+        const prevEffect = activeEffect;
         activeEffect = effectRecord;
         try {
-          cachedValue = fn();
+          value = fn();
           dirty = false;
         } finally {
-          activeEffect = prev;
+          activeEffect = prevEffect;
         }
       }
-      return cachedValue;
+
+      if (activeEffect) {
+        subscribers.add(activeEffect);
+        activeEffect.dependencies.add(subscribers);
+      }
+
+      return value;
     }
 
     get.get = get;
@@ -218,14 +227,18 @@
         if (typeof prop === 'symbol' || prop in Object.prototype) {
           return Reflect.get(obj, prop, receiver);
         }
-        const s = getPropSignal(prop);
-        s[0](); // track dependency
         const val = obj[prop];
         if (val !== null && typeof val === 'object' && !val.__isStore) {
-          // Wrap nested object in store
-          obj[prop] = createStore(val);
-          return obj[prop];
+          // Wrap nested object in store and synchronize property signal
+          const wrapped = createStore(val);
+          obj[prop] = wrapped;
+          const s = getPropSignal(prop);
+          s[1](wrapped);
+          s[0](); // track dependency
+          return wrapped;
         }
+        const s = getPropSignal(prop);
+        s[0](); // track dependency
         return val;
       },
       set(obj, prop, value, receiver) {
@@ -284,9 +297,11 @@
           node.disabled = Boolean(val);
           if (val) node.setAttribute('disabled', '');
           else node.removeAttribute('disabled');
-        } else if (attr === 'style' && typeof val === 'string') {
-          if (node.style && node.style.cssText !== val) {
-            node.style.cssText = val;
+        } else if (attr === 'checked') {
+          node.checked = Boolean(val);
+        } else if (attr === 'value') {
+          if (node.value !== String(val || '')) {
+            node.value = String(val || '');
           }
         } else if (attr === 'className' || attr === 'class') {
           node.className = String(val || '');
@@ -337,7 +352,7 @@
       // Remove nodes no longer in items
       for (const [key, entry] of nodeMap.entries()) {
         if (!seenKeys.has(key)) {
-          if (entry.node && (entry.node.parentNode === container || (container.childNodes && container.childNodes.includes(entry.node)))) {
+          if (entry.node && (entry.node.parentNode === container || (container.childNodes && Array.from(container.childNodes).includes(entry.node)))) {
             container.removeChild(entry.node);
           }
           nodeMap.delete(key);
@@ -349,9 +364,9 @@
         const key = getKey(item, index);
         const entry = nodeMap.get(key);
         if (entry && entry.node) {
-          const currentChild = container.childNodes ? container.childNodes[index] : null;
-          if (currentChild !== entry.node) {
-            container.insertBefore(entry.node, currentChild || null);
+          const expectedChild = container.childNodes ? container.childNodes[index] : null;
+          if (expectedChild !== entry.node) {
+            container.insertBefore(entry.node, expectedChild || null);
           }
         }
       });

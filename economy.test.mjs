@@ -6678,16 +6678,25 @@ test('ReactiveCore: createComputed correctly derives and memoizes values', () =>
 test('ReactiveCore: createStore tracks nested properties and notifies subscribers', () => {
   const { createStore, createEffect } = window.ReactiveCore;
   const store = createStore({
-    club: { cash: 100, name: 'Neon Void' },
+    club: { cash: 100, name: 'Neon Void', meta: { level: 1 } },
     counts: [1, 2, 3]
   });
   let observedCash = 0;
+  let observedLevel = 0;
   createEffect(() => {
     observedCash = store.club.cash;
   });
+  createEffect(() => {
+    observedLevel = store.club.meta.level;
+  });
   strictEqual(observedCash, 100, 'initial nested store value');
+  strictEqual(observedLevel, 1, 'initial deep nested store value');
+
   store.club.cash = 250;
   strictEqual(observedCash, 250, 'store setter triggers effect');
+
+  store.club.meta.level = 5;
+  strictEqual(observedLevel, 5, 'deep nested store setter triggers effect');
 });
 
 test('ReactiveCore: batch delays effects until the batch function completes', () => {
@@ -6840,6 +6849,9 @@ test('Game DOM engine preserves root structure across render ticks without full 
   ok(root.innerHTML.includes('app-root'), 'first render populates template HTML');
   ok(game._mounted, 'game._mounted set to true after mounting app-root');
 
+  const ctaRefBefore = appRoot.querySelector('#cta-work-crowd');
+  const tickSpanRefBefore = appRoot.querySelector('#footer-tick-count');
+
   // Next render: updates DOM elements fine-grained without wiping root.innerHTML
   game.state.g.cash = 500;
   game.state.tick = 42;
@@ -6848,6 +6860,10 @@ test('Game DOM engine preserves root structure across render ticks without full 
   // Verify in-place elements were updated
   strictEqual(game._mounted, true, 'stays mounted across subsequent renders');
   strictEqual(tickSpan.textContent, 'ticks 42', 'fine-grained update directly mutated footer-tick-count element');
+
+  // Verify element reference identity is preserved under pointer
+  strictEqual(appRoot.querySelector('#cta-work-crowd'), ctaRefBefore, 'CTA button element identity preserved across renders');
+  strictEqual(appRoot.querySelector('#footer-tick-count'), tickSpanRefBefore, 'tickSpan element identity preserved across renders');
 });
 
 if (pendingTests.length > 0) await Promise.all(pendingTests);

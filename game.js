@@ -717,25 +717,6 @@ class Game {
     return bonus;
   }
 
-  // Look up a building definition by id using a cached Map (O(1)).
-  buildingDef(id) {
-    if (!this._buildingMap) {
-      const map = new Map();
-      if (this.BUILDINGS) {
-        for (const b of this.BUILDINGS) map.set(b.id, b);
-      }
-      if (this.LOCATION_EXTRAS) {
-        for (const loc of Object.values(this.LOCATION_EXTRAS)) {
-          for (const x of loc) {
-            if (x.kind === 'b') map.set(x.id, x);
-          }
-        }
-      }
-      this._buildingMap = map;
-    }
-    return this._buildingMap.get(id);
-  }
-
   // Location-specific content for a club id (REPLAY_ROADMAP.md §9): the extras
   // array, its buildings, or its upgrades. Empty for unknown ids — the shared
   // catalog still applies everywhere.
@@ -4829,9 +4810,19 @@ class Game {
 </div>`;
   }
 
+  dom(selector) {
+    if (!this._domCache) this._domCache = new Map();
+    let el = this._domCache.get(selector);
+    if (!el && this.root && this.root.querySelector) {
+      el = this.root.querySelector(selector);
+      if (el) this._domCache.set(selector, el);
+    }
+    return el;
+  }
+
   updateDom(v) {
     // 1. Header
-    const asEl = this.root.querySelector('#header-autosave');
+    const asEl = this.dom('#header-autosave');
     if (asEl) {
       const n = Date.now();
       const txt = v.lastAutoSave
@@ -4842,10 +4833,10 @@ class Game {
         : 'never';
       if (asEl.textContent !== txt) asEl.textContent = txt;
     }
-    const clBtn = this.root.querySelector('#header-changelog-btn');
+    const clBtn = this.dom('#header-changelog-btn');
     if (clBtn) clBtn.setAttribute('data-h', String(this.bind(v.toggleChangelog)));
 
-    const pw = this.root.querySelector('#header-prestige-wrap');
+    const pw = this.dom('#header-prestige-wrap');
     if (pw) {
       if (v.prestigeGate) {
         pw.innerHTML = `<button data-h="${this.bind(v.togglePrestige)}" class="cta" style="background:linear-gradient(180deg,#a855f7,#7c3aed);border:0;border-radius:8px;color:#fff;font-weight:700;font-size:12px;letter-spacing:1px;text-transform:uppercase;padding:8px 14px;cursor:pointer;box-shadow:0 0 18px rgba(168,85,247,.35)">Franchise offer</button>`;
@@ -4854,7 +4845,7 @@ class Game {
       }
     }
 
-    const orw = this.root.querySelector('#header-openroom-wrap');
+    const orw = this.dom('#header-openroom-wrap');
     if (orw) {
       if (v.canOpenRoom) {
         orw.innerHTML = `<button data-h="${this.bind(v.openRoom)}" class="cta hv-cyan" style="background:linear-gradient(180deg,#22d3ee,#0e7490);border:0;border-radius:8px;color:#fff;font-weight:700;font-size:12px;letter-spacing:1px;text-transform:uppercase;padding:8px 14px;cursor:pointer;box-shadow:0 0 18px rgba(34,211,238,.3)">Open second room</button>`;
@@ -4863,7 +4854,7 @@ class Game {
       }
     }
 
-    const csw = this.root.querySelector('#header-club-switcher-wrap');
+    const csw = this.dom('#header-club-switcher-wrap');
     if (csw) {
       if (v.clubSwitcher.length > 1) {
         csw.innerHTML = `<div style="display:flex;gap:6px">${v.clubSwitcher.map(cl => `<button data-h="${this.bind(cl.go)}" aria-label="${this.escapeHtml(cl.label)} club" title="${this.escapeHtml(cl.label)}" style="background:${cl.active ? '#170e22' : 'transparent'};border:1px solid ${cl.active ? '#ff2d78' : '#2f1c42'};border-radius:6px;padding:7px 12px;cursor:pointer;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:${cl.active ? '#fff' : '#8f6f9c'}">${cl.label}</button>`).join('')}</div>`;
@@ -4872,23 +4863,23 @@ class Game {
       }
     }
 
-    const sn = this.root.querySelector('#header-shift-name');
+    const sn = this.dom('#header-shift-name');
     if (sn && sn.textContent !== v.shiftName) sn.textContent = v.shiftName;
-    const sb = this.root.querySelector('#header-shift-bar');
+    const sb = this.dom('#header-shift-bar');
     if (sb) sb.style.cssText = css(v.shiftBar);
-    const nno = this.root.querySelector('#header-night-no');
+    const nno = this.dom('#header-night-no');
     if (nno && nno.textContent !== 'night ' + v.nightNo) nno.textContent = 'night ' + v.nightNo;
-    const sm = this.root.querySelector('#header-shift-mult');
+    const sm = this.dom('#header-shift-mult');
     if (sm && sm.textContent !== v.shiftMultLabel) sm.textContent = v.shiftMultLabel;
-    const setBtn = this.root.querySelector('#header-settings-btn');
+    const setBtn = this.dom('#header-settings-btn');
     if (setBtn) setBtn.setAttribute('data-h', String(this.bind(v.toggleSettings)));
 
     // 2. Ticker
-    const tt = this.root.querySelector('.ticker-text');
+    const tt = this.dom('.ticker-text');
     if (tt && tt.textContent !== v.ticker) tt.textContent = v.ticker;
 
     // 3. Banners
-    const ccw = this.root.querySelector('#challenge-chip-wrap');
+    const ccw = this.dom('#challenge-chip-wrap');
     if (ccw) {
       if (v.challengeChip) {
         ccw.innerHTML = `<div style="position:relative;z-index:65;display:flex;align-items:center;gap:10px;padding:6px 12px;background:#1a0d2e;border-bottom:1px solid #3a2350;flex-wrap:wrap"><span style="font-size:9px;letter-spacing:2.4px;text-transform:uppercase;color:#e879f9;font-weight:700">Challenge</span><span style="font-size:11px;color:#f3e2c2;flex:1;min-width:0">${v.challengeChip.label}</span><button data-h="${this.bind(v.challengeChip.endChallenge)}" title="End challenge — no reward" aria-label="End challenge — no reward" style="flex:0 0 auto;min-height:44px;min-width:44px;background:#170e22;border:1px solid #3a2350;border-radius:6px;color:#e7d8f2;font-size:11px;font-weight:700;padding:8px 12px;cursor:pointer">End · no reward</button></div>`;
@@ -4896,23 +4887,23 @@ class Game {
         ccw.innerHTML = '';
       }
     }
-    const gbw = this.root.querySelector('#golden-banner-wrap');
+    const gbw = this.dom('#golden-banner-wrap');
     if (gbw) gbw.innerHTML = this.goldenTicketBanner(v);
-    const slew = this.root.querySelector('#stage-line-energy-wrap');
+    const slew = this.dom('#stage-line-energy-wrap');
     if (slew) slew.innerHTML = this.stageLineEnergyBanner(v);
 
     // 4. Ledger
-    const la = this.root.querySelector('#ledger-aside');
+    const la = this.dom('#ledger-aside');
     if (la) la.className = v.ledgerOpen ? '' : 'ledger-collapsed';
-    const acl = this.root.querySelector('#active-club-label');
+    const acl = this.dom('#active-club-label');
     if (acl && acl.textContent !== v.activeClubLabel) acl.textContent = v.activeClubLabel;
-    const ltb = this.root.querySelector('#ledger-toggle-btn');
+    const ltb = this.dom('#ledger-toggle-btn');
     if (ltb) {
       ltb.setAttribute('data-h', String(this.bind(v.toggleLedger)));
       ltb.textContent = v.ledgerOpen ? '▾' : '▸';
       ltb.title = v.ledgerOpen ? 'Collapse ledger' : 'Expand ledger';
     }
-    const lcr = this.root.querySelector('#ledger-cash-row');
+    const lcr = this.dom('#ledger-cash-row');
     if (lcr && v.resources[0]) {
       const r = v.resources[0];
       lcr.innerHTML = `
@@ -4930,7 +4921,7 @@ class Game {
           <div style="font-size:10px;color:#9c86ab;margin-top:3px">${r.note}</div>
         </div>`;
     }
-    const ssd = this.root.querySelector('#session-strip-deltas');
+    const ssd = this.dom('#session-strip-deltas');
     if (ssd) {
       ssd.innerHTML = v.sessionDeltas.map(d => {
         if (d.label === 'Cash' && d.val.includes('·')) {
@@ -4940,7 +4931,7 @@ class Game {
         return `<span>${d.label} <span style="font-weight:600;color:${d.val[0] === '+' ? '#4ade80' : '#ff7aa8'}">${d.val}</span></span>`;
       }).join('');
     }
-    const hsw = this.root.querySelector('#house-strip-wrap');
+    const hsw = this.dom('#house-strip-wrap');
     if (hsw) {
       if (v.houseChips.length) {
         hsw.innerHTML = `
@@ -4952,7 +4943,7 @@ class Game {
         hsw.innerHTML = '';
       }
     }
-    const ldr = this.root.querySelector('#ledger-detail-rows');
+    const ldr = this.dom('#ledger-detail-rows');
     if (ldr) {
       ldr.innerHTML = v.resources.slice(1).map(r => `
         <div style="border:1px solid #221434;border-radius:7px;background:#0f0a18;padding:8px 9px">
@@ -4969,7 +4960,7 @@ class Game {
           <div style="font-size:10px;color:#9c86ab;margin-top:3px">${r.note}</div>
         </div>`).join('');
     }
-    const srows = this.root.querySelector('#stat-rows');
+    const srows = this.dom('#stat-rows');
     if (srows) {
       srows.innerHTML = v.stats.map(s => `
         <div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;font-size:11px">
@@ -4979,34 +4970,34 @@ class Game {
     }
 
     // 5. Stage Column
-    const stBeams = this.root.querySelector('#stage-beams');
+    const stBeams = this.dom('#stage-beams');
     if (stBeams) stBeams.style.opacity = String(v.beamOpacity);
-    const stBulbs = this.root.querySelector('#stage-bulbs');
+    const stBulbs = this.dom('#stage-bulbs');
     if (stBulbs) stBulbs.style.opacity = v.signLit ? '1' : '0.35';
-    const stNeon = this.root.querySelector('#stage-neon');
+    const stNeon = this.dom('#stage-neon');
     if (stNeon) {
       stNeon.style.color = v.signLit ? '#22d3ee' : '#5c3a52';
       stNeon.style.textShadow = v.signLit ? '0 0 10px rgba(34,211,238,.8),0 0 30px rgba(34,211,238,.4)' : 'none';
       stNeon.style.animation = v.signLit ? 'neonFlicker 9s infinite' : 'none';
       stNeon.style.opacity = String(v.signLit ? 0.9 : 0.55);
     }
-    const stL = this.root.querySelector('#stage-sweepl');
+    const stL = this.dom('#stage-sweepl');
     if (stL) stL.style.opacity = String(v.beamOpacity);
-    const stR = this.root.querySelector('#stage-sweepr');
+    const stR = this.dom('#stage-sweepr');
     if (stR) stR.style.opacity = String(v.beamOpacity);
-    const stSpot = this.root.querySelector('#stage-spot');
+    const stSpot = this.dom('#stage-spot');
     if (stSpot) stSpot.style.opacity = String(v.spotOpacity);
-    const stDiv = this.root.querySelector('#stage-divider');
+    const stDiv = this.dom('#stage-divider');
     if (stDiv) stDiv.style.opacity = String(Math.max(0.25, v.beamOpacity * 0.75).toFixed(2));
-    const slb = this.root.querySelector('#stage-line-body');
+    const slb = this.dom('#stage-line-body');
     if (slb) {
       slb.innerHTML = v.stageLineAct
         ? `<button data-h="${this.bind(v.stageLineAct)}" class="hv-pink" title="${v.stageLineTooltip || 'Open Crew tab'}" style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#ff2d78;background:transparent;border:0;padding:0;cursor:pointer;text-align:left;text-decoration:underline;text-underline-offset:3px">${v.stageLine}</button>`
         : `<div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#ff2d78">${v.stageLine}</div>`;
     }
-    const sep = this.root.querySelector('#stage-energy-pct');
+    const sep = this.dom('#stage-energy-pct');
     if (sep && sep.textContent !== v.energyPct) sep.textContent = v.energyPct;
-    const sgw = this.root.querySelector('#stage-golden-wrap');
+    const sgw = this.dom('#stage-golden-wrap');
     if (sgw) {
       if (v.golden) {
         sgw.innerHTML = `
@@ -5032,12 +5023,12 @@ class Game {
         sgw.innerHTML = '';
       }
     }
-    const ctaWork = this.root.querySelector('#cta-work-crowd');
+    const ctaWork = this.dom('#cta-work-crowd');
     if (ctaWork) {
       ctaWork.setAttribute('data-h', String(this.bind(v.workCrowd)));
       ctaWork.innerHTML = `Work the room <span style="font-family:'IBM Plex Mono',monospace;opacity:.85;text-transform:none;letter-spacing:0">+${v.clickValue}</span>`;
     }
-    const ctaRound = this.root.querySelector('#cta-buy-round');
+    const ctaRound = this.dom('#cta-buy-round');
     if (ctaRound) {
       ctaRound.setAttribute('data-h', String(this.bind(v.buyRound)));
       ctaRound.disabled = Boolean(v.roundLocked);
@@ -5048,11 +5039,11 @@ class Game {
       ctaRound.title = v.roundReason || v.roundLabel;
       ctaRound.setAttribute('aria-label', v.roundReason || v.roundLabel);
     }
-    const rrw = this.root.querySelector('#round-reason-wrap');
+    const rrw = this.dom('#round-reason-wrap');
     if (rrw) {
       rrw.innerHTML = v.roundReason ? `<div class="round-reason">${v.roundReason}</div>` : '';
     }
-    const nlr = this.root.querySelector('#night-log-rows');
+    const nlr = this.dom('#night-log-rows');
     if (nlr) {
       nlr.innerHTML = v.log.map(l => `
         <div style="display:flex;gap:9px;font-size:11.5px;line-height:1.5">
@@ -5062,17 +5053,17 @@ class Game {
     }
 
     // 6. Systems Column
-    const tbw = this.root.querySelector('#tab-bar-wrap');
+    const tbw = this.dom('#tab-bar-wrap');
     if (tbw) {
       tbw.innerHTML = v.tabs.map(tb => `
         <button data-h="${this.bind(tb.go)}" style="${css(tb.style)}">${tb.label}</button>`).join('');
     }
-    const olw = this.root.querySelector('#owners-list-wrap');
+    const olw = this.dom('#owners-list-wrap');
     if (olw) olw.innerHTML = this.renderOwnersList(v);
-    const tht = this.root.querySelector('#tab-hint-text');
+    const tht = this.dom('#tab-hint-text');
     if (tht && tht.textContent !== v.tabHint) tht.textContent = v.tabHint;
 
-    const cc = this.root.querySelector('#cards-container');
+    const cc = this.dom('#cards-container');
     if (cc) {
       cc.innerHTML = v.cards.map(cd => `
         <div style="${css(cd.wrapStyle)}">
@@ -5097,7 +5088,7 @@ class Game {
           </div>
         </div>`).join('');
     }
-    const sac = this.root.querySelector('#sys-assignments-container');
+    const sac = this.dom('#sys-assignments-container');
     if (sac) {
       if (v.crewOpen) {
         const jobRows = v.jobs.map(j => j.passive ? `
@@ -5130,7 +5121,7 @@ class Game {
     }
 
     // 7. Footer & Modals
-    const tsw = this.root.querySelector('#tabstale-wrap');
+    const tsw = this.dom('#tabstale-wrap');
     if (tsw) {
       if (v.tabStale) {
         tsw.innerHTML = v.saveState === 'checking ownership…'
@@ -5140,16 +5131,15 @@ class Game {
         tsw.innerHTML = '';
       }
     }
-    const fv = this.root.querySelector('#footer-ver-full');
+    const fv = this.dom('#footer-ver-full');
     if (fv && fv.textContent !== v.verFull) fv.textContent = v.verFull;
-    const fss = this.root.querySelector('#footer-save-state');
+    const fss = this.dom('#footer-save-state');
     if (fss && fss.textContent !== v.saveState) fss.textContent = v.saveState;
-    const fdl = this.root.querySelector('#footer-debug-line');
+    const fdl = this.dom('#footer-debug-line');
     if (fdl && fdl.textContent !== v.debugLine) fdl.textContent = v.debugLine;
-    const ftc = this.root.querySelector('#footer-tick-count');
+    const ftc = this.dom('#footer-tick-count');
     if (ftc && ftc.textContent !== 'ticks ' + v.tickCount) ftc.textContent = 'ticks ' + v.tickCount;
-
-    const mc = this.root.querySelector('#modals-container');
+    const mc = this.dom('#modals-container');
     if (mc) {
       mc.innerHTML = this.renderModals(v);
     }
@@ -5168,6 +5158,7 @@ class Game {
     const isMounted = this._mounted && this.root && this.root.querySelector && this.root.querySelector('.app-root');
     if (!isMounted) {
       if (this.root) {
+        this._domCache = null;
         this.root.innerHTML = this.renderTemplate(v);
         if (this.root.querySelector && this.root.querySelector('.app-root')) {
           this._mounted = true;
