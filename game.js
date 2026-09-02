@@ -39,7 +39,7 @@ const FLAT_RUN_FIELDS = Object.freeze(['cash', 'hype', 'buzz', 'patrons', 'regul
 const STRAY_FIELDS = Object.freeze(['cash', 'hype', 'buzz', 'patrons', 'regulars', 'b', 'u', 'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown']);
 
 class Game {
-  VERSION = { num: '0.12.0', build: 256, channel: 'alpha', date: '2026-09-02', codename: 'Neon Syndicate' };
+  VERSION = { num: '0.12.1', build: 257, channel: 'alpha', date: '2026-09-02', codename: 'Neon Syndicate' };
   SAVE_VER = 13;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -211,6 +211,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.12.1', date: '2026-09-02', codename: 'Neon Syndicate', notes: [
+        'RESPONSIVE DUAL-SURFACE LAYOUT & MOBILE BOTTOM-COCKPIT (PR 2 of Afterglow 2.0): implemented responsive dual-surface architecture supporting the 3-Column Desktop Command Deck and Mobile Bottom-Cockpit (.thumb-cockpit). Modals slide up as bottom sheets (.modal-dialog) on mobile with touch-friendly dismiss. Enforced 100dvh dynamic viewport sizing, touch-action: manipulation for zero tap latency, and >=44x44px minimum touch hitboxes. SAVE_VER stays 13, pacing bit-identical.'
+      ] },
       { v: '0.12.0', date: '2026-09-02', codename: 'Neon Syndicate', notes: [
         'REACTIVE UI STORE & FINE-GRAINED DOM ENGINE (PR 1 of Afterglow 2.0): replaced monolithic 4Hz innerHTML root replacements with an observable reactive signal store (src/core/reactive.js) and in-place DOM element updates. Persistent DOM elements, buttons, and scroll containers are preserved across ticks, eliminating input drop, focus disruption, and mobile scroll jank. Zero dependency, SAVE_VER stays 13, pacing bit-identical.'
       ] },
@@ -4322,8 +4325,8 @@ class Game {
 
   renderModals(v) {
     const changelogModal = v.showChangelog ? `
-      <div style="position:fixed;inset:0;background:rgba(5,3,9,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:32px">
-        <div style="width:560px;max-width:calc(100vw - 24px);max-height:78vh;overflow-y:auto;background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
+      <div class="modal-overlay">
+        <div class="modal-dialog" style="width:560px;max-width:calc(100vw - 24px)">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #241536;position:sticky;top:0;background:#0e0918">
             <div>
               <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700">Version history</div>
@@ -4352,8 +4355,8 @@ class Game {
       </div>` : '';
 
     const prestigeModal = v.showPrestige ? `
-      <div style="position:fixed;inset:0;background:rgba(5,3,9,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:32px">
-        <div style="width:480px;max-width:calc(100vw - 24px);background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
+      <div class="modal-overlay">
+        <div class="modal-dialog" style="width:480px;max-width:calc(100vw - 24px)">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #241536">
             <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700">Franchise offer</div>
             <button data-h="${this.bind(v.togglePrestige)}" class="hv-pink" style="width:30px;height:30px;border:1px solid #3a2350;border-radius:6px;background:#160d22;color:#9c86ab;cursor:pointer;font-size:14px">✕</button>
@@ -4382,8 +4385,8 @@ class Game {
       </div>` : '';
 
     const franchiseModal = v.showFranchise ? `
-      <div style="position:fixed;inset:0;background:rgba(5,3,9,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:32px">
-        <div style="width:480px;max-width:calc(100vw - 24px);background:#0e0918;border:1px solid #22d3ee;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
+      <div class="modal-overlay">
+        <div class="modal-dialog" style="width:480px;max-width:calc(100vw - 24px)">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #241536">
             <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#22d3ee;font-weight:700">Sell the franchise</div>
             <button data-h="${this.bind(v.toggleFranchise)}" class="hv-pink" style="width:30px;height:30px;border:1px solid #3a2350;border-radius:6px;background:#160d22;color:#9c86ab;cursor:pointer;font-size:14px">✕</button>
@@ -4411,8 +4414,8 @@ class Game {
       </div>` : '';
 
     const openRoomModal = v.showOpenRoom ? `
-      <div style="position:fixed;inset:0;background:rgba(5,3,9,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:32px">
-        <div style="width:480px;max-width:calc(100vw - 24px);background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
+      <div class="modal-overlay">
+        <div class="modal-dialog" style="width:480px;max-width:calc(100vw - 24px)">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #241536">
             <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700">Open second room</div>
             <button data-h="${this.bind(v.closeOpenRoom)}" class="hv-pink" style="width:30px;height:30px;border:1px solid #3a2350;border-radius:6px;background:#160d22;color:#9c86ab;cursor:pointer;font-size:14px">✕</button>
@@ -4440,8 +4443,8 @@ class Game {
       </div>` : '';
 
     const settingsModal = v.showSettings ? `
-      <div style="position:fixed;inset:0;background:rgba(5,3,9,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:32px">
-        <div style="width:420px;max-width:calc(100vw - 24px);max-height:78vh;overflow-y:auto;background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
+      <div class="modal-overlay">
+        <div class="modal-dialog" style="width:420px;max-width:calc(100vw - 24px)">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #241536">
             <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700">Settings</div>
             <button data-h="${this.bind(v.toggleSettings)}" class="hv-pink" style="width:30px;height:30px;border:1px solid #3a2350;border-radius:6px;background:#160d22;color:#9c86ab;cursor:pointer;font-size:14px">✕</button>
@@ -4461,8 +4464,8 @@ class Game {
       </div>` : '';
 
     const achievementsModal = v.showAchievements ? `
-      <div style="position:fixed;inset:0;background:rgba(5,3,9,.82);display:flex;align-items:center;justify-content:center;z-index:60;padding:32px">
-        <div style="width:560px;max-width:calc(100vw - 24px);max-height:78vh;overflow-y:auto;background:#0e0918;border:1px solid #3a2350;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7)">
+      <div class="modal-overlay">
+        <div class="modal-dialog" style="width:560px;max-width:calc(100vw - 24px)">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #241536;position:sticky;top:0;background:#0e0918">
             <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700">Achievements</div>
             <div style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#ffd700">${v.achievements.filter(a => a.unlocked).length} / ${v.achievements.length}</div>
@@ -4788,6 +4791,20 @@ class Game {
     </aside>
   </main>
 
+  <nav id="thumb-cockpit" class="thumb-cockpit">
+    <div class="thumb-cta-row">
+      <button id="thumb-cta-work" data-h="${this.bind(v.workCrowd)}" class="cta" style="background:linear-gradient(180deg,#ff2d78,#c2185b);border:0;color:#fff;box-shadow:0 0 16px rgba(255,45,120,.4)">
+        Work the room <span style="font-family:'IBM Plex Mono',monospace;opacity:.85;text-transform:none;letter-spacing:0">+${v.clickValue}</span>
+      </button>
+      <button id="thumb-cta-round" data-h="${this.bind(v.buyRound)}" ${v.roundLocked ? 'disabled' : ''} class="cta" style="${css(v.roundStyle)}" title="${v.roundReason || v.roundLabel}" aria-label="${v.roundReason || v.roundLabel}">
+        ${v.roundLabel}
+      </button>
+    </div>
+    <div id="thumb-tabs-container" class="thumb-tabs-row">
+      ${tabRows}
+    </div>
+  </nav>
+
   <div>
     <div id="tabstale-wrap">
     ${v.tabStale ? (v.saveState === 'checking ownership…'
@@ -5057,6 +5074,27 @@ class Game {
     if (tbw) {
       tbw.innerHTML = v.tabs.map(tb => `
         <button data-h="${this.bind(tb.go)}" style="${css(tb.style)}">${tb.label}</button>`).join('');
+    }
+    const tcTabs = this.dom('#thumb-tabs-container');
+    if (tcTabs) {
+      tcTabs.innerHTML = v.tabs.map(tb => `
+        <button data-h="${this.bind(tb.go)}" class="tab-btn ${tb.active ? 'tab-active' : ''}" style="${css(tb.style)}" aria-label="${this.escapeHtml(tb.label)} tab">${tb.label}</button>`).join('');
+    }
+    const tcWork = this.dom('#thumb-cta-work');
+    if (tcWork) {
+      tcWork.setAttribute('data-h', String(this.bind(v.workCrowd)));
+      tcWork.innerHTML = `Work the room <span style="font-family:'IBM Plex Mono',monospace;opacity:.85;text-transform:none;letter-spacing:0">+${v.clickValue}</span>`;
+    }
+    const tcRound = this.dom('#thumb-cta-round');
+    if (tcRound) {
+      tcRound.setAttribute('data-h', String(this.bind(v.buyRound)));
+      tcRound.disabled = Boolean(v.roundLocked);
+      if (v.roundLocked) tcRound.setAttribute('disabled', '');
+      else tcRound.removeAttribute('disabled');
+      tcRound.textContent = v.roundLabel;
+      tcRound.style.cssText = css(v.roundStyle);
+      tcRound.title = v.roundReason || v.roundLabel;
+      tcRound.setAttribute('aria-label', v.roundReason || v.roundLabel);
     }
     const olw = this.dom('#owners-list-wrap');
     if (olw) olw.innerHTML = this.renderOwnersList(v);
