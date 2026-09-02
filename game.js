@@ -70,9 +70,9 @@ function normalizePacks(g) {
       continue;
     }
     if (typeof p.tier !== 'number' || !Number.isFinite(p.tier) || p.tier < 0) p.tier = 0;
-    else p.tier = Math.floor(p.tier);
+    else p.tier = Math.min(30, Math.floor(p.tier));
     if (typeof p.xp !== 'number' || !Number.isFinite(p.xp) || p.xp < 0) p.xp = 0;
-    else p.xp = Math.floor(p.xp);
+    else p.xp = p.tier >= 30 ? 0 : Math.min(99, Math.floor(p.xp));
 
     const cleanClaimed = {};
     if (p.claimed && typeof p.claimed === 'object' && !Array.isArray(p.claimed)) {
@@ -3383,7 +3383,7 @@ class Game {
   addSeasonalXp(amount) {
     if (this.state.tabStale) return;
     const g = this.state.g;
-    if (!g || typeof amount !== 'number' || amount <= 0) return;
+    if (!g || typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) return;
     const Packs = typeof AfterglowPacks !== 'undefined' ? AfterglowPacks : (typeof require !== 'undefined' ? (()=>{ try { return require('./src/core/packs.js'); } catch (_) { return null; } })() : null);
     if (!Packs || typeof Packs.addXp !== 'function') return;
     const activeId = (g.packs && typeof g.packs.active === 'string') ? g.packs.active : 'season1-miami';

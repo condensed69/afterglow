@@ -7852,6 +7852,13 @@ test('PR 8: normalizePacks central sanitization fails closed against crafted or 
   strictEqual(sanitized.relics.fake_relic, undefined, 'unknown relic stripped');
   strictEqual(sanitized.relics.invalid_relic, undefined, 'non-boolean relic stripped');
 
+  // Upper bound clamping test (tier <= 30, xp < 100)
+  const overflowG = game.fresh();
+  overflowG.packs.progress['season1-miami'] = { tier: 9999, xp: 9999, claimed: {} };
+  game.sanitizeG(overflowG);
+  strictEqual(overflowG.packs.progress['season1-miami'].tier, 30, 'tier clamped to maximum 30');
+  strictEqual(overflowG.packs.progress['season1-miami'].xp, 0, 'xp at max tier clamped to 0');
+
   // Test completeImportedG via importSaveFromText with corrupt packs
   const g2 = game.fresh();
   g2.packs = {
