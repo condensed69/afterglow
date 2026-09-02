@@ -7522,6 +7522,19 @@ test('PR 7: Blueprint multipliers and subsystem effects in rates, restock, bribe
   strictEqual(c.barStock, Math.floor(bev.batchSize * 1.30), 'Automated pourers yields 30% more batch stock');
   strictEqual(c.cash, 500 - Math.floor(bev.batchCost * 0.50), 'Black market logistics cuts restocking cost in half');
 
+  // Test stacked restocking discounts (black_market_logistics + supply_corridor = 65% off)
+  g.districtLinks.supply_corridor = true;
+  g.clubs.annex = game.freshClubState('annex');
+  g.clubs.rooftop = game.freshClubState('rooftop');
+  const stackedCost = game.restockCost(g);
+  strictEqual(stackedCost, Math.floor(bev.batchCost * 0.35), 'Stacked logistics discounts correctly calculate combined 65% discount without floor drift');
+
+  // Test velvet_allure VIP regular conversion scaling
+  const rWithoutAllure = game.rates({ ...g, blueprints: { ...g.blueprints, velvet_allure: false } });
+  const rWithAllure = game.rates(g);
+  const ratio = rWithAllure.regulars / rWithoutAllure.regulars;
+  ok(Math.abs(ratio - 1.25) < 1e-4, 'Velvet Allure increases VIP regulars conversion by exactly +25%');
+
   // Test spawnWhale with whale_syndicate (now folded into totalCashMult)
   c.cash = 0;
   const multBefore = game.totalCashMult(g); // already includes whale_syndicate ×1.5
@@ -7549,9 +7562,9 @@ test('PR 7: City District Syndicate Map and Logistics Links activation & operati
   strictEqual(g.districtLinks.vip_shuttles, true, 'Activated vip_shuttles link');
   strictEqual(c.cash, 1500, 'Deducted $500 activation fee');
 
-  // Toggle again to deactivate (no cash cost)
+  // Toggle again to deactivate (no cash cost, deletes key)
   game.toggleDistrictLink('vip_shuttles');
-  strictEqual(g.districtLinks.vip_shuttles, false, 'Deactivated vip_shuttles link');
+  strictEqual(g.districtLinks.vip_shuttles, undefined, 'Deactivated vip_shuttles link removes key');
   strictEqual(c.cash, 1500, 'Cash untouched on deactivation');
 
   // Re-activate and activate touring_djs ($450)

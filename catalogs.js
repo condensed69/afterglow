@@ -521,7 +521,7 @@ const AfterglowCatalogs = {
       req: 'sub_bass_acoustics',
       name: 'Drop Synchronizer',
       cost: 2,
-      desc: 'DJ Beat frenzy multiplier x1.50.',
+      desc: '+50% Hype bonus during DJ Beat-Sync Frenzy.',
       bonusType: 'frenzy_mult',
       bonusVal: 0.50
     },
@@ -555,7 +555,7 @@ const AfterglowCatalogs = {
       req: 'craft_infusions',
       name: 'Automated Pourers',
       cost: 2,
-      desc: 'Bar stock depletion rate -30% and cocktail throughput +20%.',
+      desc: 'Bar restock yield +30% (+30% stock per batch).',
       bonusType: 'bar_efficiency',
       bonusVal: 0.30
     },
@@ -566,9 +566,9 @@ const AfterglowCatalogs = {
       req: 'automated_pourers',
       name: 'Master Distillery',
       cost: 4,
-      desc: 'High-tier cocktail margin +50% and +15% Bar Revenue.',
+      desc: '+15% Bar Revenue across all venues.',
       bonusType: 'distillery_margin',
-      bonusVal: 0.50
+      bonusVal: 0.15
     },
 
     // Branch: Crowd Psychology ('crowd')
@@ -600,7 +600,7 @@ const AfterglowCatalogs = {
       req: 'hype_viral_loop',
       name: 'Whale Syndicate',
       cost: 4,
-      desc: 'Whale visitor frequency x2.0 and cash reward +50%.',
+      desc: '+50% cash payout from Whale appearances (folded into total cash multiplier).',
       bonusType: 'whale_boost',
       bonusVal: 0.50
     },
@@ -623,7 +623,7 @@ const AfterglowCatalogs = {
       req: 'shadow_patrols',
       name: 'Bribe Networks',
       cost: 2,
-      desc: 'Bribe cost -40% and raid risk -50%.',
+      desc: 'Police bribe cost -40% across all venues.',
       bonusType: 'bribe_discount',
       bonusVal: 0.40
     },
@@ -634,7 +634,7 @@ const AfterglowCatalogs = {
       req: 'bribe_networks',
       name: 'Black Market Logistics',
       cost: 4,
-      desc: 'Liquor restocking cost -50% and stealth operations +30%.',
+      desc: 'Bar restocking cost -50% across all venues.',
       bonusType: 'logistics_discount',
       bonusVal: 0.50
     }
@@ -647,27 +647,21 @@ const AfterglowCatalogs = {
       clubId: 'main',
       name: 'Downtown Neon Strip',
       tagline: 'High volume walk-in traffic & classic neon energy',
-      perk: 'Neon Promenade (+10% Buzz Generation)',
-      bonusType: 'buzz',
-      bonusVal: 0.10
+      desc: 'Commercial nightlife corridor anchored by the Main Room.'
     },
     {
       id: 'industrial',
       clubId: 'annex',
       name: 'Warehouse Underground',
       tagline: 'Raw sound, dark basslines & underground raves',
-      perk: 'Bass Cavern (+20% Hype Generation)',
-      bonusType: 'hype',
-      bonusVal: 0.20
+      desc: 'Sub-bass rave district anchored by the Annex warehouse.'
     },
     {
       id: 'uptown',
       clubId: 'rooftop',
       name: 'Sky Tower Promenade',
       tagline: 'Ultra-exclusive VIP lounge with panoramic city skyline',
-      perk: 'Skyline Penthouse (+25% VIP Cash Flow)',
-      bonusType: 'vip_cash',
-      bonusVal: 0.25
+      desc: 'High-altitude luxury quarter anchored by the Rooftop.'
     }
   ],
 

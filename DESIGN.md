@@ -131,26 +131,26 @@ Introduces 4 specialized blueprint skill trees and an interactive city district 
   Permanently unlocked using Legacy points with tier-gated prerequisites across 4 branches (`g.blueprints`):
   - *Audio Engine (`audio`):*
     - `sub_bass_acoustics` (Tier 1, Cost 1): +20% DJ Booth Hype generation across all clubs.
-    - `drop_synchronizer` (Tier 2, Cost 2, Req: `sub_bass_acoustics`): DJ Beat frenzy multiplier x1.50.
+    - `drop_synchronizer` (Tier 2, Cost 2, Req: `sub_bass_acoustics`): +50% Hype bonus during DJ Beat-Sync Frenzy (x1.50).
     - `acoustic_overdrive` (Tier 3, Cost 4, Req: `drop_synchronizer`): +25% Stage Hype and +10% Cash Flow across all clubs.
   - *Mixology Lab (`mixology`):*
     - `craft_infusions` (Tier 1, Cost 1): +25% Back Bar cash flow.
-    - `automated_pourers` (Tier 2, Cost 2, Req: `craft_infusions`): Bar stock capacity/yield +30% and throughput boost.
-    - `master_distillery` (Tier 3, Cost 4, Req: `automated_pourers`): High-tier cocktail margin +50% and +15% Bar Revenue.
+    - `automated_pourers` (Tier 2, Cost 2, Req: `craft_infusions`): Bar restock yield +30% (+30% stock per batch).
+    - `master_distillery` (Tier 3, Cost 4, Req: `automated_pourers`): +15% Bar Revenue across all venues.
   - *Crowd Psychology (`crowd`):*
     - `velvet_allure` (Tier 1, Cost 1): VIP regular conversion rate +25%.
     - `hype_viral_loop` (Tier 2, Cost 2, Req: `velvet_allure`): Buzz converts to patrons +40% faster and +20% Regular retention.
-    - `whale_syndicate` (Tier 3, Cost 4, Req: `hype_viral_loop`): Whale visitor cash payout +50%.
+    - `whale_syndicate` (Tier 3, Cost 4, Req: `hype_viral_loop`): Whale visitor cash payout +50% (folded into total cash multiplier).
   - *Underground Syndicate (`syndicate`):*
     - `shadow_patrols` (Tier 1, Cost 1): Police heat generation -25%.
-    - `bribe_networks` (Tier 2, Cost 2, Req: `shadow_patrols`): Bribe cost -40%.
-    - `black_market_logistics` (Tier 3, Cost 4, Req: `bribe_networks`): Liquor restocking cost -50%.
+    - `bribe_networks` (Tier 2, Cost 2, Req: `shadow_patrols`): Police bribe cost -40%.
+    - `black_market_logistics` (Tier 3, Cost 4, Req: `bribe_networks`): Bar restocking cost -50%.
 - **City District Syndicate Map (`catalogs.js: DISTRICTS` & `DISTRICT_LINKS`):**
   Unifies multi-club venues into an interactive city map with toggleable syndicate logistics links (`g.districtLinks`):
   - *Districts:*
-    - `downtown` (Downtown Neon Strip, venue `main`): Neon Promenade (+10% Buzz Generation).
-    - `industrial` (Warehouse Underground, venue `annex`): Bass Cavern (+20% Hype Generation).
-    - `uptown` (Sky Tower Promenade, venue `rooftop`): Skyline Penthouse (+25% VIP Cash Flow).
+    - `downtown` (Downtown Neon Strip, venue `main`): Commercial nightlife corridor anchored by the Main Room.
+    - `industrial` (Warehouse Underground, venue `annex`): Sub-bass rave district anchored by the Annex warehouse.
+    - `uptown` (Sky Tower Promenade, venue `rooftop`): High-altitude luxury quarter anchored by the Rooftop.
   - *Syndicate Logistics Links:*
     - `vip_shuttles` (Downtown $\leftrightarrow$ Uptown, Cost \$500): +20% VIP Cash Flow in both connected clubs when unlocked.
     - `touring_djs` (Downtown $\leftrightarrow$ Warehouse, Cost \$450): +25% Stage Hype & DJ Frenzy in both connected clubs when unlocked.

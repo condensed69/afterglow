@@ -38,6 +38,19 @@ function clubProxy(g) {
 const FLAT_RUN_FIELDS = Object.freeze(['cash', 'hype', 'buzz', 'patrons', 'regulars', 'heat', 'barStock', 'barTier', 'djTrack', '_frenzyT', '_beatCooldown', 'persona', 'activeTalent', 'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown']);
 const STRAY_FIELDS = Object.freeze(['cash', 'hype', 'buzz', 'patrons', 'regulars', 'heat', 'barStock', 'barTier', 'djTrack', '_frenzyT', '_beatCooldown', 'persona', 'activeTalent', 'b', 'u', 'elapsed', 'night', 'shiftIdx', 'shiftT', '_specialShift', '_whaleCooldown']);
 
+function sanitizeFlagMap(map, catalog) {
+  const clean = {};
+  if (!map || typeof map !== 'object' || Array.isArray(map)) return clean;
+  if (Array.isArray(catalog)) {
+    for (const item of catalog) {
+      if (item && typeof item.id === 'string' && map[item.id] === true) {
+        clean[item.id] = true;
+      }
+    }
+  }
+  return clean;
+}
+
 class Game {
   VERSION = { num: '0.14.0', build: 280, channel: 'alpha', date: '2026-09-02', codename: 'Blueprints & Syndicate' };
   SAVE_VER = 15;
@@ -226,24 +239,10 @@ class Game {
     },
     // v14 → v15: Branching Blueprint Skill Tree & District Syndicate Map (PR 7 of Afterglow 2.0)
     14(g) {
-      if (!g.blueprints || typeof g.blueprints !== 'object' || Array.isArray(g.blueprints)) {
-        g.blueprints = {};
-      } else if (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.BLUEPRINTS) {
-        const clean = {};
-        for (const bp of AfterglowCatalogs.BLUEPRINTS) {
-          if (g.blueprints[bp.id] === true) clean[bp.id] = true;
-        }
-        g.blueprints = clean;
-      }
-      if (!g.districtLinks || typeof g.districtLinks !== 'object' || Array.isArray(g.districtLinks)) {
-        g.districtLinks = {};
-      } else if (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.DISTRICT_LINKS) {
-        const clean = {};
-        for (const dl of AfterglowCatalogs.DISTRICT_LINKS) {
-          if (g.districtLinks[dl.id] === true) clean[dl.id] = true;
-        }
-        g.districtLinks = clean;
-      }
+      const bps = (typeof AfterglowCatalogs !== 'undefined') ? AfterglowCatalogs.BLUEPRINTS : null;
+      const dls = (typeof AfterglowCatalogs !== 'undefined') ? AfterglowCatalogs.DISTRICT_LINKS : null;
+      g.blueprints = sanitizeFlagMap(g.blueprints, bps);
+      g.districtLinks = sanitizeFlagMap(g.districtLinks, dls);
     }
   };
 
@@ -1524,24 +1523,11 @@ class Game {
     // Club Personas & Named Talent Roster (PR 6 of Afterglow 2.0)
     if (!Array.isArray(g.roster)) g.roster = [];
     else g.roster = g.roster.filter(id => typeof id === 'string' && typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.TALENT && AfterglowCatalogs.TALENT.some(t => t.id === id));
-    // Branching Blueprint Skill Tree (PR 7 of Afterglow 2.0)
-    if (!g.blueprints || typeof g.blueprints !== 'object' || Array.isArray(g.blueprints)) g.blueprints = {};
-    const bpNext = Object.create(null);
-    if (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.BLUEPRINTS) {
-      for (const bp of AfterglowCatalogs.BLUEPRINTS) {
-        if (g.blueprints[bp.id] === true) bpNext[bp.id] = true;
-      }
-    }
-    g.blueprints = bpNext;
-    // City District Syndicate Map (PR 7 of Afterglow 2.0)
-    if (!g.districtLinks || typeof g.districtLinks !== 'object' || Array.isArray(g.districtLinks)) g.districtLinks = {};
-    const dlNext = Object.create(null);
-    if (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.DISTRICT_LINKS) {
-      for (const dl of AfterglowCatalogs.DISTRICT_LINKS) {
-        if (g.districtLinks[dl.id] === true) dlNext[dl.id] = true;
-      }
-    }
-    g.districtLinks = dlNext;
+    // Branching Blueprint Skill Tree & District Syndicate Map (PR 7 of Afterglow 2.0)
+    const bps = (typeof AfterglowCatalogs !== 'undefined') ? AfterglowCatalogs.BLUEPRINTS : null;
+    const dls = (typeof AfterglowCatalogs !== 'undefined') ? AfterglowCatalogs.DISTRICT_LINKS : null;
+    g.blueprints = sanitizeFlagMap(g.blueprints, bps);
+    g.districtLinks = sanitizeFlagMap(g.districtLinks, dls);
     return g;
   }
 
@@ -1810,25 +1796,11 @@ class Game {
     if (!Array.isArray(g.roster)) g.roster = [];
     else g.roster = g.roster.filter(id => typeof id === 'string' && typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.TALENT && AfterglowCatalogs.TALENT.some(t => t.id === id));
 
-    // Branching Blueprint Skill Tree (PR 7 of Afterglow 2.0)
-    if (!g.blueprints || typeof g.blueprints !== 'object' || Array.isArray(g.blueprints)) g.blueprints = {};
-    const bpImportNext = Object.create(null);
-    if (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.BLUEPRINTS) {
-      for (const bp of AfterglowCatalogs.BLUEPRINTS) {
-        if (g.blueprints[bp.id] === true) bpImportNext[bp.id] = true;
-      }
-    }
-    g.blueprints = bpImportNext;
-
-    // City District Syndicate Map (PR 7 of Afterglow 2.0)
-    if (!g.districtLinks || typeof g.districtLinks !== 'object' || Array.isArray(g.districtLinks)) g.districtLinks = {};
-    const dlImportNext = Object.create(null);
-    if (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.DISTRICT_LINKS) {
-      for (const dl of AfterglowCatalogs.DISTRICT_LINKS) {
-        if (g.districtLinks[dl.id] === true) dlImportNext[dl.id] = true;
-      }
-    }
-    g.districtLinks = dlImportNext;
+    // Branching Blueprint Skill Tree & District Syndicate Map (PR 7 of Afterglow 2.0)
+    const bps = (typeof AfterglowCatalogs !== 'undefined') ? AfterglowCatalogs.BLUEPRINTS : null;
+    const dls = (typeof AfterglowCatalogs !== 'undefined') ? AfterglowCatalogs.DISTRICT_LINKS : null;
+    g.blueprints = sanitizeFlagMap(g.blueprints, bps);
+    g.districtLinks = sanitizeFlagMap(g.districtLinks, dls);
 
     if (!Array.isArray(g.log)) g.log = [];
     // Keep raw validated t/msg (length-capped) so export→import is idempotent.
@@ -2530,7 +2502,7 @@ class Game {
     const buzzSpent = basis > 0 && pull > 0 ? basis * (admitted / pull) : 0;
     const patrons = admitted - c.patrons * 0.008;
     // Regulars / Clout paced for first-research ~25 min under the §C reference bot.
-    const regulars = c.patrons * 0.00045 * (1 + c.b.vip * 0.18 * bpVipConv) * sm * (g.r.playbook ? 1.25 : 1) * (bpHypeLoop ? 1.20 : 1.0);
+    const regulars = c.patrons * 0.00045 * (1 + c.b.vip * 0.18) * bpVipConv * sm * (g.r.playbook ? 1.25 : 1) * (bpHypeLoop ? 1.20 : 1.0);
     const clout = c.regulars * 0.0011 * (1 + 0.25 * this.perk(g, 'clout25')) * (g.r.network ? 1.25 : 1);
 
     // Police Heat Engine (PR 4) & Personas/Talent heat tuning (PR 6) & Shadow Patrols (PR 7)
@@ -3178,12 +3150,12 @@ class Game {
     const bevs = (typeof AfterglowCatalogs !== 'undefined' && AfterglowCatalogs.BEVERAGES) ? AfterglowCatalogs.BEVERAGES : [];
     const c = this.club(g);
     const bev = bevs[c.barTier || 0] || { batchCost: 15, batchSize: 50, name: 'Well Spirits' };
-    let cost = bev.batchCost;
-    if (g.blueprints && g.blueprints.black_market_logistics) cost = Math.floor(cost * 0.50);
+    let mult = 1.0;
+    if (g.blueprints && g.blueprints.black_market_logistics) mult *= 0.50;
     if (g.districtLinks && g.districtLinks.supply_corridor && g.clubs && g.clubs.annex && g.clubs.rooftop) {
-      cost = Math.floor(cost * 0.70);
+      mult *= 0.70;
     }
-    return cost;
+    return Math.floor(bev.batchCost * mult);
   }
 
   restockBar() {
@@ -3291,7 +3263,7 @@ class Game {
       return;
     }
     if (g.districtLinks[linkId]) {
-      g.districtLinks[linkId] = false;
+      delete g.districtLinks[linkId];
       this.push(g, 'Deactivated Syndicate Link: ' + link.name + '.', '#94a3b8');
     } else {
       if (c.cash < link.cost) return;
@@ -4200,10 +4172,10 @@ class Game {
         return {
           id: dist.id,
           name: dist.name + (isCurrent ? ' [ACTIVE]' : ''),
-          desc: dist.tagline + ' · ' + dist.perk,
+          desc: dist.tagline + ' · ' + (dist.desc || ''),
           owned: isUnlocked ? (isCurrent ? 'current venue' : 'controlled') : 'locked',
           btn: isUnlocked ? (isCurrent ? 'Current' : 'Switch') : 'Locked',
-          meta: isUnlocked ? 'district bonus active' : 'unlock location to control',
+          meta: isUnlocked ? (isCurrent ? 'active operations hub' : 'syndicate venue hub') : 'unlock location to expand',
           locked: !isUnlocked || isCurrent,
           wrapStyle: cardWrap(isUnlocked),
           btnStyle: btn(isUnlocked && !isCurrent, '#a855f7'),
