@@ -7809,6 +7809,96 @@ test('PR 8: Content pack removal and absent engine safety invariance', () => {
   }
 });
 
+test('PR 8: normalizePacks central sanitization fails closed against crafted or corrupt payloads', () => {
+  const game = newGame(500);
+
+  // Crafted corrupt save
+  const corruptPayload = {
+    saveVer: 16,
+    ver: '0.15.0',
+    build: 290,
+    g: {
+      clubs: { main: { cash: 100, b: {}, u: {} } },
+      activeClub: 'main',
+      packs: {
+        active: '   ', // whitespace only -> must fall back to season1-miami
+        progress: {
+          'season1-miami': {
+            tier: Infinity,
+            xp: NaN,
+            claimed: { '999': true, '1': true, '2': 'fake_value', 'invalid': true }
+          }
+        }
+      },
+      relics: {
+        golden_flamingo: true,
+        fake_relic: true,
+        invalid_relic: 123
+      }
+    }
+  };
+
+  const sanitized = game.sanitizeG(corruptPayload.g);
+  strictEqual(sanitized.packs.active, 'season1-miami', 'empty active pack string normalized');
+  const prog = sanitized.packs.progress['season1-miami'];
+  strictEqual(prog.tier, 0, 'Infinity tier clamped to 0');
+  strictEqual(prog.xp, 0, 'NaN xp clamped to 0');
+  strictEqual(prog.claimed[1], true, 'valid tier 1 claim preserved');
+  strictEqual(prog.claimed['999'], undefined, 'out-of-range tier 999 stripped');
+  strictEqual(prog.claimed['2'], undefined, 'non-boolean claim value stripped');
+  strictEqual(prog.claimed['invalid'], undefined, 'non-numeric tier key stripped');
+
+  strictEqual(sanitized.relics.golden_flamingo, true, 'valid golden_flamingo relic preserved');
+  strictEqual(sanitized.relics.fake_relic, undefined, 'unknown relic stripped');
+  strictEqual(sanitized.relics.invalid_relic, undefined, 'non-boolean relic stripped');
+
+  // Test completeImportedG via importSaveFromText with corrupt packs
+  const g2 = game.fresh();
+  g2.packs = {
+    active: '   ',
+    progress: {
+      'season1-miami': {
+        tier: Infinity,
+        xp: NaN,
+        claimed: { '999': true, '1': true, '2': 'fake_value', 'invalid': true }
+      }
+    }
+  };
+  const okImp = game.importSaveFromText(JSON.stringify({ saveVer: 16, ver: '0.15.0', build: 290, g: g2 }));
+  strictEqual(okImp, true, 'importSaveFromText succeeds with normalized packs');
+  strictEqual(game.state.g.packs.active, 'season1-miami', 'completeImportedG normalizes empty active string');
+  const impProg = game.state.g.packs.progress['season1-miami'];
+  strictEqual(impProg.tier, 0, 'completeImportedG normalizes tier');
+  strictEqual(impProg.claimed[1], true, 'completeImportedG normalizes claimed');
+  strictEqual(impProg.claimed['999'], undefined, 'completeImportedG strips tier 999');
+});
+
+test('PR 8: Clout reward writes to account-level g.clout (not c.clout)', () => {
+  const game = newGame(5000);
+  const g = game.state.g;
+  const c = game.club(g);
+
+  g.clout = 10;
+  // Tier 3 in season1-miami awards 10 Clout
+  g.packs.progress['season1-miami'].tier = 3;
+  const claimRes = PacksPkg.claimReward(game, 'season1-miami', 3);
+  ok(claimRes.ok, 'Tier 3 claimed');
+  strictEqual(g.clout, 20, 'g.clout updated from 10 to 20');
+  strictEqual(c.clout, undefined, 'c.clout is undefined (not polluted on club level)');
+});
+
+test('PR 8: Data-driven getRelicMultipliers dynamically checks catalog definitions', () => {
+  const customG = { relics: { golden_flamingo: true } };
+  const mults = PacksPkg.getRelicMultipliers(customG);
+  strictEqual(mults.vipCashMult, 1.15, 'vipCashMult is 1.15');
+  strictEqual(mults.legacyMult, 1.10, 'legacyMult is 1.10');
+
+  const emptyG = { relics: {} };
+  const baseMults = PacksPkg.getRelicMultipliers(emptyG);
+  strictEqual(baseMults.vipCashMult, 1.0, 'base vipCashMult is 1.0');
+  strictEqual(baseMults.legacyMult, 1.0, 'base legacyMult is 1.0');
+});
+
 if (pendingTests.length > 0) await Promise.all(pendingTests);
 
 console.log(`Results: ${passed} passed, ${skipped} skipped, ${failed} failed`);

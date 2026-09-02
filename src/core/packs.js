@@ -192,7 +192,7 @@
         g.legacyTotal = (g.legacyTotal || 0) + reward.val;
         game.push(g, `Claimed Tier ${tierNum} Reward: +${reward.val} Legacy Points!`, '#38bdf8');
       } else if (reward.type === 'clout' && typeof reward.val === 'number') {
-        c.clout = (c.clout || 0) + reward.val;
+        g.clout = (g.clout || 0) + reward.val;
         game.push(g, `Claimed Tier ${tierNum} Reward: +${reward.val} Clout!`, '#a855f7');
       } else if (reward.type === 'relic' && typeof reward.relicId === 'string') {
         if (!g.relics || typeof g.relics !== 'object') g.relics = {};
@@ -207,6 +207,7 @@
 
     /**
      * Calculate passive rate multipliers provided by relics and active pack.
+     * Data-driven resolution via AfterglowCatalogs.RELICS with built-in Season 1 fallback.
      * @param {Object} g Game state
      * @returns {Object} { vipCashMult, legacyMult }
      */
@@ -215,10 +216,22 @@
       let vipCashMult = 1.0;
       let legacyMult = 1.0;
 
-      // Golden Flamingo Relic (PR 8 Season 1 Capstone)
-      if (relics.golden_flamingo === true) {
-        vipCashMult *= 1.15; // +15% VIP cash flow
-        legacyMult *= 1.10;   // +10% prestige legacy points
+      const relicDefs = (typeof AfterglowCatalogs !== 'undefined' && Array.isArray(AfterglowCatalogs.RELICS))
+        ? AfterglowCatalogs.RELICS
+        : [];
+
+      for (const [relicId, active] of Object.entries(relics)) {
+        if (active === true) {
+          const def = relicDefs.find(r => r.id === relicId);
+          if (def) {
+            if (typeof def.vipCashMult === 'number') vipCashMult *= def.vipCashMult;
+            if (typeof def.legacyMult === 'number') legacyMult *= def.legacyMult;
+          } else if (relicId === 'golden_flamingo') {
+            // Built-in Season 1 fallback
+            vipCashMult *= 1.15;
+            legacyMult *= 1.10;
+          }
+        }
       }
 
       return { vipCashMult, legacyMult };

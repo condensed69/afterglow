@@ -51,6 +51,45 @@ function sanitizeFlagMap(map, catalog) {
   return clean;
 }
 
+function normalizePacks(g) {
+  if (!g || typeof g !== 'object') return;
+  if (!g.packs || typeof g.packs !== 'object' || Array.isArray(g.packs)) {
+    g.packs = { active: 'season1-miami', progress: { 'season1-miami': { tier: 0, xp: 0, claimed: {} } } };
+    return;
+  }
+  if (!g.packs.active || typeof g.packs.active !== 'string' || g.packs.active.trim() === '') {
+    g.packs.active = 'season1-miami';
+  }
+  if (!g.packs.progress || typeof g.packs.progress !== 'object' || Array.isArray(g.packs.progress)) {
+    g.packs.progress = { 'season1-miami': { tier: 0, xp: 0, claimed: {} } };
+  }
+  for (const k of Object.keys(g.packs.progress)) {
+    const p = g.packs.progress[k];
+    if (!p || typeof p !== 'object' || Array.isArray(p)) {
+      g.packs.progress[k] = { tier: 0, xp: 0, claimed: {} };
+      continue;
+    }
+    if (typeof p.tier !== 'number' || !Number.isFinite(p.tier) || p.tier < 0) p.tier = 0;
+    else p.tier = Math.floor(p.tier);
+    if (typeof p.xp !== 'number' || !Number.isFinite(p.xp) || p.xp < 0) p.xp = 0;
+    else p.xp = Math.floor(p.xp);
+
+    const cleanClaimed = {};
+    if (p.claimed && typeof p.claimed === 'object' && !Array.isArray(p.claimed)) {
+      for (const [ck, cv] of Object.entries(p.claimed)) {
+        const tNum = Math.floor(Number(ck));
+        if (Number.isFinite(tNum) && tNum >= 1 && tNum <= 30 && cv === true) {
+          cleanClaimed[tNum] = true;
+        }
+      }
+    }
+    p.claimed = cleanClaimed;
+  }
+  if (!g.packs.progress[g.packs.active]) {
+    g.packs.progress[g.packs.active] = { tier: 0, xp: 0, claimed: {} };
+  }
+}
+
 class Game {
   VERSION = { num: '0.15.0', build: 290, channel: 'alpha', date: '2026-09-02', codename: 'Content Packs & Miami Vice' };
   SAVE_VER = 16;
@@ -246,21 +285,7 @@ class Game {
     },
     // v15 → v16: Pluggable Content Pack Engine & Season 1: Miami Vice '86 (PR 8 of Afterglow 2.0)
     15(g) {
-      if (!g.packs || typeof g.packs !== 'object' || Array.isArray(g.packs)) {
-        g.packs = { active: 'season1-miami', progress: { 'season1-miami': { tier: 0, xp: 0, claimed: {} } } };
-      } else {
-        if (typeof g.packs.active !== 'string') g.packs.active = 'season1-miami';
-        if (!g.packs.progress || typeof g.packs.progress !== 'object' || Array.isArray(g.packs.progress)) g.packs.progress = {};
-        for (const k of Object.keys(g.packs.progress)) {
-          const p = g.packs.progress[k];
-          if (!p || typeof p !== 'object' || Array.isArray(p)) g.packs.progress[k] = { tier: 0, xp: 0, claimed: {} };
-          else {
-            if (typeof p.tier !== 'number' || !Number.isFinite(p.tier) || p.tier < 0) p.tier = 0;
-            if (typeof p.xp !== 'number' || !Number.isFinite(p.xp) || p.xp < 0) p.xp = 0;
-            if (!p.claimed || typeof p.claimed !== 'object' || Array.isArray(p.claimed)) p.claimed = {};
-          }
-        }
-      }
+      normalizePacks(g);
       const relicsCat = (typeof AfterglowCatalogs !== 'undefined') ? AfterglowCatalogs.RELICS : null;
       g.relics = sanitizeFlagMap(g.relics, relicsCat);
     }
@@ -959,6 +984,8 @@ class Game {
 
   // Legacy earned on prestige: floor(sqrt(regulars) + night / 7). Regulars and
   // night are per-club — the active club's progress gates the franchise.
+  // Seasonal relics (e.g. golden_flamingo) apply standard multiplicative scaling
+  // floor(base * relicMult), consistent with the floor(base * mult) convention in rates().
   legacyGain(g) {
     const c = this.club(g);
     const reg = Math.max(0, c.regulars || 0);
@@ -1557,12 +1584,7 @@ class Game {
     g.blueprints = sanitizeFlagMap(g.blueprints, bps);
     g.districtLinks = sanitizeFlagMap(g.districtLinks, dls);
     // Pluggable Content Pack Engine & Seasonal Relics (PR 8 of Afterglow 2.0)
-    if (!g.packs || typeof g.packs !== 'object' || Array.isArray(g.packs)) {
-      g.packs = { active: 'season1-miami', progress: { 'season1-miami': { tier: 0, xp: 0, claimed: {} } } };
-    } else {
-      if (typeof g.packs.active !== 'string') g.packs.active = 'season1-miami';
-      if (!g.packs.progress || typeof g.packs.progress !== 'object' || Array.isArray(g.packs.progress)) g.packs.progress = {};
-    }
+    normalizePacks(g);
     const relicsCat = (typeof AfterglowCatalogs !== 'undefined') ? AfterglowCatalogs.RELICS : null;
     g.relics = sanitizeFlagMap(g.relics, relicsCat);
     return g;
@@ -1840,12 +1862,7 @@ class Game {
     g.districtLinks = sanitizeFlagMap(g.districtLinks, dls);
 
     // Pluggable Content Pack Engine & Seasonal Relics (PR 8 of Afterglow 2.0)
-    if (!g.packs || typeof g.packs !== 'object' || Array.isArray(g.packs)) {
-      g.packs = { active: 'season1-miami', progress: { 'season1-miami': { tier: 0, xp: 0, claimed: {} } } };
-    } else {
-      if (typeof g.packs.active !== 'string') g.packs.active = 'season1-miami';
-      if (!g.packs.progress || typeof g.packs.progress !== 'object' || Array.isArray(g.packs.progress)) g.packs.progress = {};
-    }
+    normalizePacks(g);
     const relicsCat = (typeof AfterglowCatalogs !== 'undefined') ? AfterglowCatalogs.RELICS : null;
     g.relics = sanitizeFlagMap(g.relics, relicsCat);
 

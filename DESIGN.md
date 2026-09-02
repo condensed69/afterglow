@@ -775,6 +775,7 @@ If `setItem` throws (or any earlier step fails) → `saveState: 'import failed'`
 | 12 → 13 | Vision ladder: `lifetimeEarned` defaulted to 0 when missing/malformed — no-clobber (history cannot be reconstructed; the ladder starts measuring from migration) |
 | 13 → 14 | Club Personas & Named Talent: `g.roster` defaulted to `[]` and filtered; per-club `persona` and `activeTalent` initialized and fail-closed |
 | 14 → 15 | Blueprint Skill Tree & District Syndicate: `g.blueprints` and `g.districtLinks` defaulted to `{}` and filtered against catalogs |
+| 15 → 16 | Content Packs & Relics: `g.packs` and `g.relics` defaulted, `packs` structure and tier progression normalized, relics filtered via RELICS catalog |
 
 Future saveVer or missing step → wipe on load (localStorage path) or import failed (clipboard/file).
 

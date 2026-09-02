@@ -11,7 +11,12 @@
   if (typeof define === 'function' && define.amd) {
     define([], factory);
   } else if (typeof module === 'object' && module.exports) {
-    module.exports = factory();
+    const exports = factory();
+    module.exports = exports;
+    // In Node / CommonJS environments, auto-register if AfterglowPacks global is already configured
+    if (typeof globalThis !== 'undefined' && globalThis.AfterglowPacks && typeof globalThis.AfterglowPacks.register === 'function') {
+      globalThis.AfterglowPacks.register(exports);
+    }
   } else {
     const exports = factory();
     if (typeof globalThis !== 'undefined') {
