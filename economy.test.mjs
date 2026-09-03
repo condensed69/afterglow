@@ -7919,6 +7919,21 @@ test('PR 8: addXp rejects non-finite XP amounts (Infinity, NaN, negative, zero)'
   strictEqual(g.packs.progress['season1-miami'].xp, 0, 'XP stays 0');
 });
 
+test('Fluid Widescreen Layout: shell-grid is full-width 3-column fluid grid, not a hard-capped centered island', () => {
+  const css = readFileSync(new URL('./style.css', import.meta.url), 'utf8');
+  // The desktop rule must be a fluid 100% grid — no max-width cap, no dead gutters.
+  ok(css.includes('grid-template-columns: minmax(260px, 320px) minmax(440px, 1fr) minmax(360px, 480px)'),
+     'shell-grid uses the fluid 3-column minmax spec');
+  ok(!/max-width:\s*1460px/.test(css), 'shell-grid no longer hard-capped at 1460px');
+  ok(css.includes('padding-inline: 18px'), 'shell-grid padding-inline matches header/ticker bar');
+  // Ultrawide guard re-caps so the 1fr center column cannot stretch into illegible proportions.
+  ok(css.includes('@media (min-width: 2160px)'), 'ultrawide media query guard present');
+  ok(css.includes('grid-template-columns: 340px 1fr 520px'), 'ultrawide guard recaps at 2200px');
+  // Mobile keeps full-bleed width — the padding reset that the reviewer flagged.
+  ok(/@media \(max-width:\s*900px\) \{[\s\S]*?\.shell-grid \{[\s\S]*?padding-inline:\s*0/.test(css),
+     'mobile shell-grid resets padding-inline to 0');
+});
+
 if (pendingTests.length > 0) await Promise.all(pendingTests);
 
 console.log(`Results: ${passed} passed, ${skipped} skipped, ${failed} failed`);
