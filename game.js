@@ -128,7 +128,7 @@ class Game {
     try { const v = localStorage.getItem(key); return v !== null ? v : fallback; } catch { return fallback; }
   }
   safeSet(key, value) {
-    try { localStorage.setItem(key, value); } catch { /* quota exceeded, ignore */ }
+    try { localStorage.setItem(key, value); return true; } catch { return false; }
   }
   safeRemove(key) {
     try { localStorage.removeItem(key); } catch { /* ignore */ }
@@ -321,7 +321,7 @@ class Game {
 
   CHANGELOG = [
       { v: '0.15.2', date: '2026-09-04', codename: 'Repository Hardening', notes: [
-        'REPOSITORY HARDENING (PR #171): wrapped all localStorage/sessionStorage/JSON.parse access in safe helpers (safeGet/Set/Remove, safeSessionGet/Set/Remove, safeParse) that silently catch private-mode/quota errors. Critical persistence paths (save, init, claimOwnership, confirmPrestige, openFranchise, startChallenge) retain explicit try/catch with saveState signaling. Added MAX_DT/AUTOSAVE_INTERVAL_MS/SIM_INTERVAL_MS constants replacing magic numbers. Removed dead debugLine field and footer template. pagehide now clears this.timer to fix BFCache memory leak. Bumps VERSION/build to 0.15.2/292. SAVE_VER stays 16 (save shape unchanged).'
+        'REPOSITORY HARDENING (PR #171): wrapped all localStorage/sessionStorage/JSON.parse access in safe helpers (safeGet/Set/Remove, safeSessionGet/Set/Remove, safeParse) that silently catch private-mode/quota errors. Critical persistence paths (save, init, claimOwnership, confirmPrestige, openFranchise, startChallenge) retain explicit try/catch with saveState signaling. Added MAX_DT/AUTOSAVE_INTERVAL_MS/SIM_INTERVAL_MS constants replacing magic numbers. Removed dead debugLine field and footer template. pagehide clears this.timer/saver/_probeTimer; pageshow re-arms full timer callback on BFCache restore. Bumps VERSION/build to 0.15.2/292. SAVE_VER stays 16 (save shape unchanged).'
       ] },
       { v: '0.15.1', date: '2026-09-02', codename: 'Fluid Widescreen Layout', notes: [
         'FLUID WIDESCREEN LAYOUT & SIDEGUTTER ELIMINATION: replaced the hard-capped 1460px `.shell-grid` box (which wasted 460px+ of dead side gutters on every desktop monitor) with a full-viewport 3-column grid `minmax(260px, 320px) minmax(440px, 1fr) minmax(360px, 480px)` + `padding-inline: 18px` matching header/ticker. Added `min-width: 2160px` ultrawide media-query guard that re-caps at 2200px to keep text readable on 3440/4K. Floorboard canvas now scales crowd-particle spread and spotlight beam separation with canvas width instead of clustering in a 720px zone. Right-panel `×0` Max button now renders `Max (0)` with disabled styling when no units are affordable. Ticker bar gains a 4px left pad so the initial letter no longer clips the overflow bounds. Header Police Heat meter adds a subtle pink glow above 50% so players anchored to the center action bar notice an impending raid. SAVE_VER stays 16 (no save migration needed), pacing bit-identical.'
@@ -2333,10 +2333,11 @@ class Game {
   // as proof a live peer still owns the save.
   refreshLease() {
     if (!this._ownsSave) return;
-    this.safeSet(this.LEASE_KEY, JSON.stringify({
+    if (this.safeSet(this.LEASE_KEY, JSON.stringify({
       token: this.tabToken, at: Date.now()
-    }));
-    this._leaseAt = Date.now();
+    }))) {
+      this._leaseAt = Date.now();
+    }
   }
 
   refreshLeaseThrottled() {
@@ -2406,7 +2407,6 @@ class Game {
           } else {
             this.liveStep(g, dt);
           }
-          this.startAutosave();
         }, this.SIM_INTERVAL_MS);
         this.startAutosave();
       }
