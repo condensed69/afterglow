@@ -2379,13 +2379,35 @@ class Game {
         clearInterval(this.timer);
         this.timer = null;
       }
+      if (this.saver) { clearInterval(this.saver); this.saver = null; }
+      if (this._probeTimer) { clearTimeout(this._probeTimer); this._probeTimer = null; }
     });
     window.addEventListener('pageshow', () => {
       this.safeSessionRemove(this.RELOAD_KEY);
       // BFCache restore: timers are natively paused by the browser, but we
-      // may have cleared this.timer in pagehide. Re-arm if still owner.
+      // may have cleared this.timer/saver in pagehide. Re-arm the full
+      // timer callback (matching game.js:2199) if still owner.
       if (!this.timer && this.isTabOwner()) {
-        this.timer = setInterval(() => this.step(), this.SIM_INTERVAL_MS);
+        this.timer = setInterval(() => {
+          const g = this.state.g; if (!g) return;
+          if (this.state.tabStale || !this.isTabOwner()) return;
+          this.refreshLeaseThrottled();
+          const now = Date.now();
+          const dt = Math.max(0, (now - (g.ts || now)) / 1000);
+          if (dt < 0.05) return;
+          if (dt > 2) {
+            const gap = Math.min(dt, this.MAX_DT);
+            const report = this.catchUp(g, gap);
+            if (dt > 60) this.push(g, this.awayMsg(gap, report), '#ffc94a');
+            this.noteGoals(g, { live: false });
+            this.checkAchievements(g);
+            g.ts = Date.now();
+            this.setState(s => ({ tick: s.tick + 1 }));
+          } else {
+            this.liveStep(g, dt);
+          }
+          this.startAutosave();
+        }, this.SIM_INTERVAL_MS);
         this.startAutosave();
       }
     });
@@ -4879,7 +4901,7 @@ class Game {
 
   loadLook() {
     const raw = this.safeGet(this.LOOK_KEY);
-    const l = raw ? this.safeParse(raw) : null;
+    let l = raw ? this.safeParse(raw) : null;
     const d = this.LOOK_DEFAULT;
     l = l && typeof l === 'object' ? l : {};
     this.look = {
