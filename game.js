@@ -2361,7 +2361,7 @@ class Game {
         g.ts = Date.now();
         this.setState(s => ({ tick: s.tick + 1 }));
       } else {
-        this.liveStep(g, Math.min(dt, this.MAX_DT));
+        this.liveStep(g, dt);
       }
     }, this.SIM_INTERVAL_MS);
   }
@@ -2397,7 +2397,7 @@ class Game {
       // BFCache restore: timers are natively paused by the browser, but we
       // may have cleared this.timer/saver in pagehide. Re-arm the shared
       // sim loop (startTickTimer()) if still owner.
-      if (!this.timer && this.isTabOwner()) {
+      if (this.isTabOwner()) {
         this.startTickTimer();
         this.startAutosave();
       }

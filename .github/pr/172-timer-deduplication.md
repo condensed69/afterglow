@@ -4,23 +4,27 @@
 
 The 10Hz sim tick-timer body was duplicated verbatim between `init()`
 (game.js:2199) and the `pageshow` BFCache-restore handler (game.js:2392) —
-~25 lines each — and the two copies were already drifting: the `pageshow`
-copy omitted the `Math.min(dt, this.MAX_DT)` clamp present in the `init()`
-copy, so a large BFCache gap could advance the sim differently on restore
-than on a fresh boot.
+~25 lines each — and the two copies were already drifting: the `init()`
+copy used the hardcoded literal `28800` in its catchUp branch while the
+`pageshow` copy used the constant `this.MAX_DT`, so changing MAX_DT
+in the future would leave the init path un-updated.
 
-Extracted `startTickTimer()` (carrying the clamp) from the `init()` copy and
-call it from both `init()` and the `pageshow` re-arm path. One definition of
-the sim loop; `pageshow` no longer needs its own inline callback.
+Extracted `startTickTimer()` (carrying the unified constant-based
+clamp) from the `init()` copy and call it from both `init()` and the
+`pageshow` re-arm path. One definition of the sim loop; `pageshow`
+no longer needs its own inline callback.
 
 ## Behavior
 
 Pure refactor. `startTickTimer()` is a no-op if `this.timer` is already set,
-so the guard `if (!this.timer && this.isTabOwner())` in `pageshow` is
-preserved — re-arming only happens when the timer was actually cleared by
-`pagehide`. The callback body is byte-identical to the `init()` copy that
-already shipped, including the `Math.min(dt, this.MAX_DT)` clamp on the
-`liveStep` branch.
+so the guard `if (this.isTabOwner())` in `pageshow` is preserved —
+re-arming only happens when the timer was actually cleared by
+`pagehide`. The `startTickTimer()` callback body is byte-identical to
+the old `init()` copy that already shipped (including the catchUp
+branch's `Math.min(dt, this.MAX_DT)` clamp). The `liveStep` branch
+now passes `dt` directly (the `MAX_DT` clamp was redundant for
+`dt <= 2`). The `pageshow` guard simplified to `if (this.isTabOwner())`
+since both `startTickTimer()` and `startAutosave()` are idempotent.
 
 ## Verification
 
