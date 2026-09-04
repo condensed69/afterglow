@@ -128,7 +128,7 @@ class Game {
     try { const v = localStorage.getItem(key); return v !== null ? v : fallback; } catch { return fallback; }
   }
   safeSet(key, value) {
-    try { localStorage.setItem(key, String(value)); } catch { /* quota exceeded, ignore */ }
+    try { localStorage.setItem(key, value); } catch { /* quota exceeded, ignore */ }
   }
   safeRemove(key) {
     try { localStorage.removeItem(key); } catch { /* ignore */ }
@@ -137,7 +137,7 @@ class Game {
     try { const v = sessionStorage.getItem(key); return v !== null ? v : fallback; } catch { return fallback; }
   }
   safeSessionSet(key, value) {
-    try { sessionStorage.setItem(key, String(value)); } catch { /* ignore */ }
+    try { sessionStorage.setItem(key, value); } catch { /* ignore */ }
   }
   safeSessionRemove(key) {
     try { sessionStorage.removeItem(key); } catch { /* ignore */ }
@@ -147,9 +147,9 @@ class Game {
   }
 
   // Dev-only tunables the Claude-artifact prop editor used to expose
-  // (showDebug / simSpeed / startingCash). Fixed to their defaults now that
+  // (simSpeed / startingCash). Fixed to their defaults now that
   // this runs as a plain page instead of inside that editor.
-  props = { showDebug: false, simSpeed: 1, startingCash: 20 };
+  props = { simSpeed: 1, startingCash: 20 };
 
   // "Since session" baseline (post-polish PR 4): captured on the FIRST render so
   // the Ledger can frame stats as session-level deltas. Not persisted — a fresh
@@ -1967,7 +1967,10 @@ class Game {
   importSaveFromText(text) {
     try {
       const p = this.safeParse(text);
-      if (!p) { this.setState({ saveState: 'import failed' }); return false; }
+      if (!p || typeof p !== 'object') {
+        this.setState({ saveState: 'import failed' });
+        return false;
+      }
       if (!this.isValidSavePayload(p)) {
         this.setState({ saveState: 'import failed' });
         return false;
@@ -2039,22 +2042,22 @@ class Game {
 
   init() {
     let g = null, wiped = false, upgraded = false, prevVer = null, fromSaveVer = null, lastAutoSave = null;
-    try {
-      const raw = this.safeGet(this.KEY);
-      if (raw) {
-        const p = this.safeParse(raw);
-        if (!p) { wiped = true; }
-        else {
-          prevVer = p.ver || null;
-          fromSaveVer = p.saveVer;
-          if (typeof p.lastAutoSave === 'number') lastAutoSave = p.lastAutoSave;
+    const raw = this.safeGet(this.KEY);
+    if (raw) {
+      const p = this.safeParse(raw);
+      if (!p || typeof p !== 'object') { wiped = true; }
+      else {
+        prevVer = p.ver || null;
+        fromSaveVer = p.saveVer;
+        if (typeof p.lastAutoSave === 'number') lastAutoSave = p.lastAutoSave;
+        try {
           const res = this.tryMigrateSave(p);
           g = res.g;
           upgraded = res.upgraded;
           wiped = res.wiped;
-        }
+        } catch (e) { wiped = true; }
       }
-    } catch (e) { wiped = true; }
+    }
     // Recover safely from a previously persisted malformed clipboard import.
     // Current SAVE_VER requires goals fields; post-migration fills them.
     // Missing/malformed current-format goal state wipes rather than soft-reset re-pay.
@@ -2074,7 +2077,7 @@ class Game {
     const nowMs = Date.now();
     const futureTs = !!(resumeExisting && g.ts && g.ts > nowMs);
     const offline = (resumeExisting && g.ts && !futureTs)
-      ? Math.min(Math.max(0, (nowMs - g.ts) / 1000), 28800)
+      ? Math.min(Math.max(0, (nowMs - g.ts) / 1000), this.MAX_DT)
       : 0;
     this.state.g = this.wrapState(g);
     this.state.lastAutoSave = wiped ? undefined : (lastAutoSave ?? undefined);
@@ -2175,7 +2178,7 @@ class Game {
         } catch (e) {
           this.setState({ saveState: 'save failed' });
         }
-        this.refreshLease();
+        if (persistOk) this.refreshLease();
       }
     } else if (offline > 0) {
       // Non-claiming path: offline catch-up in memory only (no setItem / no steal).
@@ -2363,20 +2366,16 @@ class Game {
     this._ownerLifecycleBound = true;
     if (typeof window === 'undefined' || !window.addEventListener) return;
     window.addEventListener('pagehide', () => {
-      try {
-        if (sessionStorage.getItem(this.OWNER_KEY) === this.tabToken) {
-          sessionStorage.setItem(this.RELOAD_KEY, this.tabToken);
-        }
-      } catch (e) { /* private mode */ }
+      if (this.safeSessionGet(this.OWNER_KEY) === this.tabToken) {
+        this.safeSessionSet(this.RELOAD_KEY, this.tabToken);
+      }
       if (this.timer) {
         clearInterval(this.timer);
         this.timer = null;
       }
     });
     window.addEventListener('pageshow', () => {
-      // Normal load: init already consumed RELOAD_KEY. BFCache restore: init does
-      // not re-run, so clear the pagehide marker left when we entered the cache.
-      try { sessionStorage.removeItem(this.RELOAD_KEY); } catch (e) { /* private mode */ }
+      this.safeSessionRemove(this.RELOAD_KEY);
     });
   }
 
@@ -4868,7 +4867,7 @@ class Game {
   MOTIONS = { full: 'Full', easy: 'Easy', still: 'Still' };
 
   loadLook() {
-    const l = this.safeParse(this.safeGet(this.LOOK_KEY) || 'null') || {};
+    const l = this.safeParse(this.safeGet(this.LOOK_KEY)) || {};
     const d = this.LOOK_DEFAULT;
     l = l && typeof l === 'object' ? l : {};
     this.look = {
