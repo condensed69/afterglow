@@ -2113,16 +2113,13 @@ class Game {
     // explicitly acquires ownership (claim path, reload takeover, or import).
     const CLAIM_OFFLINE_SEC = 15;
     let wasOwner = false;
-    try {
-      // Same-tab F5: pagehide wrote RELOAD_KEY. Tab-duplicate of a live owner
-      // copies OWNER_KEY but not RELOAD_KEY (pagehide never ran) → wasOwner false.
-      if (this.safeSessionGet(this.RELOAD_KEY)) {
-        wasOwner = true;
-        this.safeSessionRemove(this.RELOAD_KEY);
-        // Drop the previous page instance's owner token; we re-mark after claim.
-        this.safeSessionRemove(this.OWNER_KEY);
-      }
-    } catch (e) { /* private mode */ }
+    // safeSessionGet/Remove never throw (helpers catch internally).
+    if (this.safeSessionGet(this.RELOAD_KEY)) {
+      wasOwner = true;
+      this.safeSessionRemove(this.RELOAD_KEY);
+      // Drop the previous page instance's owner token; we re-mark after claim.
+      this.safeSessionRemove(this.OWNER_KEY);
+    }
     // Hard claims always proceed. Age-only claim is gated by cross-tab lease:
     // a background-throttled owner may lag autosave past 15s while still live.
     // When age-claim would run, write PROBE_KEY and wait PROBE_WAIT_MS before
@@ -2144,9 +2141,9 @@ class Game {
     }
     const needsClaim = hardClaim;
     let claimed = false;
+    let persistOk = false;
     if (needsClaim) {
       g.ts = Date.now();
-      let persistOk = false;
       try {
         localStorage.setItem(this.KEY, JSON.stringify({
           saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
@@ -2171,14 +2168,16 @@ class Game {
         // Offline: peak (goal 12) must not complete here — live-only.
         this.noteGoals(g, { live: false });
         this.checkAchievements(g);
+        let persist2Ok = false;
         try {
           localStorage.setItem(this.KEY, JSON.stringify({
             saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
           }));
+          persist2Ok = true;
         } catch (e) {
           this.setState({ saveState: 'save failed' });
         }
-        if (persistOk) this.refreshLease();
+        if (persist2Ok) this.refreshLease();
       }
     } else if (offline > 0) {
       // Non-claiming path: offline catch-up in memory only (no setItem / no steal).
@@ -4867,7 +4866,8 @@ class Game {
   MOTIONS = { full: 'Full', easy: 'Easy', still: 'Still' };
 
   loadLook() {
-    const l = this.safeParse(this.safeGet(this.LOOK_KEY)) || {};
+    const raw = this.safeGet(this.LOOK_KEY);
+    const l = raw ? this.safeParse(raw) : null;
     const d = this.LOOK_DEFAULT;
     l = l && typeof l === 'object' ? l : {};
     this.look = {
