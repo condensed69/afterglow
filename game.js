@@ -5757,7 +5757,6 @@ class Game {
       <span>save v${v.saveVer}</span>
       <span id="footer-save-state">${v.saveState}</span>
       <div style="flex:1"></div>
-      <span id="footer-debug-line">${v.debugLine}</span>
       <span id="footer-tick-count">ticks ${v.tickCount}</span>
     </footer>
   </div>
@@ -6208,8 +6207,6 @@ class Game {
     if (fv && fv.textContent !== v.verFull) fv.textContent = v.verFull;
     const fss = this.dom('#footer-save-state');
     if (fss && fss.textContent !== v.saveState) fss.textContent = v.saveState;
-    const fdl = this.dom('#footer-debug-line');
-    if (fdl && fdl.textContent !== v.debugLine) fdl.textContent = v.debugLine;
     const ftc = this.dom('#footer-tick-count');
     if (ftc && ftc.textContent !== 'ticks ' + v.tickCount) ftc.textContent = 'ticks ' + v.tickCount;
     const mc = this.dom('#modals-container');
