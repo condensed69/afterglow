@@ -91,7 +91,7 @@ function normalizePacks(g) {
 }
 
 class Game {
-  VERSION = { num: '0.15.1', build: 291, channel: 'alpha', date: '2026-09-02', codename: 'Fluid Widescreen Layout' };
+  VERSION = { num: '0.15.2', build: 292, channel: 'alpha', date: '2026-09-04', codename: 'Fluid Widescreen Layout' };
   SAVE_VER = 16;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -118,10 +118,38 @@ class Game {
   // LEASE_KEY via the storage event. Immediate lease re-read races the async owner path.
   PROBE_WAIT_MS = 250;
 
+  // Simulation constants
+  MAX_DT = 28800;              // max seconds per tick (8 hours)
+  AUTOSAVE_INTERVAL_MS = 10000; // 10s
+  SIM_INTERVAL_MS = 100;       // 10Hz
+
+  // Safe storage helpers (guard against private mode / quota / corruption)
+  safeGet(key, fallback = null) {
+    try { const v = localStorage.getItem(key); return v !== null ? v : fallback; } catch { return fallback; }
+  }
+  safeSet(key, value) {
+    try { localStorage.setItem(key, value); return true; } catch { return false; }
+  }
+  safeRemove(key) {
+    try { localStorage.removeItem(key); } catch { /* ignore */ }
+  }
+  safeSessionGet(key, fallback = null) {
+    try { const v = sessionStorage.getItem(key); return v !== null ? v : fallback; } catch { return fallback; }
+  }
+  safeSessionSet(key, value) {
+    try { sessionStorage.setItem(key, value); } catch { /* ignore */ }
+  }
+  safeSessionRemove(key) {
+    try { sessionStorage.removeItem(key); } catch { /* ignore */ }
+  }
+  safeParse(json, fallback = null) {
+    try { return JSON.parse(json); } catch { return fallback; }
+  }
+
   // Dev-only tunables the Claude-artifact prop editor used to expose
-  // (showDebug / simSpeed / startingCash). Fixed to their defaults now that
+  // (simSpeed / startingCash). Fixed to their defaults now that
   // this runs as a plain page instead of inside that editor.
-  props = { showDebug: false, simSpeed: 1, startingCash: 20 };
+  props = { simSpeed: 1, startingCash: 20 };
 
   // "Since session" baseline (post-polish PR 4): captured on the FIRST render so
   // the Ledger can frame stats as session-level deltas. Not persisted — a fresh
@@ -292,6 +320,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.15.2', date: '2026-09-04', codename: 'Repository Hardening', notes: [
+        'REPOSITORY HARDENING (PR #171): wrapped all localStorage/sessionStorage/JSON.parse access in safe helpers (safeGet/Set/Remove, safeSessionGet/Set/Remove, safeParse) that silently catch private-mode/quota errors. Critical persistence paths (save, init, claimOwnership, confirmPrestige, openFranchise, startChallenge) retain explicit try/catch with saveState signaling. Added MAX_DT/AUTOSAVE_INTERVAL_MS/SIM_INTERVAL_MS constants replacing magic numbers. Removed dead debugLine field and footer template. pagehide clears this.timer/saver/_probeTimer; pageshow re-arms full timer callback on BFCache restore. Bumps VERSION/build to 0.15.2/292. SAVE_VER stays 16 (save shape unchanged).'
+      ] },
       { v: '0.15.1', date: '2026-09-02', codename: 'Fluid Widescreen Layout', notes: [
         'FLUID WIDESCREEN LAYOUT & SIDEGUTTER ELIMINATION: replaced the hard-capped 1460px `.shell-grid` box (which wasted 460px+ of dead side gutters on every desktop monitor) with a full-viewport 3-column grid `minmax(260px, 320px) minmax(440px, 1fr) minmax(360px, 480px)` + `padding-inline: 18px` matching header/ticker. Added `min-width: 2160px` ultrawide media-query guard that re-caps at 2200px to keep text readable on 3440/4K. Floorboard canvas now scales crowd-particle spread and spotlight beam separation with canvas width instead of clustering in a 720px zone. Right-panel `×0` Max button now renders `Max (0)` with disabled styling when no units are affordable. Ticker bar gains a 4px left pad so the initial letter no longer clips the overflow bounds. Header Police Heat meter adds a subtle pink glow above 50% so players anchored to the center action bar notice an impending raid. SAVE_VER stays 16 (no save migration needed), pacing bit-identical.'
       ] },
@@ -1938,7 +1969,11 @@ class Game {
   // Ownership (tabStale clear + autosave restart) only after a successful disk write.
   importSaveFromText(text) {
     try {
-      const p = JSON.parse(text);
+      const p = this.safeParse(text);
+      if (!p || typeof p !== 'object') {
+        this.setState({ saveState: 'import failed' });
+        return false;
+      }
       if (!this.isValidSavePayload(p)) {
         this.setState({ saveState: 'import failed' });
         return false;
@@ -2010,19 +2045,22 @@ class Game {
 
   init() {
     let g = null, wiped = false, upgraded = false, prevVer = null, fromSaveVer = null, lastAutoSave = null;
-    try {
-      const raw = localStorage.getItem(this.KEY);
-      if (raw) {
-        const p = JSON.parse(raw);
+    const raw = this.safeGet(this.KEY);
+    if (raw) {
+      const p = this.safeParse(raw);
+      if (!p || typeof p !== 'object') { wiped = true; }
+      else {
         prevVer = p.ver || null;
         fromSaveVer = p.saveVer;
         if (typeof p.lastAutoSave === 'number') lastAutoSave = p.lastAutoSave;
-        const res = this.tryMigrateSave(p);
-        g = res.g;
-        upgraded = res.upgraded;
-        wiped = res.wiped;
+        try {
+          const res = this.tryMigrateSave(p);
+          g = res.g;
+          upgraded = res.upgraded;
+          wiped = res.wiped;
+        } catch (e) { wiped = true; }
       }
-    } catch (e) { wiped = true; }
+    }
     // Recover safely from a previously persisted malformed clipboard import.
     // Current SAVE_VER requires goals fields; post-migration fills them.
     // Missing/malformed current-format goal state wipes rather than soft-reset re-pay.
@@ -2042,7 +2080,7 @@ class Game {
     const nowMs = Date.now();
     const futureTs = !!(resumeExisting && g.ts && g.ts > nowMs);
     const offline = (resumeExisting && g.ts && !futureTs)
-      ? Math.min(Math.max(0, (nowMs - g.ts) / 1000), 28800)
+      ? Math.min(Math.max(0, (nowMs - g.ts) / 1000), this.MAX_DT)
       : 0;
     this.state.g = this.wrapState(g);
     this.state.lastAutoSave = wiped ? undefined : (lastAutoSave ?? undefined);
@@ -2078,16 +2116,13 @@ class Game {
     // explicitly acquires ownership (claim path, reload takeover, or import).
     const CLAIM_OFFLINE_SEC = 15;
     let wasOwner = false;
-    try {
-      // Same-tab F5: pagehide wrote RELOAD_KEY. Tab-duplicate of a live owner
-      // copies OWNER_KEY but not RELOAD_KEY (pagehide never ran) → wasOwner false.
-      if (sessionStorage.getItem(this.RELOAD_KEY)) {
-        wasOwner = true;
-        sessionStorage.removeItem(this.RELOAD_KEY);
-        // Drop the previous page instance's owner token; we re-mark after claim.
-        sessionStorage.removeItem(this.OWNER_KEY);
-      }
-    } catch (e) { /* private mode */ }
+    // safeSessionGet/Remove never throw (helpers catch internally).
+    if (this.safeSessionGet(this.RELOAD_KEY)) {
+      wasOwner = true;
+      this.safeSessionRemove(this.RELOAD_KEY);
+      // Drop the previous page instance's owner token; we re-mark after claim.
+      this.safeSessionRemove(this.OWNER_KEY);
+    }
     // Hard claims always proceed. Age-only claim is gated by cross-tab lease:
     // a background-throttled owner may lag autosave past 15s while still live.
     // When age-claim would run, write PROBE_KEY and wait PROBE_WAIT_MS before
@@ -2097,11 +2132,9 @@ class Game {
     let ageClaimDeferred = false;
     if (ageClaimCandidate) {
       // Handshake: announce probe so a live owner refreshes LEASE_KEY via storage.
-      try {
-        localStorage.setItem(this.PROBE_KEY, JSON.stringify({
-          token: this.tabToken, at: Date.now()
-        }));
-      } catch (e) { /* private / quota */ }
+      this.safeSet(this.PROBE_KEY, JSON.stringify({
+        token: this.tabToken, at: Date.now()
+      }));
       if (this.hasLiveForeignLease()) {
         // Already a live peer — do not claim.
       } else {
@@ -2111,17 +2144,21 @@ class Game {
     }
     const needsClaim = hardClaim;
     let claimed = false;
+    let persistOk = false;
     if (needsClaim) {
       g.ts = Date.now();
       try {
+        // Critical: must signal failure via saveState. safeSet silently
+        // swallows errors — we need explicit saveState='save failed'.
         localStorage.setItem(this.KEY, JSON.stringify({
           saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
         }));
-        claimed = true;
-        this.markTabOwner();
+        persistOk = true;
       } catch (e) {
         this.setState({ saveState: 'save failed' });
       }
+      claimed = persistOk;
+      if (persistOk) this.markTabOwner();
       // `offline > 0` reads like it could skip the achievement backfill below, but it
       // cannot for a player: `offline` is a float from (nowMs - g.ts)/1000, and any real
       // reload puts at least a millisecond between the saver's last write and this read.
@@ -2136,14 +2173,18 @@ class Game {
         // Offline: peak (goal 12) must not complete here — live-only.
         this.noteGoals(g, { live: false });
         this.checkAchievements(g);
+        let persist2Ok = false;
         try {
-          localStorage.setItem(this.KEY, JSON.stringify({
-            saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
-          }));
-          this.refreshLease();
+        // Critical: must signal failure via saveState. safeSet silently
+        // swallows errors — we need explicit saveState='save failed'.
+        localStorage.setItem(this.KEY, JSON.stringify({
+          saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
+        }));
+        persist2Ok = true;
         } catch (e) {
           this.setState({ saveState: 'save failed' });
         }
+        if (persist2Ok) this.refreshLease();
       }
     } else if (offline > 0) {
       // Non-claiming path: offline catch-up in memory only (no setItem / no steal).
@@ -2168,7 +2209,7 @@ class Game {
       if (dt < 0.05) return;
       // Large gaps (tab hidden / suspended) use catchUp at 50% rate — same path as load-time offline.
       if (dt > 2) {
-        const gap = Math.min(dt, 28800);
+        const gap = Math.min(dt, this.MAX_DT);
         const report = this.catchUp(g, gap);
         if (dt > 60) this.push(g, this.awayMsg(gap, report), '#ffc94a');
         // Large-gap catchUp is offline rate — peak stays live-only.
@@ -2177,9 +2218,9 @@ class Game {
         g.ts = Date.now();
         this.setState(s => ({ tick: s.tick + 1 }));
       } else {
-        this.liveStep(g, Math.min(dt, 28800));
+        this.liveStep(g, Math.min(dt, this.MAX_DT));
       }
-    }, 100);
+    }, this.SIM_INTERVAL_MS);
     // Autosave only for the owning tab. A non-claiming second/duplicated tab
     // must not start the 10s timer — the first auto write would setItem a stale
     // snapshot, fire storage → onForeignSave on the live sibling, and pause it.
@@ -2270,25 +2311,21 @@ class Game {
 
   markTabOwner() {
     this._ownsSave = true;
-    try { sessionStorage.setItem(this.OWNER_KEY, this.tabToken); } catch (e) { /* private mode */ }
+    this.safeSessionSet(this.OWNER_KEY, this.tabToken);
     this.refreshLease();
     this.ensureOwnerLifecycle();
   }
 
   clearTabOwner() {
     this._ownsSave = false;
-    try {
-      sessionStorage.removeItem(this.OWNER_KEY);
-      sessionStorage.removeItem(this.RELOAD_KEY);
-    } catch (e) { /* private mode */ }
+    this.safeSessionRemove(this.OWNER_KEY);
+    this.safeSessionRemove(this.RELOAD_KEY);
     // Drop our lease so age-claimers can take over; leave a foreign lease alone.
-    try {
-      const raw = localStorage.getItem(this.LEASE_KEY);
-      if (raw) {
-        const lease = JSON.parse(raw);
-        if (lease && lease.token === this.tabToken) localStorage.removeItem(this.LEASE_KEY);
-      }
-    } catch (e) { /* private / corrupt */ }
+    const raw = this.safeGet(this.LEASE_KEY);
+    if (raw) {
+      const lease = this.safeParse(raw);
+      if (lease && lease.token === this.tabToken) this.safeRemove(this.LEASE_KEY);
+    }
   }
 
   // Publish / refresh this tab's cross-tab lease. Call when ownership is taken
@@ -2296,12 +2333,11 @@ class Game {
   // as proof a live peer still owns the save.
   refreshLease() {
     if (!this._ownsSave) return;
-    try {
-      localStorage.setItem(this.LEASE_KEY, JSON.stringify({
-        token: this.tabToken, at: Date.now()
-      }));
+    if (this.safeSet(this.LEASE_KEY, JSON.stringify({
+      token: this.tabToken, at: Date.now()
+    }))) {
       this._leaseAt = Date.now();
-    } catch (e) { /* private / quota */ }
+    }
   }
 
   refreshLeaseThrottled() {
@@ -2312,23 +2348,19 @@ class Game {
 
   // True when another tab's lease is still within LEASE_TTL_MS (live peer).
   hasLiveForeignLease() {
-    try {
-      const raw = localStorage.getItem(this.LEASE_KEY);
-      if (!raw) return false;
-      const lease = JSON.parse(raw);
-      if (!lease || typeof lease.token !== 'string' || typeof lease.at !== 'number') return false;
-      if (lease.token === this.tabToken) return false;
-      if (!Number.isFinite(lease.at)) return false;
-      return (Date.now() - lease.at) < this.LEASE_TTL_MS;
-    } catch (e) {
-      return false;
-    }
+    const raw = this.safeGet(this.LEASE_KEY);
+    if (!raw) return false;
+    const lease = this.safeParse(raw);
+    if (!lease || typeof lease.token !== 'string' || typeof lease.at !== 'number') return false;
+    if (lease.token === this.tabToken) return false;
+    if (!Number.isFinite(lease.at)) return false;
+    return (Date.now() - lease.at) < this.LEASE_TTL_MS;
   }
 
   // Start the 10s autosave interval once. No-op if already running.
   startAutosave() {
     if (this.saver) return;
-    this.saver = setInterval(() => this.save('auto'), 10000);
+    this.saver = setInterval(() => this.save('auto'), this.AUTOSAVE_INTERVAL_MS);
   }
 
   // pagehide fires on F5 / navigation / close / BFCache freeze. Write reload
@@ -2341,16 +2373,43 @@ class Game {
     this._ownerLifecycleBound = true;
     if (typeof window === 'undefined' || !window.addEventListener) return;
     window.addEventListener('pagehide', () => {
-      try {
-        if (sessionStorage.getItem(this.OWNER_KEY) === this.tabToken) {
-          sessionStorage.setItem(this.RELOAD_KEY, this.tabToken);
-        }
-      } catch (e) { /* private mode */ }
+      if (this.safeSessionGet(this.OWNER_KEY) === this.tabToken) {
+        this.safeSessionSet(this.RELOAD_KEY, this.tabToken);
+      }
+      if (this.timer) {
+        clearInterval(this.timer);
+        this.timer = null;
+      }
+      if (this.saver) { clearInterval(this.saver); this.saver = null; }
+      if (this._probeTimer) { clearTimeout(this._probeTimer); this._probeTimer = null; }
     });
     window.addEventListener('pageshow', () => {
-      // Normal load: init already consumed RELOAD_KEY. BFCache restore: init does
-      // not re-run, so clear the pagehide marker left when we entered the cache.
-      try { sessionStorage.removeItem(this.RELOAD_KEY); } catch (e) { /* private mode */ }
+      this.safeSessionRemove(this.RELOAD_KEY);
+      // BFCache restore: timers are natively paused by the browser, but we
+      // may have cleared this.timer/saver in pagehide. Re-arm the full
+      // timer callback (matching game.js:2199) if still owner.
+      if (!this.timer && this.isTabOwner()) {
+        this.timer = setInterval(() => {
+          const g = this.state.g; if (!g) return;
+          if (this.state.tabStale || !this.isTabOwner()) return;
+          this.refreshLeaseThrottled();
+          const now = Date.now();
+          const dt = Math.max(0, (now - (g.ts || now)) / 1000);
+          if (dt < 0.05) return;
+          if (dt > 2) {
+            const gap = Math.min(dt, this.MAX_DT);
+            const report = this.catchUp(g, gap);
+            if (dt > 60) this.push(g, this.awayMsg(gap, report), '#ffc94a');
+            this.noteGoals(g, { live: false });
+            this.checkAchievements(g);
+            g.ts = Date.now();
+            this.setState(s => ({ tick: s.tick + 1 }));
+          } else {
+            this.liveStep(g, dt);
+          }
+        }, this.SIM_INTERVAL_MS);
+        this.startAutosave();
+      }
     });
   }
 
@@ -2633,12 +2692,12 @@ class Game {
 
   // --- simulation (step, catchUp) ---
   // Offline / large-gap simulation at 50% rate. Wall time advances fully;
-  // resource accrual uses dt = wall * 0.5. Silent shift/night rollover.
+  // cap 8h (MAX_DT). resource accrual uses dt = wall * 0.5. Silent shift/night rollover.
   // Returns gross cash earned, wages paid, and whether a strike occurred (1.10).
   catchUp(g, seconds) {
     if (!g || !(seconds > 0)) return { earned: 0, wagesPaid: 0, struck: false, managerBought: 0 };
     const c = this.club(g);
-    seconds = Math.min(seconds, 28800);
+    seconds = Math.min(seconds, this.MAX_DT);
     // 0.10.2: a golden offer that lapsed while away must not render on return.
     this.expireGolden(g);
     let remaining = seconds;
@@ -2738,7 +2797,7 @@ class Game {
     if (!g) return;
     const c = this.club(g);
     dt *= (this.props.simSpeed ?? 1);
-    dt = Math.min(dt, 28800);
+    dt = Math.min(dt, this.MAX_DT);
     let remaining = dt;
     while (remaining > 0) {
       const r = this.rates(g);
@@ -3982,7 +4041,7 @@ class Game {
         // Wipe is neither reload takeover nor import — no-op until this tab owns.
         if (this.state.tabStale || !this.isTabOwner()) return;
         if (!this.state.resetArmed) { this.setState({ resetArmed: true }); return; }
-        localStorage.removeItem(this.KEY);
+        this.safeRemove(this.KEY);
         this.state.g = this.wrapState(this.fresh());
         this.state.lastAutoSave = undefined;
         this.push(this.state.g, 'Save wiped. Fresh club.', '#ff2d78');
@@ -4757,7 +4816,6 @@ class Game {
       closeGolden: () => this.setState(s => ({ goldenOpen: false })),
       takeGoldenCash: () => this.takeGolden(g, 'cash'),
       takeGoldenCrowd: () => this.takeGolden(g, 'crowd'),
-      debugLine: (this.props.showDebug ?? false) ? 'cash ' + r.cash.toFixed(3) + '/s · hype ' + r.hype.toFixed(3) + '/s · buzz ' + r.buzz.toFixed(3) + '/s · pull ' + r.pull.toFixed(2) : '',
       ownersList: (() => {
         const total = this.GOALS.length;
         const done = Array.isArray(g.goals) ? g.goals.length : 0;
@@ -4842,8 +4900,8 @@ class Game {
   MOTIONS = { full: 'Full', easy: 'Easy', still: 'Still' };
 
   loadLook() {
-    let l = null;
-    try { l = JSON.parse(localStorage.getItem(this.LOOK_KEY) || 'null'); } catch (e) { l = null; }
+    const raw = this.safeGet(this.LOOK_KEY);
+    let l = raw ? this.safeParse(raw) : null;
     const d = this.LOOK_DEFAULT;
     l = l && typeof l === 'object' ? l : {};
     this.look = {
@@ -4854,7 +4912,7 @@ class Game {
   }
 
   saveLook() {
-    try { localStorage.setItem(this.LOOK_KEY, JSON.stringify(this.look)); } catch (e) { /* private / quota */ }
+    this.safeSet(this.LOOK_KEY, JSON.stringify(this.look));
   }
 
   applyLook() {
@@ -5757,7 +5815,6 @@ class Game {
       <span>save v${v.saveVer}</span>
       <span id="footer-save-state">${v.saveState}</span>
       <div style="flex:1"></div>
-      <span id="footer-debug-line">${v.debugLine}</span>
       <span id="footer-tick-count">ticks ${v.tickCount}</span>
     </footer>
   </div>
@@ -6208,8 +6265,6 @@ class Game {
     if (fv && fv.textContent !== v.verFull) fv.textContent = v.verFull;
     const fss = this.dom('#footer-save-state');
     if (fss && fss.textContent !== v.saveState) fss.textContent = v.saveState;
-    const fdl = this.dom('#footer-debug-line');
-    if (fdl && fdl.textContent !== v.debugLine) fdl.textContent = v.debugLine;
     const ftc = this.dom('#footer-tick-count');
     if (ftc && ftc.textContent !== 'ticks ' + v.tickCount) ftc.textContent = 'ticks ' + v.tickCount;
     const mc = this.dom('#modals-container');

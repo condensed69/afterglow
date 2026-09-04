@@ -7409,9 +7409,9 @@ test('UI Integration: renderVals & renderTemplate expose Personas & Talent cards
   ok(templateHtml.includes('data-talent-id="nova_cyan"'), 'renderTemplate renders nova_cyan card');
 });
 
-test('PR 7 & 8: Version 0.15.1 and SAVE_VER 16 migration & fail-closed validation', () => {
+test('PR 7 & 8: Version 0.15.2 and SAVE_VER 16 migration & fail-closed validation', () => {
   const game = newGame();
-  strictEqual(game.VERSION.num, '0.15.1', 'Game version is 0.15.1');
+  strictEqual(game.VERSION.num, '0.15.2', 'Game version is 0.15.2');
   strictEqual(game.SAVE_VER, 16, 'SAVE_VER is 16');
 
   // Test MIGRATIONS[14] (14 -> 15)
