@@ -91,7 +91,7 @@ function normalizePacks(g) {
 }
 
 class Game {
-  VERSION = { num: '0.15.2', build: 292, channel: 'alpha', date: '2026-09-04', codename: 'Fluid Widescreen Layout' };
+  VERSION = { num: '0.16.4', build: 297, channel: 'alpha', date: '2026-09-04', codename: 'Night Log Strip' };
   SAVE_VER = 16;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -320,6 +320,21 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.16.4', date: '2026-09-04', codename: 'Night Log Strip', notes: [
+        'UI OVERHAUL PR E — NIGHT LOG STRIP: collapsible 3-line night log with toggle button, FLUID_LAYOUT_PLAN.md retired. SAVE_VER stays 16 (no save migration needed), pacing bit-identical.'
+      ] },
+      { v: '0.16.3', date: '2026-09-03', codename: 'Purchase Grid', notes: [
+        'UI OVERHAUL PR D — PURCHASE GRID: CSS grid for purchases, dedicated Talent tab surface, tab hint removed, Owner\'s List compressed to one-row collapsible card. SAVE_VER stays 16 (no save migration needed), pacing bit-identical.'
+      ] },
+      { v: '0.16.2', date: '2026-09-03', codename: 'Resource Strip', notes: [
+        'UI OVERHAUL PR C — RESOURCE STRIP: resource strip, header diet, Books drawer, ticker→footer. SAVE_VER stays 16 (no save migration needed), pacing bit-identical.'
+      ] },
+      { v: '0.16.1', date: '2026-09-03', codename: 'One Scroller', notes: [
+        'UI OVERHAUL PR B — ONE SCROLLER: the app root (`.app-root`, `height:100dvh; overflow-y:auto`) is the only vertical scroller at every width. The inline `overflow-y:auto` comes off `#ledger-aside`, the Night log and the Systems tab body, and `overflow:auto` comes off `.shell-grid` (now plain content). Header, action bar and tab bar are sticky (`top:0` / `top:62px`) so controls stay in reach on long pages. Scroll save/restore keeps per-tab positions via `scrollSave["main_"+tab]`, so Club→Crew→Club returns to the same card. The ≤900px "one scroller, not four" override block, the `.sys-col` row override and the shell overflow/`grid-auto-rows` rules are deleted — the base layout now does what the override did. New `tools/screenshot.sh` captures the four acceptance viewports to `.github/pr/shots/` for PR bodies. SAVE_VER stays 16 (no save migration needed), pacing bit-identical.'
+      ] },
+      { v: '0.16.0', date: '2026-09-03', codename: 'Remove the Stage', notes: [
+        'UI OVERHAUL PR A — REMOVE THE STAGE PANEL: the `#stage` art panel (beams, bulbs, neon sign, sweeps, spot, divider, lip, crowd row, in-stage golden wrap) is removed from the DOM, not hidden. The sim/save concept `jobs.stage` (Main Stage assignment slot, stageHype, "hire crew to open the stage") is untouched — only the art panel goes. The canvas floorboard survives as an ambient background layer (`#ambient-canvas` behind `.app-root`, 35% opacity, pointer-events none, driven by the same `floorboard.update()` feed) with a Look-panel "Ambient floor" on/off toggle in `afterglow.look`. The Main Stage line, Room energy % and golden-ticket VIP badge now render at all widths via the stage-less banners, restyled as the action bar\'s second row. Dead keyframes (bulb, sweepL, sweepR, hazeDrift, crowdBob) and the `#stage` container/crowd CSS go with the panel; `neonFlicker` stays (brand wordmark). SAVE_VER stays 16 (no save migration needed), pacing bit-identical.'
+      ] },
       { v: '0.15.2', date: '2026-09-04', codename: 'Repository Hardening', notes: [
         'REPOSITORY HARDENING (PR #171): wrapped all localStorage/sessionStorage/JSON.parse access in safe helpers (safeGet/Set/Remove, safeSessionGet/Set/Remove, safeParse) that silently catch private-mode/quota errors. Critical persistence paths (save, init, claimOwnership, confirmPrestige, openFranchise, startChallenge) retain explicit try/catch with saveState signaling. Added MAX_DT/AUTOSAVE_INTERVAL_MS/SIM_INTERVAL_MS constants replacing magic numbers. Removed dead debugLine field and footer template. pagehide clears this.timer/saver/_probeTimer; pageshow re-arms full timer callback on BFCache restore. Bumps VERSION/build to 0.15.2/292. SAVE_VER stays 16 (save shape unchanged).'
       ] },
@@ -1179,10 +1194,6 @@ class Game {
     tab: 'club', showChangelog: false, showSettings: false, showPrestige: false, showOpenRoom: false, showFranchise: false, showAchievements: false, tick: 0, saveState: 'idle', resetArmed: false, challengeArmed: null, franchiseArmed: false,
     // Golden-ticket expanded state: badge is small by default; player taps to expand.
     goldenOpen: false,
-    // Ledger collapse on narrow screens: mobile players get the CASH row only and
-    // tap to expand the rest (the full Ledger is taller than the viewport).
-    // Desktop ignores the collapsed class (CSS only hides below 900px).
-    ledgerOpen: false,
     // true when another tab wrote KEY — autosave is off until reload (PLAN §2.3).
     tabStale: false,
     g: null
@@ -3366,7 +3377,7 @@ class Game {
     if (this.audio) this.audio.playChime();
     if (this.floorboard) {
       if (e && typeof e.clientX === 'number') {
-        const canvas = this.dom('#stage-canvas');
+        const canvas = this.dom('#ambient-canvas');
         if (canvas && canvas.getBoundingClientRect) {
           const rect = canvas.getBoundingClientRect();
           this.floorboard.triggerPulse(e.clientX - rect.left, e.clientY - rect.top, '#22d3ee');
@@ -3977,8 +3988,13 @@ class Game {
       toggleSettings: () => this.setState(s => ({ showSettings: !s.showSettings, resetArmed: false })),
       togglePrestige: () => this.setState(s => ({ showPrestige: !s.showPrestige })),
       toggleFranchise: () => this.setState(s => ({ showFranchise: !s.showFranchise, franchiseArmed: false })),
-      ledgerOpen: this.state.ledgerOpen,
-      toggleLedger: () => this.setState(s => ({ ledgerOpen: !s.ledgerOpen })),
+      booksOpen: this.look ? this.look.books === 'open' : false,
+      toggleBooks: () => {
+        if (!this.look) this.look = { ...this.LOOK_DEFAULT };
+        this.look.books = this.look.books === 'open' ? 'shut' : 'open';
+        this.saveLook();
+        this.forceUpdate();
+      },
       saveNow: () => this.save('manual'),
       openLook: () => { this.setState({ showSettings: false }); this.toggleLook(true); },
       // File + clipboard share one payload shape so either restore path accepts either export.
@@ -4101,21 +4117,21 @@ class Game {
     if (weekend >= 1 / 3) houseChips.push(`<span>Weekend energy <span style="color:${weekendTint}">${Math.round(weekend * 100)}%</span></span>`);
 
     const resources = [
-      { name: 'Cash' + this.helpIcon('Cash', 'Money in the till. Used to hire crew, buy structures, upgrades, and rounds.'), val: '$' + this.fmt(c.cash), rate: sign(r.cash), pct: 100, color: '#ffc94a', note: r.strike ? 'crew unpaid — on strike' : (r.wage > 0 ? 'wages −$' + this.fmt(r.wage) + '/s' : 'no payroll yet') },
-      { name: 'Hype' + this.helpIcon('Hype', 'Room energy. Multiplies all cash income and click value. Decays over time — feed it with DJ Booths and the stage crew.'), val: this.fmt(c.hype), rate: sign(r.hype), pct: c.hype / cap.hype * 100, color: '#ff2d78', note: 'cap ' + cap.hype + ' · x' + (1 + c.hype / 140).toFixed(2) + ' income' },
-      { name: 'Buzz' + this.helpIcon('Buzz', 'Street awareness. Converts into patrons entering the club. Marquee Signs and Flyer Crews generate it.'), val: this.fmt(c.buzz), rate: sign(r.buzz - r.buzzSpent), pct: c.buzz / cap.buzz * 100, color: '#22d3ee', note: 'cap ' + cap.buzz + ' · pulls patrons in' },
+      { term: 'Cash', tip: 'Money in the till. Used to hire crew, buy structures, upgrades, and rounds.', name: 'Cash' + this.helpIcon('Cash', 'Money in the till. Used to hire crew, buy structures, upgrades, and rounds.'), val: '$' + this.fmt(c.cash), rate: sign(r.cash), pct: 100, color: '#ffc94a', note: r.strike ? 'crew unpaid — on strike' : (r.wage > 0 ? 'wages −$' + this.fmt(r.wage) + '/s' : 'no payroll yet') },
+      { term: 'Hype', tip: 'Room energy. Multiplies all cash income and click value. Decays over time — feed it with DJ Booths and the stage crew.', name: 'Hype' + this.helpIcon('Hype', 'Room energy. Multiplies all cash income and click value. Decays over time — feed it with DJ Booths and the stage crew.'), val: this.fmt(c.hype), rate: sign(r.hype), pct: c.hype / cap.hype * 100, color: '#ff2d78', note: 'cap ' + cap.hype + ' · x' + (1 + c.hype / 140).toFixed(2) + ' income' },
+      { term: 'Buzz', tip: 'Street awareness. Converts into patrons entering the club. Marquee Signs and Flyer Crews generate it.', name: 'Buzz' + this.helpIcon('Buzz', 'Street awareness. Converts into patrons entering the club. Marquee Signs and Flyer Crews generate it.'), val: this.fmt(c.buzz), rate: sign(r.buzz - r.buzzSpent), pct: c.buzz / cap.buzz * 100, color: '#22d3ee', note: 'cap ' + cap.buzz + ' · pulls patrons in' },
       // Display whole people; sim keeps fractional c.patrons (PLAN §2.4).
-      { name: 'Patrons' + this.helpIcon('Patrons', 'Bodies on the floor. They pay cover at the door ($0.02/head), tip at Tip Rails, and slowly become Regulars. Cap grows with structures.'), val: this.fmt(Math.floor(c.patrons)), rate: sign(r.patrons), pct: c.patrons / cap.patrons * 100, color: '#a855f7', note: 'floor cap ' + cap.patrons },
-      { name: 'Regulars' + this.helpIcon('Regulars', 'Customers who come back every night and never leave. Each one slowly builds your Clout. With the Reputation Loop upgrade, they also pay $0.04/s cash.'), val: this.fmt(c.regulars), rate: sign(r.regulars), pct: Math.min(100, c.regulars), color: '#4ade80', note: regularsNote },
-      { name: 'Clout' + this.helpIcon('Clout', 'Money for Research. Regulars earn it for you over time. Spent permanently on the Research tab for upgrades that help the whole club.'), val: this.fmt(g.clout), rate: sign(r.clout), pct: Math.min(100, g.clout * 2), color: '#e879f9', note: 'spent on research' }
+      { term: 'Patrons', tip: 'Bodies on the floor. They pay cover at the door ($0.02/head), tip at Tip Rails, and slowly become Regulars. Cap grows with structures.', name: 'Patrons' + this.helpIcon('Patrons', 'Bodies on the floor. They pay cover at the door ($0.02/head), tip at Tip Rails, and slowly become Regulars. Cap grows with structures.'), val: this.fmt(Math.floor(c.patrons)), rate: sign(r.patrons), pct: c.patrons / cap.patrons * 100, color: '#a855f7', note: 'floor cap ' + cap.patrons },
+      { term: 'Regulars', tip: 'Customers who come back every night and never leave. Each one slowly builds your Clout. With the Reputation Loop upgrade, they also pay $0.04/s cash.', name: 'Regulars' + this.helpIcon('Regulars', 'Customers who come back every night and never leave. Each one slowly builds your Clout. With the Reputation Loop upgrade, they also pay $0.04/s cash.'), val: this.fmt(c.regulars), rate: sign(r.regulars), pct: Math.min(100, c.regulars), color: '#4ade80', note: regularsNote },
+      { term: 'Clout', tip: 'Money for Research. Regulars earn it for you over time. Spent permanently on the Research tab for upgrades that help the whole club.', name: 'Clout' + this.helpIcon('Clout', 'Money for Research. Regulars earn it for you over time. Spent permanently on the Research tab for upgrades that help the whole club.'), val: this.fmt(g.clout), rate: sign(r.clout), pct: Math.min(100, g.clout * 2), color: '#e879f9', note: 'spent on research' }
     ];
     // Legacy appears in the ledger only once meta is unlocked (first prestige or any lifetime Legacy).
     const metaUnlocked = (g.prestiges || 0) > 0 || (g.legacyTotal || 0) > 0 || Object.values(g.perks || {}).some(r => r > 0) || (g.renownTotal || 0) > 0;
     if (metaUnlocked) {
-      resources.push({ name: 'Legacy' + this.helpIcon('Legacy', 'Prestige meta-currency. Earned by selling the club (franchise deal). Spent on permanent perks and managers that persist across runs.'), val: this.fmt(Math.floor(g.legacy || 0)), rate: 'perk shop', pct: Math.min(100, (g.legacy || 0) / 25 * 100), color: '#d4af37', note: 'spent on permanent perks' });
+      resources.push({ term: 'Legacy', tip: 'Prestige meta-currency. Earned by selling the club (franchise deal). Spent on permanent perks and managers that persist across runs.', name: 'Legacy' + this.helpIcon('Legacy', 'Prestige meta-currency. Earned by selling the club (franchise deal). Spent on permanent perks and managers that persist across runs.'), val: this.fmt(Math.floor(g.legacy || 0)), rate: 'perk shop', pct: Math.min(100, (g.legacy || 0) / 25 * 100), color: '#d4af37', note: 'spent on permanent perks' });
     }
     const resourcesOut = resources.map(x => ({
-      name: x.name, val: x.val, rate: x.rate, note: x.note,
+      term: x.term, tip: x.tip, name: x.name, val: x.val, rate: x.rate, note: x.note, pct: x.pct, color: x.color,
       valStyle: { fontFamily: "'IBM Plex Mono',monospace", fontSize: '15px', fontWeight: 600, color: x.color },
       barStyle: this.bar(x.pct, x.color)
     }));
@@ -4133,7 +4149,10 @@ class Game {
       // Crew is always visible: the Hire Crew card is actionable from the first
       // second, and the stage's "hire crew to open the stage" CTA routes here —
       // gating it on g.crew > 0 would strand a new player on a hidden tab.
-      { id: 'crew', label: 'Crew' }
+      { id: 'crew', label: 'Crew' },
+      // Talent tab (PR D): moves Club Persona + Named Talent Roster out of
+      // Club/Crew tabs into their own dedicated surface.
+      { id: 'talent', label: 'Talent' }
     ];
     if (Object.values(c.b || {}).some(n => n > 0)) tabDefs.push({ id: 'up', label: 'Upgrades' });
     if ((g.clout || 0) > 0) tabDefs.push({ id: 'res', label: 'Research' });
@@ -4585,11 +4604,10 @@ class Game {
       stageLineAct: g.jobs.stage > 0 ? null : () => this.setState({ tab: 'crew' }),
       energyPct: Math.round(c.hype / cap.hype * 100) + '%',
       hypeRatio: cap.hype > 0 ? (c.hype / cap.hype) : 0.5,
-      // Stage visuals derived from live state (Task 2).
-      crowdN: Math.min(14, 2 + Math.floor(c.patrons / 2)),
-      crowdBobDur: (2.4 + 1.2 * (1 - Math.min(1, c.hype / cap.hype))).toFixed(2) + 's',
+      // Ambient floorboard visuals derived from live state (0.16.0: the stage
+      // panel is gone, so only the floorboard feed remains — crowd/spot fields
+      // went with the panel).
       beamOpacity: (0.25 + 0.55 * Math.min(1, c.hype / cap.hype)).toFixed(2),
-      spotOpacity: (0.14 + 0.46 * Math.min(1, c.hype / cap.hype)).toFixed(2),
       signLit: g.jobs.stage > 0,
       heat: Math.round(c.heat || 0),
       heatVal: Number((c.heat || 0).toFixed(1)),
@@ -4754,7 +4772,7 @@ class Game {
         if (this.audio) this.audio.playClick();
         if (this.floorboard) {
           if (e && typeof e.clientX === 'number') {
-            const canvas = this.dom('#stage-canvas');
+            const canvas = this.dom('#ambient-canvas');
             if (canvas && canvas.getBoundingClientRect) {
               const rect = canvas.getBoundingClientRect();
               this.floorboard.triggerPulse(e.clientX - rect.left, e.clientY - rect.top, '#ff2d78');
@@ -4891,7 +4909,7 @@ class Game {
 
   // --- look & feel (chrome prefs; separate key, never part of the save) ---
   LOOK_KEY = 'afterglow.look';
-  LOOK_DEFAULT = { lights: 0, mood: 'pink', motion: 'full' };
+  LOOK_DEFAULT = { lights: 0, mood: 'pink', motion: 'full', ambient: 'on', books: 'shut' };
   MOODS = {
     pink: { label: 'Hot Pink', deg: 0, sat: 1 },
     uv: { label: 'Ultraviolet', deg: 46, sat: 1.06 },
@@ -4907,7 +4925,9 @@ class Game {
     this.look = {
       lights: Math.min(1, Math.max(0, Number(l.lights) || d.lights)),
       mood: this.MOODS[l.mood] ? l.mood : d.mood,
-      motion: this.MOTIONS[l.motion] ? l.motion : d.motion
+      motion: this.MOTIONS[l.motion] ? l.motion : d.motion,
+      ambient: l.ambient === 'off' ? 'off' : 'on',
+      books: l.books === 'open' ? 'open' : 'shut'
     };
   }
 
@@ -4937,6 +4957,10 @@ class Game {
       if (out) out.textContent = Math.round(this.look.lights * 100) + '%';
     } else {
       this.paintLookPanel();
+      // Segmented toggles (mood/motion/ambient/reset) need a render pass so the
+      // ambient canvas and floorboard loop pick up the new pref immediately.
+      // The slider path above is exempt — it repaints at most the readout.
+      if (typeof this.forceUpdate === 'function') this.forceUpdate();
     }
   }
 
@@ -5003,7 +5027,11 @@ class Game {
         '</div>' +
         '<div>' + label('Motion', this.MOTIONS[l.motion]) +
           '<div style="display:flex;gap:6px">' + seg('motion', this.MOTIONS) + '</div>' +
-          '<div style="font-size:10px;color:#9c86ab;line-height:1.45;margin-top:5px">Easy stills the stage but keeps the UI badges. Still freezes everything.</div>' +
+          '<div style="font-size:10px;color:#9c86ab;line-height:1.45;margin-top:5px">Easy stills the floor but keeps the UI badges. Still freezes everything.</div>' +
+        '</div>' +
+        '<div>' + label('Ambient floor', l.ambient === 'off' ? 'Off' : 'On') +
+          '<div style="display:flex;gap:6px">' + seg('ambient', { on: 'On', off: 'Off' }) + '</div>' +
+          '<div style="font-size:10px;color:#9c86ab;line-height:1.45;margin-top:5px">The neon floorboard behind the panels. Off removes the canvas entirely.</div>' +
         '</div>' +
         '<button data-lk="reset:1" style="background:#170e22;border:1px solid #311d44;border-radius:6px;color:#9c86ab;padding:8px;cursor:pointer;font-size:10.5px;font-family:inherit;font-weight:700">Reset look</button>' +
       '</div>';
@@ -5028,10 +5056,10 @@ class Game {
       f.style.top = (e.clientY - 24) + 'px';
     } else {
       // Keyboard activation (Enter/Space): clientX may be 0 — anchor to the CTA button.
-      // Size-check the rect, don't just null-check the element: #stage is
-      // display:none below 900px (v0.10.8), so it is truthy but measures 0×0 and
-      // would drop the floater in the top-left corner.
-      const btn = document.querySelector('[data-h] .cta') || document.getElementById('stage');
+      // Size-check the rect, don't just null-check the element: #cta-work-crowd is
+      // display:none below 900px (thumb cockpit replaces it), so it is truthy but
+      // measures 0×0 and would drop the floater in the top-left corner.
+      const btn = document.querySelector('[data-h] .cta') || document.getElementById('cta-work-crowd');
       let r = btn && btn.getBoundingClientRect();
       if (!r || (!r.width && !r.height)) r = { left: innerWidth / 2, top: innerHeight / 2, width: 0 };
       f.style.left = (r.left + r.width / 2) + 'px';
@@ -5040,9 +5068,9 @@ class Game {
     f.addEventListener('animationend', () => f.remove());
     this.fxLayer.appendChild(f);
 
-    const stage = document.getElementById('stage');
-    if (stage && stage.animate) {
-      stage.animate(
+    const cta = document.getElementById('cta-work-crowd');
+    if (cta && cta.animate) {
+      cta.animate(
         [{ filter: 'brightness(1.35)' }, { filter: 'brightness(1)' }],
         { duration: 140, easing: 'ease-out' }
       );
@@ -5156,7 +5184,9 @@ class Game {
     return true;
   }
 
-  // Golden ticket banner for mobile (outside #stage — rendered above shell-grid since #stage is display:none <900px)
+  // Golden ticket banner (shown at all widths since 0.16.0 — the stage-less path
+  // that the ≤900px layout used since 0.10.8; desktop uses it too now that the
+  // stage panel is gone). Lives in the action bar's second row.
   goldenTicketBanner(v) {
     if (!v.golden) return '';
     if (v.goldenOpen) {
@@ -5178,7 +5208,9 @@ class Game {
     </div>`;
   }
 
-  // Stage line + energy banner for mobile (rendered outside #stage, above shell-grid; #stage is display:none <900px)
+  // Stage line + energy banner (shown at all widths since 0.16.0, in the action
+  // bar's second row). Carries the Main Stage job line, Room energy % and VIP
+  // badge — the only information the removed stage panel ever displayed.
   stageLineEnergyBanner(v) {
     if (!v.stageLineAct && v.energyPct === '0%') return '';
     return `<div id="stage-line-energy-banner" style="flex-wrap:wrap;gap:10px;padding:8px 12px;background:#12081c;border-bottom:1px solid #2a1738;align-items:center;justify-content:space-between">
@@ -5188,6 +5220,74 @@ class Game {
         <span style="font-family:'IBM Plex Mono',monospace;font-size:22px;color:#ffc94a;font-weight:600;line-height:1.1">${v.energyPct}</span>
       </div>
     </div>`;
+  }
+
+  // Resource strip (0.16.2): the Ledger as header chips. Each chip carries the
+  // value, the rate (green/red by sign, same rule as the session strip), and
+  // a 2px underline that doubles as the cap bar. The (?) help text lives on
+  // as a title tooltip. Cash is first and largest.
+  resourceStrip(v) {
+    return v.resources.map((r, i) => {
+      const big = i === 0;
+      const rateColor = typeof r.rate === 'string' && r.rate[0] === '+'
+        ? '#4ade80'
+        : (typeof r.rate === 'string' && (r.rate[0] === '−' || r.rate[0] === '-')
+          ? '#ff7aa8' : '#8f6f9c');
+      const pct = Math.max(0, Math.min(100, Number(r.pct) || 0));
+      return `<span class="res-chip" data-res-chip="${this.escapeHtml(r.term)}" title="${this.escapeHtml(r.tip)}" style="display:flex;flex-direction:column;gap:1px;padding:3px 8px;border:1px solid #2f1c42;border-radius:6px;background:#100a19;flex:0 0 auto;min-width:0">`
+        + `<span style="font-size:9px;letter-spacing:1.6px;color:${r.color};font-weight:700;white-space:nowrap">${this.escapeHtml(r.term.toUpperCase())}</span>`
+        + `<span style="font-family:'IBM Plex Mono',monospace;font-size:${big ? '15px' : '12px'};color:${r.color};font-weight:700;white-space:nowrap;line-height:1.2">${r.val}</span>`
+        + `<span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:${rateColor};white-space:nowrap">${r.rate}</span>`
+        + `<span style="display:block;height:2px;background:#1c1129;border-radius:1px;overflow:hidden"><span style="display:block;height:100%;width:${pct}%;background:${r.color}"></span></span>`
+        + `</span>`;
+    }).join('');
+  }
+
+  // Books drawer body (0.16.2): "This session", House chips and Floor stats —
+  // the ledger content that is not a live resource. Rendered inside the Books
+  // drawer; repainted by updateDom on the same path as the banners.
+  booksBody(v) {
+    const sessionDeltas = v.sessionDeltas.map(d => {
+      if (d.label === 'Cash' && d.val.includes('·')) {
+        const [earned, spent] = d.val.split(' · ');
+        return `<span>${d.label} <span style="font-weight:600;color:#4ade80">${earned}</span> <span style="color:#8f6f9c">·</span> <span style="font-weight:600;color:#ff7aa8">${spent}</span></span>`;
+      }
+      return `<span>${d.label} <span style="font-weight:600;color:${d.val[0] === '+' ? '#4ade80' : '#ff7aa8'}">${d.val}</span></span>`;
+    }).join('');
+    const house = v.houseChips.length
+      ? `<div style="border:1px solid #221434;border-radius:7px;background:#0f0a18;padding:8px 10px">`
+        + `<div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700;margin-bottom:5px">House</div>`
+        + `<div style="display:flex;flex-wrap:wrap;gap:5px 14px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#9c86ab">${v.houseChips.join('')}</div>`
+        + `</div>`
+      : '';
+    const floor = v.stats.map(s => `
+        <div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;font-size:11px">
+          <span style="color:#9c86ab">${s.k}</span>
+          <span style="font-family:'IBM Plex Mono',monospace;color:#e7d8f2;font-weight:500">${s.v}</span>
+        </div>`).join('');
+    return `<div style="border:1px solid #221434;border-radius:7px;background:#0f0a18;padding:8px 10px">`
+      + `<div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700;margin-bottom:5px">This session</div>`
+      + `<div style="display:flex;flex-wrap:wrap;gap:5px 14px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#9c86ab">${sessionDeltas}</div>`
+      + `</div>`
+      + house
+      + `<div style="border:1px solid #221434;border-radius:7px;background:#0f0a18;padding:9px">`
+      + `<div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700;margin-bottom:5px">Floor</div>`
+      + floor
+      + `</div>`;
+  }
+
+  // Books drawer shell (0.16.2): fixed panel, collapsed by default, opened by
+  // clicking the resource strip or the Books entry in Settings. Open state
+  // lives in afterglow.look prefs (UI chrome, not save).
+  booksDrawer(v) {
+    if (!v.booksOpen) return '';
+    return `<div id="books-drawer" style="position:fixed;top:70px;right:12px;width:300px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 140px);overflow-y:auto;z-index:55;background:#0e0918;border:1px solid #3a2350;border-radius:11px;box-shadow:0 24px 70px rgba(0,0,0,.72);padding:13px 14px;display:flex;flex-direction:column;gap:10px">`
+      + `<div style="display:flex;align-items:center;justify-content:space-between">`
+      + `<span style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700">Books — ${this.escapeHtml(v.activeClubLabel)}</span>`
+      + `<button data-h="${this.bind(v.toggleBooks)}" style="width:24px;height:24px;border:1px solid #3a2350;border-radius:5px;background:#160d22;color:#9c86ab;cursor:pointer;font-size:12px;font-family:inherit">✕</button>`
+      + `</div>`
+      + this.booksBody(v)
+      + `</div>`;
   }
 
   bind(fn) {
@@ -5246,20 +5346,25 @@ class Game {
       </div>`;
     }
 
-    return `<div style="border-bottom:1px solid #2a1738;background:#0d0814;padding:10px 12px">${banner}
-      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:4px">
+    return `<div style="border-bottom:1px solid #2a1738;background:#0d0814;padding:8px 12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer" data-h="${this.bind(() => this.setState(s => ({ goalOpen: !s.goalOpen })))}">
         <div style="display:flex;align-items:center;gap:7px;min-width:0">
           <span style="width:6px;height:6px;border-radius:50%;background:${ol.done ? '#4ade80' : '#ff2d78'};box-shadow:0 0 7px ${ol.done ? '#4ade80' : '#ff2d78'};flex-shrink:0;animation:pulseDot 2.2s infinite"></span>
           <span style="font-size:12px;font-weight:700;color:#f2e8f7;line-height:1.25">${ol.title}</span>
         </div>
         <div style="display:flex;align-items:center;gap:7px;flex-shrink:0">
           ${ol.reward ? `<span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#ffc94a;font-weight:600">${ol.reward}</span>` : ''}
+          <span style="font-size:10px;color:#8f6f9c;transition:transform .15s">${this.state.goalOpen ? '▴' : '▾'}</span>
         </div>
       </div>
-      <div style="font-size:10.5px;color:#8f6f9c;font-style:italic;line-height:1.4;margin-bottom:4px">${ol.why}</div>
-      <div style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#22d3ee;line-height:1.4">${ol.hint}</div>
-      ${prog}
-      ${horizonHtml}
+      ${this.state.goalOpen ? `
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid #2a1738">
+          <div style="font-size:10.5px;color:#8f6f9c;font-style:italic;line-height:1.4;margin-bottom:4px">${ol.why}</div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#22d3ee;line-height:1.4">${ol.hint}</div>
+          ${prog}
+          ${horizonHtml}
+        </div>
+      ` : ''}
     </div>`;
   }
 
@@ -5397,6 +5502,8 @@ class Game {
             <button data-h="${this.bind(v.exportSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Copy save to clipboard</button>
             <button data-h="${this.bind(v.importSave)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Restore save from clipboard</button>
             <button data-h="${this.bind(v.openLook)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Look & feel…  <span style="color:#8f6f9c;font-weight:400">(L)</span></button>
+            <button data-h="${this.bind(v.toggleBooks)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Books… <span style="color:#8f6f9c;font-weight:400">session · house · floor</span></button>
+            <button data-h="${this.bind(v.toggleChangelog)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Version history… <span style="color:#8f6f9c;font-weight:400">${v.verLabel}</span></button>
             <button data-h="${this.bind(v.toggleAchievements)}" class="hv-cyan" style="background:#170e22;border:1px solid #3a2350;border-radius:7px;color:#e7d8f2;padding:11px;cursor:pointer;font-size:12px;font-weight:700;text-align:left">Achievements… <span style="color:#8f6f9c;font-weight:400">${v.achievements.filter(a => a.unlocked).length}/${v.achievements.length}</span></button>
             <button data-h="${this.bind(v.hardReset)}" style="${css(v.resetStyle)}">${v.resetLabel}</button>
             <div style="font-size:10.5px;color:#9c86ab;line-height:1.5;font-family:'IBM Plex Mono',monospace">${v.resetHint} Files and clipboard saves are the same format — either restores either way. ${v.verFull} · save format v${v.saveVer}</div>
@@ -5431,29 +5538,6 @@ class Game {
   }
 
   renderTemplate(v) {
-    const resRow = r => `
-      <div class="res-row" data-res-name="${this.escapeHtml(r.name)}" style="border:1px solid #221434;border-radius:7px;background:#0f0a18;padding:8px 9px">
-        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:6px">
-          <span style="font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:#9c86ab;font-weight:700">${r.name}</span>
-          <span class="res-val" style="${css(r.valStyle)}">${r.val}</span>
-        </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:4px">
-          <div style="flex:1;height:4px;background:#1c1129;border-radius:3px;overflow:hidden">
-            <div class="res-bar" style="${css(r.barStyle)}"></div>
-          </div>
-          <span class="res-rate" style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8f6f9c;min-width:56px;text-align:right">${r.rate}</span>
-        </div>
-        <div class="res-note" style="font-size:10px;color:#9c86ab;margin-top:3px">${r.note}</div>
-      </div>`;
-    const cashRow = v.resources[0] ? resRow(v.resources[0]) : '';
-    const ledgerDetailRows = v.resources.slice(1).map(resRow).join('');
-
-    const statRows = v.stats.map(s => `
-      <div class="stat-row" data-stat-key="${this.escapeHtml(s.k)}" style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;font-size:11px">
-        <span style="color:#9c86ab">${s.k}</span>
-        <span class="stat-val" style="font-family:'IBM Plex Mono',monospace;color:#e7d8f2;font-weight:500">${s.v}</span>
-      </div>`).join('');
-
     const logRows = v.log.map(l => `
       <div class="log-row" style="display:flex;gap:9px;font-size:11.5px;line-height:1.5">
         <span style="font-family:'IBM Plex Mono',monospace;color:#8f6f9c;min-width:46px">${l.t}</span>
@@ -5515,8 +5599,8 @@ class Game {
         <div id="job-rows" style="display:flex;flex-direction:column;gap:7px">${jobRows}</div>
       </div>` : '<div id="assignments-wrap"></div>';
 
-    const personasAndTalent = (this.state.tab === 'crew' || this.state.tab === 'club') ? `
-      <div id="personas-talent-wrap" style="margin-top:14px;border-top:1px solid #221434;padding-top:12px;display:flex;flex-direction:column;gap:12px">
+    const personasAndTalent = (this.state.tab === 'talent') ? `
+      <div id="personas-talent-wrap" style="display:flex;flex-direction:column;gap:12px">
         <div>
           <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700;margin-bottom:8px">Club Persona</div>
           <div style="display:flex;flex-wrap:wrap;gap:8px">
@@ -5558,32 +5642,19 @@ class Game {
     const allModals = this.renderModals(v);
 
     return `
-<div class="app-root" style="height:100vh;height:100dvh;display:grid;grid-template-rows:auto auto 1fr auto;grid-template-columns:minmax(0,1fr);background:radial-gradient(1200px 700px at 50% -10%,#1a0e26 0%,#07050c 62%);overflow:hidden">
+<div class="app-root" style="height:100vh;height:100dvh;display:grid;grid-template-rows:auto auto 1fr auto;grid-template-columns:minmax(0,1fr);background:radial-gradient(1200px 700px at 50% -10%,#1a0e26 0%,#07050c 62%);overflow-y:auto">
 
-  <canvas id="ambient-canvas" class="ambient-canvas" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0;opacity:0.35"></canvas>
+  <canvas id="ambient-canvas" class="ambient-canvas" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:-1;opacity:0.35"></canvas>
 
-  <header id="app-header" style="display:flex;align-items:center;gap:20px;padding:0 18px;height:62px;border-bottom:1px solid #2a1738;background:linear-gradient(180deg,#140b1f,#0b0712);position:relative;z-index:20">
+  <header id="app-header" style="display:flex;align-items:center;gap:20px;padding:0 18px;height:62px;border-bottom:1px solid #2a1738;background:linear-gradient(180deg,#140b1f,#0b0712);position:sticky;top:0;z-index:20">
     <div class="brand" style="display:flex;align-items:baseline;gap:12px">
       <span style="font-family:'Monoton',cursive;font-size:24px;color:#ff2d78;letter-spacing:1px;text-shadow:0 0 12px rgba(255,45,120,.75),0 0 34px rgba(255,45,120,.35);animation:neonFlicker 7s infinite">Afterglow</span>
       <span style="font-size:10px;letter-spacing:3.5px;text-transform:uppercase;color:#8f6f9c;font-weight:700">Club Idle</span>
     </div>
 
-    <button id="header-changelog-btn" data-h="${this.bind(v.toggleChangelog)}" title="Version history" class="hv-pink" style="display:flex;align-items:center;gap:9px;background:#170e22;border:1px solid #3a2350;border-radius:6px;padding:6px 11px;cursor:pointer;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#d6c2e6">
-      <span style="width:6px;height:6px;border-radius:50%;background:#22d3ee;box-shadow:0 0 7px #22d3ee;animation:pulseDot 2.2s infinite"></span>
-      <span class="hdr-ver-label" style="color:#ffc94a;font-weight:600">${v.verLabel}</span>
-      <span style="color:#9c86ab">|</span>
-      <span class="hdr-ver-build">build ${v.verBuild}</span>
-      <span style="color:#9c86ab">|</span>
-      <span class="hdr-ver-channel" style="text-transform:uppercase;letter-spacing:1px;color:#ff2d78">${v.verChannel}</span>
-      <span id="header-autosave" style="font-size:9px;color:#9c86ab;white-space:nowrap">${(n => v.lastAutoSave
-                ? (n - v.lastAutoSave < 1000 ? 'Just now' :
-                   n - v.lastAutoSave < 60000 ? Math.floor((n - v.lastAutoSave) / 1000) + 's ago' :
-                   n - v.lastAutoSave < 3600000 ? Math.floor((n - v.lastAutoSave) / 60000) + 'm ago' :
-                   Math.floor((n - v.lastAutoSave) / 3600000) + 'h ago')
-                : 'never')(Date.now())}</span>
-    </button>
+    <div id="resource-strip" data-h="${this.bind(v.toggleBooks)}" title="Show books (session, house, floor)" style="flex:1;min-width:0;display:flex;gap:6px;overflow-x:auto;align-items:stretch;padding:4px 0;cursor:pointer">${this.resourceStrip(v)}</div>
 
-    <div style="flex:1"></div>
+    <div style="flex:0 0 auto"></div>
 
     <div id="header-prestige-wrap">
     ${v.prestigeGate ? `
@@ -5625,134 +5696,15 @@ class Game {
     </div>
   </header>
 
-  <div class="ticker-bar" style="display:flex;align-items:center;gap:9px;padding:3px 18px;background:#0d0814;border-bottom:1px solid #2a1738;overflow:hidden;white-space:nowrap">
-    <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:2px;color:#ff2d78;font-weight:700;flex-shrink:0">TODAY</span>
-    <span class="ticker-text" style="font-size:11px;color:#9c86ab;text-overflow:ellipsis;overflow:hidden;padding-left:4px">${v.ticker}</span>
-  </div>
-
   <div id="challenge-chip-wrap">
   ${v.challengeChip ? `<div style="position:relative;z-index:65;display:flex;align-items:center;gap:10px;padding:6px 12px;background:#1a0d2e;border-bottom:1px solid #3a2350;flex-wrap:wrap"><span style="font-size:9px;letter-spacing:2.4px;text-transform:uppercase;color:#e879f9;font-weight:700">Challenge</span><span style="font-size:11px;color:#f3e2c2;flex:1;min-width:0">${v.challengeChip.label}</span><button data-h="${this.bind(v.challengeChip.endChallenge)}" title="End challenge — no reward" aria-label="End challenge — no reward" style="flex:0 0 auto;min-height:44px;min-width:44px;background:#170e22;border:1px solid #3a2350;border-radius:6px;color:#e7d8f2;font-size:11px;font-weight:700;padding:8px 12px;cursor:pointer">End · no reward</button></div>` : ''}
   </div>
 
-  <div id="golden-banner-wrap">
-  ${this.goldenTicketBanner(v)}
-  </div>
-
-  <div id="stage-line-energy-wrap">
-  ${this.stageLineEnergyBanner(v)}
-  </div>
-
   <main data-scroll="main" class="shell-grid">
 
-    <aside id="ledger-aside" data-scroll="ledger" class="${v.ledgerOpen ? '' : 'ledger-collapsed'}" style="border-right:1px solid #2a1738;background:#0a0611;overflow-y:auto;padding:14px 12px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700">Ledger</div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <span id="active-club-label" style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#22d3ee;font-weight:700;letter-spacing:1px;text-transform:uppercase">${v.activeClubLabel}</span>
-          <button id="ledger-toggle-btn" data-h="${this.bind(v.toggleLedger)}" class="ledger-toggle hv-pink" title="${v.ledgerOpen ? 'Collapse ledger' : 'Expand ledger'}" style="width:44px;height:44px;border:1px solid #2f1c42;border-radius:8px;background:#100a19;color:#9c86ab;cursor:pointer;font-size:16px;line-height:1">${v.ledgerOpen ? '▾' : '▸'}</button>
-        </div>
-      </div>
-      <div id="ledger-cash-row" class="ledger-cash" style="display:flex;flex-direction:column;gap:9px">${cashRow}</div>
-      <div class="ledger-detail">
-        <div id="session-strip-wrap" class="session-strip" style="border:1px solid #221434;border-radius:7px;background:#0f0a18;padding:8px 10px;margin-bottom:12px">
-          <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700;margin-bottom:5px">This session</div>
-          <div id="session-strip-deltas" style="display:flex;flex-wrap:wrap;gap:5px 14px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#9c86ab">
-            ${v.sessionDeltas.map(d => {
-              if (d.label === 'Cash' && d.val.includes('·')) {
-                const [earned, spent] = d.val.split(' · ');
-                return `<span>${d.label} <span style="font-weight:600;color:#4ade80">${earned}</span> <span style="color:#8f6f9c">·</span> <span style="font-weight:600;color:#ff7aa8">${spent}</span></span>`;
-              }
-              return `<span>${d.label} <span style="font-weight:600;color:${d.val[0] === '+' ? '#4ade80' : '#ff7aa8'}">${d.val}</span></span>`;
-            }).join('')}
-          </div>
-        </div>
-        <div id="house-strip-wrap">
-        ${v.houseChips.length ? `
-        <div class="house-strip" style="border:1px solid #221434;border-radius:7px;background:#0f0a18;padding:8px 10px;margin-bottom:12px">
-          <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700;margin-bottom:5px">House</div>
-          <div style="display:flex;flex-wrap:wrap;gap:5px 14px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#9c86ab">${v.houseChips.join('')}</div>
-        </div>` : ''}
-        </div>
-        <div id="ledger-detail-rows" style="display:flex;flex-direction:column;gap:9px">${ledgerDetailRows}</div>
-        <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700;margin:18px 0 8px">Floor</div>
-        <div id="stat-rows" style="border:1px solid #221434;border-radius:7px;background:#0f0a18;padding:9px">${statRows}</div>
-      </div>
-    </aside>
+    <section class="stage-col" style="display:grid;grid-template-rows:auto auto 1fr;min-height:0;min-width:0">
 
-    <section class="stage-col" style="display:grid;grid-template-rows:minmax(190px,1fr) auto 132px;min-height:0;min-width:0">
-
-      <div id="stage" style="position:relative;overflow:hidden;min-height:0;background:linear-gradient(180deg,#12081c 0%,#1a0b26 55%,#0d0715 100%);border-bottom:1px solid #2a1738">
-        <canvas id="stage-canvas" class="stage-canvas" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1"></canvas>
-        <div id="stage-beams" style="position:absolute;inset:0;background:repeating-linear-gradient(90deg,rgba(255,45,120,.05) 0 2px,transparent 2px 62px);opacity:${v.beamOpacity};z-index:2"></div>
-        <div id="stage-bulbs" style="position:absolute;top:0;left:0;right:0;height:22px;display:flex;justify-content:center;gap:16px;align-items:center;background:linear-gradient(180deg,#1e1029,transparent);opacity:${v.signLit ? 1 : 0.35}">
-          <span style="width:5px;height:5px;border-radius:50%;background:#ffc94a;animation:bulb 1.6s infinite 0s;opacity:${v.signLit ? 1 : 0.45}"></span>
-          <span style="width:5px;height:5px;border-radius:50%;background:#ffc94a;animation:bulb 1.6s infinite .2s;opacity:${v.signLit ? 1 : 0.45}"></span>
-          <span style="width:5px;height:5px;border-radius:50%;background:#ffc94a;animation:bulb 1.6s infinite .4s;opacity:${v.signLit ? 1 : 0.45}"></span>
-          <span style="width:5px;height:5px;border-radius:50%;background:#ffc94a;animation:bulb 1.6s infinite .6s;opacity:${v.signLit ? 1 : 0.45}"></span>
-          <span style="width:5px;height:5px;border-radius:50%;background:#ffc94a;animation:bulb 1.6s infinite .8s;opacity:${v.signLit ? 1 : 0.45}"></span>
-          <span style="width:5px;height:5px;border-radius:50%;background:#ffc94a;animation:bulb 1.6s infinite 1s;opacity:${v.signLit ? 1 : 0.45}"></span>
-          <span style="width:5px;height:5px;border-radius:50%;background:#ffc94a;animation:bulb 1.6s infinite 1.2s;opacity:${v.signLit ? 1 : 0.45}"></span>
-          <span style="width:5px;height:5px;border-radius:50%;background:#ffc94a;animation:bulb 1.6s infinite 1.4s;opacity:${v.signLit ? 1 : 0.45}"></span>
-        </div>
-
-        <div id="stage-neon" class="stage-neon" style="position:absolute;top:25px;left:50%;transform:translateX(-50%);white-space:nowrap;font-family:'Monoton',cursive;font-size:13px;color:${v.signLit ? '#22d3ee' : '#5c3a52'};letter-spacing:2px;text-shadow:${v.signLit ? '0 0 10px rgba(34,211,238,.8),0 0 30px rgba(34,211,238,.4)' : 'none'};animation:${v.signLit ? 'neonFlicker 9s infinite' : 'none'};opacity:${v.signLit ? .9 : .55};transition:color .4s,opacity .4s,text-shadow .4s">girls girls girls</div>
-
-        <div id="stage-sweepl" style="position:absolute;top:-10%;left:26%;width:120px;height:78%;transform-origin:50% 0;background:linear-gradient(180deg,rgba(255,45,120,.42),rgba(255,45,120,0));filter:blur(14px);animation:sweepL 9s ease-in-out infinite;opacity:${v.beamOpacity}"></div>
-        <div id="stage-sweepr" style="position:absolute;top:-10%;right:26%;width:120px;height:78%;transform-origin:50% 0;background:linear-gradient(180deg,rgba(34,211,238,.34),rgba(34,211,238,0));filter:blur(14px);animation:sweepR 11s ease-in-out infinite;opacity:${v.beamOpacity}"></div>
-
-        <div id="stage-spot" style="position:absolute;left:50%;bottom:26%;transform:translateX(-50%);width:230px;height:56px;border-radius:50%;background:radial-gradient(closest-side,rgba(255,232,180,.34),rgba(255,232,180,0));filter:blur(6px);opacity:${v.spotOpacity}"></div>
-
-        <div id="stage-divider" style="position:absolute;left:0;right:0;bottom:24%;height:1px;background:linear-gradient(90deg,transparent,#ff2d78,transparent);opacity:${Math.max(0.25, v.beamOpacity * 0.75).toFixed(2)}"></div>
-        <div style="position:absolute;left:0;right:0;bottom:0;height:24%;background:linear-gradient(180deg,#1b1027,#0a0611);border-top:1px solid #38204d"></div>
-
-        <div id="stage-crowd-row" class="crowd-row">
-          ${Array.from({ length: v.crowdN }, (_, i) => {
-            const h = 34 + (i % 5) * 6;
-            const w = 22 + (i % 4) * 3;
-            const del = (i * 0.31) % 1.4;
-            const cols = ['#160d20','#120a1b','#180e23','#150c1f','#110919','#170d21'];
-            return `<span class="crowd-sil" style="--crowd-dur:${v.crowdBobDur};--crowd-del:${del.toFixed(2)}s;width:${w}px;height:${h}px;background:${cols[i % cols.length]}"></span>`;
-          }).join('')}
-        </div>
-
-        <div id="stage-line-container" style="position:absolute;left:14px;top:14px;display:flex;flex-direction:column;gap:5px">
-          <div style="font-size:9px;letter-spacing:2.6px;text-transform:uppercase;color:#8f6f9c;font-weight:700">Main Stage</div>
-          <div id="stage-line-body">
-          ${v.stageLineAct
-            ? `<button data-h="${this.bind(v.stageLineAct)}" class="hv-pink" title="${v.stageLineTooltip || 'Open Crew tab'}" style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#ff2d78;background:transparent;border:0;padding:0;cursor:pointer;text-align:left;text-decoration:underline;text-underline-offset:3px">${v.stageLine}</button>`
-            : `<div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#ff2d78">${v.stageLine}</div>`}
-          </div>
-        </div>
-
-        <div style="position:absolute;right:14px;top:14px;text-align:right">
-          <div style="font-size:9px;letter-spacing:2.6px;text-transform:uppercase;color:#8f6f9c;font-weight:700">Room energy</div>
-          <div id="stage-energy-pct" style="font-family:'IBM Plex Mono',monospace;font-size:26px;color:#ffc94a;font-weight:600;line-height:1.1">${v.energyPct}</div>
-        </div>
-
-        <div id="stage-golden-wrap">
-        ${v.golden ? `
-        <div style="position:absolute;right:10px;top:10px;z-index:65;display:flex;flex-direction:column;align-items:flex-end;gap:6px">
-          ${v.goldenOpen ? `
-          <div style="background:linear-gradient(180deg,#38260a,#1c1105);border:1px solid #ffc94a;border-radius:10px;padding:10px 12px;text-align:left;box-shadow:0 0 28px rgba(255,201,74,.35);min-width:170px;max-width:220px">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-              <div style="font-size:9px;letter-spacing:2.4px;text-transform:uppercase;color:#ffc94a;font-weight:700">Golden ticket</div>
-              <button data-h="${this.bind(v.closeGolden)}" style="background:transparent;border:0;color:#8b7355;font-size:14px;line-height:1;cursor:pointer;padding:0 0 0 8px">×</button>
-            </div>
-            <div style="font-size:11px;color:#f3e2c2;margin-bottom:8px">VIP booked the booth.</div>
-            <div style="display:flex;gap:6px">
-              <button data-h="${this.bind(v.takeGoldenCash)}" ${v.golden.locked ? 'disabled' : ''} style="flex:1;background:${v.golden.locked ? '#2a1d0a' : 'linear-gradient(180deg,#ffc94a,#b8860b)'};border:0;border-radius:6px;color:${v.golden.locked ? '#6b5212' : '#1c1105'};font-weight:700;font-size:10px;padding:6px 8px;cursor:${v.golden.locked ? 'not-allowed' : 'pointer'}">+$${this.fmt(v.golden.cashAmount)}</button>
-              <button data-h="${this.bind(v.takeGoldenCrowd)}" ${v.golden.locked ? 'disabled' : ''} style="flex:1;background:${v.golden.locked ? '#1a1226' : '#170e22'};border:1px solid ${v.golden.locked ? '#2a1738' : '#ffc94a'};border-radius:6px;color:${v.golden.locked ? '#5a3a70' : '#ffc94a'};font-weight:700;font-size:10px;padding:6px 8px;cursor:${v.golden.locked ? 'not-allowed' : 'pointer'}">+${v.golden.crowdAmount} crowd</button>
-            </div>
-          </div>` : `
-          <button data-h="${this.bind(v.openGolden)}" style="background:linear-gradient(180deg,#ffc94a,#b8860b);border:0;border-radius:20px;padding:6px 10px;box-shadow:0 0 18px rgba(255,201,74,.45);display:flex;align-items:center;gap:6px;cursor:pointer;animation:pulseDot 1.6s ease-in-out infinite">
-            <span style="font-size:13px">🎫</span>
-            <span style="font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:#1c1105;font-weight:800">VIP</span>
-          </button>`}
-        </div>` : ''}
-        </div>
-      </div>
-
-      <div class="stage-cta" style="display:flex;flex-wrap:wrap;gap:10px;padding:12px 14px;background:#0b0712;border-bottom:1px solid #2a1738;align-items:center">
+      <div class="stage-cta" style="display:flex;flex-wrap:wrap;gap:10px;padding:12px 14px;background:#0b0712;border-bottom:1px solid #2a1738;align-items:center;position:sticky;top:62px;z-index:15">
         <button id="cta-work-crowd" data-h="${this.bind(v.workCrowd)}" class="cta" style="flex:1 1 240px;background:linear-gradient(180deg,#ff3d85,#d81259);border:0;border-radius:8px;color:#fff;font-weight:700;font-size:13px;letter-spacing:1.2px;text-transform:uppercase;padding:13px 16px;cursor:pointer;box-shadow:0 0 22px rgba(255,45,120,.35)">Work the room <span style="font-family:'IBM Plex Mono',monospace;opacity:.85;text-transform:none;letter-spacing:0">+${v.clickValue}</span></button>
         <button id="cta-buy-round" data-h="${this.bind(v.buyRound)}" ${v.roundLocked ? 'disabled' : ''} title="${v.roundReason || v.roundLabel}" aria-label="${v.roundReason || v.roundLabel}" style="${css(v.roundStyle)}">${v.roundLabel}</button>
         <div id="station-controls-wrap" style="display:flex;gap:8px;align-items:center">
@@ -5769,23 +5721,34 @@ class Game {
         </div>
       </div>
 
-      <div data-scroll="log" style="background:#080510;overflow-y:auto;padding:10px 14px">
-        <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700;margin-bottom:7px">Night log</div>
-        <div id="night-log-rows" style="display:flex;flex-direction:column;gap:3px">${logRows}</div>
+      <div class="action-second-row" style="display:flex;flex-wrap:wrap;gap:10px;padding:8px 14px;background:#0b0712;border-bottom:1px solid #2a1738;align-items:center;justify-content:space-between">
+        <div id="stage-line-energy-wrap" style="flex:1 1 240px;min-width:0">
+        ${this.stageLineEnergyBanner(v)}
+        </div>
+        <div id="golden-banner-wrap" style="flex:0 1 auto;min-width:0">
+        ${this.goldenTicketBanner(v)}
+        </div>
+      </div>
+
+      <div style="background:#080510;padding:10px 14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px">
+          <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700">Night log</div>
+          <button data-h="${this.bind(() => this.setState(s => ({ logOpen: !s.logOpen })))}" style="background:transparent;border:0;color:#8f6f9c;cursor:pointer;font-size:11px;padding:2px 6px">${this.state.logOpen ? '▴' : '▾'}</button>
+        </div>
+        <div id="night-log-rows" style="display:flex;flex-direction:column;gap:3px;overflow:hidden;max-height:${this.state.logOpen ? '40vh' : '48px'};transition:max-height .25s ease">${logRows}</div>
       </div>
     </section>
 
     <aside class="sys-col" style="border-left:1px solid #2a1738;background:#0a0611;display:grid;grid-template-rows:auto auto minmax(0,1fr);min-height:0">
-      <div id="tab-bar-wrap" class="tab-bar-wrap" style="display:flex;overflow-x:auto;scroll-snap-type:x mandatory;border-bottom:1px solid #2a1738;background:#0d0814;padding:0 12px;position:relative">${tabRows}</div>
+      <div id="tab-bar-wrap" class="tab-bar-wrap" style="display:flex;overflow-x:auto;scroll-snap-type:x mandatory;border-bottom:1px solid #2a1738;background:#0d0814;padding:0 12px;position:sticky;top:62px;z-index:15">${tabRows}</div>
 
       <div id="owners-list-wrap">
       ${this.renderOwnersList(v)}
       </div>
 
-      <div data-scroll="sys_${this.state.tab}" style="overflow-y:auto;padding:12px">
-        <div id="tab-hint-text" style="font-size:10.5px;color:#8f6f9c;line-height:1.5;margin-bottom:11px">${v.tabHint}</div>
-
-        <div id="cards-container" style="display:flex;flex-direction:column;gap:8px">${cardRows}</div>
+      <div style="padding:12px">
+        <!-- Tab hint removed (PR D): moved to (?) tooltip on tab label -->
+        <div id="cards-container" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px">${cardRows}</div>
 
         <div id="sys-assignments-container">${assignments}${personasAndTalent}</div>
       </div>
@@ -5816,13 +5779,18 @@ class Game {
       <span id="footer-ver-full" style="color:#ffc94a">${v.verFull}</span>
       <span>save v${v.saveVer}</span>
       <span id="footer-save-state">${v.saveState}</span>
-      <div style="flex:1"></div>
+      <span class="ticker-text" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:#9c86ab">${v.ticker}</span>
+      <span id="footer-debug-line">${v.debugLine}</span>
       <span id="footer-tick-count">ticks ${v.tickCount}</span>
     </footer>
   </div>
 
   <div id="modals-container">
   ${allModals}
+  </div>
+
+  <div id="books-drawer-wrap">
+  ${this.booksDrawer(v)}
   </div>
 </div>`;
   }
@@ -5838,20 +5806,12 @@ class Game {
   }
 
   updateDom(v) {
-    // 1. Header
-    const asEl = this.dom('#header-autosave');
-    if (asEl) {
-      const n = Date.now();
-      const txt = v.lastAutoSave
-        ? (n - v.lastAutoSave < 1000 ? 'Just now' :
-           n - v.lastAutoSave < 60000 ? Math.floor((n - v.lastAutoSave) / 1000) + 's ago' :
-           n - v.lastAutoSave < 3600000 ? Math.floor((n - v.lastAutoSave) / 60000) + 'm ago' :
-           Math.floor((n - v.lastAutoSave) / 3600000) + 'h ago')
-        : 'never';
-      if (asEl.textContent !== txt) asEl.textContent = txt;
+    // 1. Header: resource strip (0.16.2 — the Ledger lives here now).
+    const strip = this.dom('#resource-strip');
+    if (strip) {
+      strip.setAttribute('data-h', String(this.bind(v.toggleBooks)));
+      strip.innerHTML = this.resourceStrip(v);
     }
-    const clBtn = this.dom('#header-changelog-btn');
-    if (clBtn) clBtn.setAttribute('data-h', String(this.bind(v.toggleChangelog)));
 
     const pw = this.dom('#header-prestige-wrap');
     if (pw) {
@@ -5922,149 +5882,32 @@ class Game {
     const slew = this.dom('#stage-line-energy-wrap');
     if (slew) slew.innerHTML = this.stageLineEnergyBanner(v);
 
-    // 4. Ledger
-    const la = this.dom('#ledger-aside');
-    if (la) la.className = v.ledgerOpen ? '' : 'ledger-collapsed';
-    const acl = this.dom('#active-club-label');
-    if (acl && acl.textContent !== v.activeClubLabel) acl.textContent = v.activeClubLabel;
-    const ltb = this.dom('#ledger-toggle-btn');
-    if (ltb) {
-      ltb.setAttribute('data-h', String(this.bind(v.toggleLedger)));
-      ltb.textContent = v.ledgerOpen ? '▾' : '▸';
-      ltb.title = v.ledgerOpen ? 'Collapse ledger' : 'Expand ledger';
-    }
-    const lcr = this.dom('#ledger-cash-row');
-    if (lcr && v.resources[0]) {
-      const r = v.resources[0];
-      lcr.innerHTML = `
-        <div style="border:1px solid #221434;border-radius:7px;background:#0f0a18;padding:8px 9px">
-          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:6px">
-            <span style="font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:#9c86ab;font-weight:700">${r.name}</span>
-            <span style="${css(r.valStyle)}">${r.val}</span>
-          </div>
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:4px">
-            <div style="flex:1;height:4px;background:#1c1129;border-radius:3px;overflow:hidden">
-              <div style="${css(r.barStyle)}"></div>
-            </div>
-            <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8f6f9c;min-width:56px;text-align:right">${r.rate}</span>
-          </div>
-          <div style="font-size:10px;color:#9c86ab;margin-top:3px">${r.note}</div>
-        </div>`;
-    }
-    const ssd = this.dom('#session-strip-deltas');
-    if (ssd) {
-      ssd.innerHTML = v.sessionDeltas.map(d => {
-        if (d.label === 'Cash' && d.val.includes('·')) {
-          const [earned, spent] = d.val.split(' · ');
-          return `<span>${d.label} <span style="font-weight:600;color:#4ade80">${earned}</span> <span style="color:#8f6f9c">·</span> <span style="font-weight:600;color:#ff7aa8">${spent}</span></span>`;
-        }
-        return `<span>${d.label} <span style="font-weight:600;color:${d.val[0] === '+' ? '#4ade80' : '#ff7aa8'}">${d.val}</span></span>`;
-      }).join('');
-    }
-    const hsw = this.dom('#house-strip-wrap');
-    if (hsw) {
-      if (v.houseChips.length) {
-        hsw.innerHTML = `
-        <div class="house-strip" style="border:1px solid #221434;border-radius:7px;background:#0f0a18;padding:8px 10px;margin-bottom:12px">
-          <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:#8f6f9c;font-weight:700;margin-bottom:5px">House</div>
-          <div style="display:flex;flex-wrap:wrap;gap:5px 14px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#9c86ab">${v.houseChips.join('')}</div>
-        </div>`;
-      } else if (hsw.innerHTML !== '') {
-        hsw.innerHTML = '';
-      }
-    }
-    const ldr = this.dom('#ledger-detail-rows');
-    if (ldr) {
-      ldr.innerHTML = v.resources.slice(1).map(r => `
-        <div style="border:1px solid #221434;border-radius:7px;background:#0f0a18;padding:8px 9px">
-          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:6px">
-            <span style="font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:#9c86ab;font-weight:700">${r.name}</span>
-            <span style="${css(r.valStyle)}">${r.val}</span>
-          </div>
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:4px">
-            <div style="flex:1;height:4px;background:#1c1129;border-radius:3px;overflow:hidden">
-              <div style="${css(r.barStyle)}"></div>
-            </div>
-            <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8f6f9c;min-width:56px;text-align:right">${r.rate}</span>
-          </div>
-          <div style="font-size:10px;color:#9c86ab;margin-top:3px">${r.note}</div>
-        </div>`).join('');
-    }
-    const srows = this.dom('#stat-rows');
-    if (srows) {
-      srows.innerHTML = v.stats.map(s => `
-        <div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;font-size:11px">
-          <span style="color:#9c86ab">${s.k}</span>
-          <span style="font-family:'IBM Plex Mono',monospace;color:#e7d8f2;font-weight:500">${s.v}</span>
-        </div>`).join('');
-    }
+    // 4. Books drawer (0.16.2 — session strip, House chips and Floor stats live
+    // here now; the ledger-aside they came from is deleted).
+    const bdw = this.dom('#books-drawer-wrap');
+    if (bdw) bdw.innerHTML = this.booksDrawer(v);
 
-    // 5. Stage Column
+    // 5. Stage Column (0.16.0: stage panel removed — the ambient canvas behind
+    // .app-root carries the floorboard feed; the banners repaint via gbw/slew).
+    const ambientOn = this.look ? this.look.ambient !== 'off' : true;
+    const motionFull = !this.look || !this.look.motion || this.look.motion === 'full';
+    const amb = this.dom('#ambient-canvas');
+    if (amb) amb.style.display = ambientOn ? '' : 'none';
     if (!this.floorboard && this.FloorboardEngine) {
-      const cv = this.dom('#stage-canvas');
+      const cv = this.dom('#ambient-canvas');
       if (cv) this.floorboard = this.FloorboardEngine.createFloorboard(cv);
     }
     if (this.floorboard) {
-      this.floorboard.update({
-        patrons: this.state.g ? (this.club(this.state.g).patrons || 0) : 0,
-        regulars: this.state.g ? (this.club(this.state.g).regulars || 0) : 0,
-        hype: typeof v.hypeRatio === 'number' ? v.hypeRatio : 0.5,
-        beamOpacity: Number(v.beamOpacity) || 0.5,
-        signLit: Boolean(v.signLit)
-      });
-    }
-
-    const stBeams = this.dom('#stage-beams');
-    if (stBeams) stBeams.style.opacity = String(v.beamOpacity);
-    const stBulbs = this.dom('#stage-bulbs');
-    if (stBulbs) stBulbs.style.opacity = v.signLit ? '1' : '0.35';
-    const stNeon = this.dom('#stage-neon');
-    if (stNeon) {
-      stNeon.style.color = v.signLit ? '#22d3ee' : '#5c3a52';
-      stNeon.style.textShadow = v.signLit ? '0 0 10px rgba(34,211,238,.8),0 0 30px rgba(34,211,238,.4)' : 'none';
-      stNeon.style.animation = v.signLit ? 'neonFlicker 9s infinite' : 'none';
-      stNeon.style.opacity = String(v.signLit ? 0.9 : 0.55);
-    }
-    const stL = this.dom('#stage-sweepl');
-    if (stL) stL.style.opacity = String(v.beamOpacity);
-    const stR = this.dom('#stage-sweepr');
-    if (stR) stR.style.opacity = String(v.beamOpacity);
-    const stSpot = this.dom('#stage-spot');
-    if (stSpot) stSpot.style.opacity = String(v.spotOpacity);
-    const stDiv = this.dom('#stage-divider');
-    if (stDiv) stDiv.style.opacity = String(Math.max(0.25, v.beamOpacity * 0.75).toFixed(2));
-    const slb = this.dom('#stage-line-body');
-    if (slb) {
-      slb.innerHTML = v.stageLineAct
-        ? `<button data-h="${this.bind(v.stageLineAct)}" class="hv-pink" title="${v.stageLineTooltip || 'Open Crew tab'}" style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#ff2d78;background:transparent;border:0;padding:0;cursor:pointer;text-align:left;text-decoration:underline;text-underline-offset:3px">${v.stageLine}</button>`
-        : `<div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#ff2d78">${v.stageLine}</div>`;
-    }
-    const sep = this.dom('#stage-energy-pct');
-    if (sep && sep.textContent !== v.energyPct) sep.textContent = v.energyPct;
-    const sgw = this.dom('#stage-golden-wrap');
-    if (sgw) {
-      if (v.golden) {
-        sgw.innerHTML = `
-        <div style="position:absolute;right:10px;top:10px;z-index:65;display:flex;flex-direction:column;align-items:flex-end;gap:6px">
-          ${v.goldenOpen ? `
-          <div style="background:linear-gradient(180deg,#38260a,#1c1105);border:1px solid #ffc94a;border-radius:10px;padding:10px 12px;text-align:left;box-shadow:0 0 28px rgba(255,201,74,.35);min-width:170px;max-width:220px">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-              <div style="font-size:9px;letter-spacing:2.4px;text-transform:uppercase;color:#ffc94a;font-weight:700">Golden ticket</div>
-              <button data-h="${this.bind(v.closeGolden)}" style="background:transparent;border:0;color:#8b7355;font-size:14px;line-height:1;cursor:pointer;padding:0 0 0 8px">×</button>
-            </div>
-            <div style="font-size:11px;color:#f3e2c2;margin-bottom:8px">VIP booked the booth.</div>
-            <div style="display:flex;gap:6px">
-              <button data-h="${this.bind(v.takeGoldenCash)}" ${v.golden.locked ? 'disabled' : ''} style="flex:1;background:${v.golden.locked ? '#2a1d0a' : 'linear-gradient(180deg,#ffc94a,#b8860b)'};border:0;border-radius:6px;color:${v.golden.locked ? '#6b5212' : '#1c1105'};font-weight:700;font-size:10px;padding:6px 8px;cursor:${v.golden.locked ? 'not-allowed' : 'pointer'}">+$${this.fmt(v.golden.cashAmount)}</button>
-              <button data-h="${this.bind(v.takeGoldenCrowd)}" ${v.golden.locked ? 'disabled' : ''} style="flex:1;background:${v.golden.locked ? '#1a1226' : '#170e22'};border:1px solid ${v.golden.locked ? '#2a1738' : '#ffc94a'};border-radius:6px;color:${v.golden.locked ? '#5a3a70' : '#ffc94a'};font-weight:700;font-size:10px;padding:6px 8px;cursor:${v.golden.locked ? 'not-allowed' : 'pointer'}">+${v.golden.crowdAmount} crowd</button>
-            </div>
-          </div>` : `
-          <button data-h="${this.bind(v.openGolden)}" style="background:linear-gradient(180deg,#ffc94a,#b8860b);border:0;border-radius:20px;padding:6px 10px;box-shadow:0 0 18px rgba(255,201,74,.45);display:flex;align-items:center;gap:6px;cursor:pointer;animation:pulseDot 1.6s ease-in-out infinite">
-            <span style="font-size:13px">🎫</span>
-            <span style="font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:#1c1105;font-weight:800">VIP</span>
-          </button>`}
-        </div>`;
-      } else if (sgw.innerHTML !== '') {
-        sgw.innerHTML = '';
+      if (!ambientOn || !motionFull) this.floorboard.pause();
+      else {
+        this.floorboard.start();
+        this.floorboard.update({
+          patrons: this.state.g ? (this.club(this.state.g).patrons || 0) : 0,
+          regulars: this.state.g ? (this.club(this.state.g).regulars || 0) : 0,
+          hype: typeof v.hypeRatio === 'number' ? v.hypeRatio : 0.5,
+          beamOpacity: Number(v.beamOpacity) || 0.5,
+          signLit: Boolean(v.signLit)
+        });
       }
     }
     const ctaWork = this.dom('#cta-work-crowd');
@@ -6280,7 +6123,8 @@ class Game {
     if (!this.scrollSave) this.scrollSave = {};
     if (this.root && this.root.querySelectorAll) {
       this.root.querySelectorAll('[data-scroll]').forEach(el => {
-        this.scrollSave[el.getAttribute('data-scroll')] = [el.scrollTop, el.scrollLeft];
+        const key = el.getAttribute('data-scroll');
+        this.scrollSave[key === 'main' ? 'main_' + this.state.tab : key] = [el.scrollTop, el.scrollLeft];
       });
     }
     const v = this.renderVals();
@@ -6300,7 +6144,8 @@ class Game {
 
     if (this.root && this.root.querySelectorAll) {
       this.root.querySelectorAll('[data-scroll]').forEach(el => {
-        const saved = this.scrollSave[el.getAttribute('data-scroll')];
+        const key = el.getAttribute('data-scroll');
+        const saved = this.scrollSave[key === 'main' ? 'main_' + this.state.tab : key];
         if (saved) { el.scrollTop = saved[0]; el.scrollLeft = saved[1]; }
       });
     }
@@ -6315,7 +6160,7 @@ class Game {
       const goal = this.activeGoal(this.state.g);
       const bid = goal && GOAL_BUILDING[goal.id];
       if (bid && this.state.tab === 'club' && this.state.autoScrolledGoal !== goal.id) {
-        const shell = this.root.querySelector('.shell-grid');
+        const shell = this.root.querySelector('.app-root');
         const btn = this.root.querySelector('[data-building-id="' + bid + '"]');
         if (shell && btn) {
           const sb = shell.getBoundingClientRect();
