@@ -91,7 +91,7 @@ function normalizePacks(g) {
 }
 
 class Game {
-  VERSION = { num: '0.15.1', build: 291, channel: 'alpha', date: '2026-09-02', codename: 'Fluid Widescreen Layout' };
+  VERSION = { num: '0.15.2', build: 292, channel: 'alpha', date: '2026-09-04', codename: 'Fluid Widescreen Layout' };
   SAVE_VER = 16;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -320,6 +320,9 @@ class Game {
   };
 
   CHANGELOG = [
+      { v: '0.15.2', date: '2026-09-04', codename: 'Repository Hardening', notes: [
+        'REPOSITORY HARDENING (PR #171): wrapped all localStorage/sessionStorage/JSON.parse access in safe helpers (safeGet/Set/Remove, safeSessionGet/Set/Remove, safeParse) that silently catch private-mode/quota errors. Critical persistence paths (save, init, claimOwnership, confirmPrestige, openFranchise, startChallenge) retain explicit try/catch with saveState signaling. Added MAX_DT/AUTOSAVE_INTERVAL_MS/SIM_INTERVAL_MS constants replacing magic numbers. Removed dead debugLine field and footer template. pagehide now clears this.timer to fix BFCache memory leak. Bumps VERSION/build to 0.15.2/292. SAVE_VER stays 16 (save shape unchanged).'
+      ] },
       { v: '0.15.1', date: '2026-09-02', codename: 'Fluid Widescreen Layout', notes: [
         'FLUID WIDESCREEN LAYOUT & SIDEGUTTER ELIMINATION: replaced the hard-capped 1460px `.shell-grid` box (which wasted 460px+ of dead side gutters on every desktop monitor) with a full-viewport 3-column grid `minmax(260px, 320px) minmax(440px, 1fr) minmax(360px, 480px)` + `padding-inline: 18px` matching header/ticker. Added `min-width: 2160px` ultrawide media-query guard that re-caps at 2200px to keep text readable on 3440/4K. Floorboard canvas now scales crowd-particle spread and spotlight beam separation with canvas width instead of clustering in a 720px zone. Right-panel `×0` Max button now renders `Max (0)` with disabled styling when no units are affordable. Ticker bar gains a 4px left pad so the initial letter no longer clips the overflow bounds. Header Police Heat meter adds a subtle pink glow above 50% so players anchored to the center action bar notice an impending raid. SAVE_VER stays 16 (no save migration needed), pacing bit-identical.'
       ] },
@@ -2145,6 +2148,8 @@ class Game {
     if (needsClaim) {
       g.ts = Date.now();
       try {
+        // Critical: must signal failure via saveState. safeSet silently
+        // swallows errors — we need explicit saveState='save failed'.
         localStorage.setItem(this.KEY, JSON.stringify({
           saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
         }));
@@ -2170,10 +2175,12 @@ class Game {
         this.checkAchievements(g);
         let persist2Ok = false;
         try {
-          localStorage.setItem(this.KEY, JSON.stringify({
-            saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
-          }));
-          persist2Ok = true;
+        // Critical: must signal failure via saveState. safeSet silently
+        // swallows errors — we need explicit saveState='save failed'.
+        localStorage.setItem(this.KEY, JSON.stringify({
+          saveVer: this.SAVE_VER, ver: this.VERSION.num, build: this.VERSION.build, g
+        }));
+        persist2Ok = true;
         } catch (e) {
           this.setState({ saveState: 'save failed' });
         }
@@ -2375,6 +2382,12 @@ class Game {
     });
     window.addEventListener('pageshow', () => {
       this.safeSessionRemove(this.RELOAD_KEY);
+      // BFCache restore: timers are natively paused by the browser, but we
+      // may have cleared this.timer in pagehide. Re-arm if still owner.
+      if (!this.timer && this.isTabOwner()) {
+        this.timer = setInterval(() => this.step(), this.SIM_INTERVAL_MS);
+        this.startAutosave();
+      }
     });
   }
 
@@ -2657,12 +2670,12 @@ class Game {
 
   // --- simulation (step, catchUp) ---
   // Offline / large-gap simulation at 50% rate. Wall time advances fully;
-  // resource accrual uses dt = wall * 0.5. Silent shift/night rollover.
+  // cap 8h (MAX_DT). resource accrual uses dt = wall * 0.5. Silent shift/night rollover.
   // Returns gross cash earned, wages paid, and whether a strike occurred (1.10).
   catchUp(g, seconds) {
     if (!g || !(seconds > 0)) return { earned: 0, wagesPaid: 0, struck: false, managerBought: 0 };
     const c = this.club(g);
-    seconds = Math.min(seconds, 28800);
+    seconds = Math.min(seconds, this.MAX_DT);
     // 0.10.2: a golden offer that lapsed while away must not render on return.
     this.expireGolden(g);
     let remaining = seconds;
@@ -4781,7 +4794,6 @@ class Game {
       closeGolden: () => this.setState(s => ({ goldenOpen: false })),
       takeGoldenCash: () => this.takeGolden(g, 'cash'),
       takeGoldenCrowd: () => this.takeGolden(g, 'crowd'),
-      debugLine: '',
       ownersList: (() => {
         const total = this.GOALS.length;
         const done = Array.isArray(g.goals) ? g.goals.length : 0;
