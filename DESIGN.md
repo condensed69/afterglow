@@ -811,16 +811,15 @@ Brand-new / wiped clubs stamp `ts` via `fresh()` and skip offline entirely (`res
 ### 14.1 Shell
 
 Three-row grid: **header (62px) · main · footer (28px)**.  
-Main: three columns **`minmax(260px,320px) | minmax(440px,1fr) | minmax(360px,480px)`** — Ledger · Stage · Systems (0.15.1). The stage column now absorbs all leftover viewport width via `1fr`, eliminating the 460px+ of dead side gutters that the old hard-capped 1460px box left on every desktop monitor. Each column keeps a sane min so text never stretches beyond readability, and `padding-inline: 18px` on `.shell-grid` aligns the grid flush under the header and ticker bar. Above 2160px (ultrawide / 4K) a media-query guard re-caps the layout at 2200px with `340px 1fr 520px` so the center column does not become illegibly wide.
+Main: single column **`minmax(0,1fr)`** — the `.app-root` is the only scroller (`height:100dvh; overflow:hidden`), with the resource strip in the header, ledger as a collapsible aside, and systems tabs below. The old 3-column shell-grid (Ledger · Stage · Systems) was replaced in 0.16.2 (PR C) by the header resource strip + Books drawer, and the Stage panel was removed in 0.16.0 (PR A). `padding-inline: 18px` on `.app-root` aligns content flush under the header and ticker bar.
 
 | Region | Contents |
 |--------|----------|
-| Header | Afterglow wordmark, version badge (opens changelog), **Franchise offer** (once the 25-regulars gate is met), **Open second room** + `[ Main ] [ Annex ]` switcher (once the §17 gate is met; a third `[ Rooftop ]` entry appears once the Rooftop Lease is bought, §22.2), shift name + bar + night/mult, settings ☰ |
-| Ledger | Cash/Hype/Buzz/Patrons/Regulars/Clout with rates + notes; **room label** ("Main Room" / "Annex" / "Rooftop", 0.11.1+); **Legacy** row (gold `#d4af37`, “spent on permanent perks”); Floor stats (crew, on stage, structures, night time) |
-| Stage | CSS stage set only (lighting, haze, crowd silhouettes, marquee, lip) — **no performer figure**; Main Stage line, Room energy %, Work the room + Buy a round, Night log |
-| Systems | Tabs Club + Crew (always visible) / **Upgrades** (gated on first building owned) / **Research** (gated on first Clout earned) / **Perks** (gated on `prestiges > 0`); **Owner's List** under tabs; scrollable cards + crew assignments |
-| Footer | full version string, save format, saveState, tick count; multi-tab takeover banner above when stale |
-| Modals | Changelog history; **Achievements**; Settings (save I/O + wipe + Look & feel) |
+| Header | Afterglow wordmark, version badge (opens changelog), **resource strip** (Cash/Hype/Buzz/Patrons/Regulars/Clout with rates, color-coded, 2px cap bar), **Books drawer** toggle, **Franchise offer** (once the 25-regulars gate is met), **Open second room** + `[ Main ] [ Annex ]` switcher (once the §17 gate is met; a third `[ Rooftop ]` entry appears once the Rooftop Lease is bought, §22.2), shift name + bar + night/mult, settings ☰ |
+| Ledger | Collapsible aside (toggle ▸/▾). Cash/Hype/Buzz/Patrons/Regulars/Clout with rates + notes; **room label** ("Main Room" / "Annex" / "Rooftop", 0.11.1+); **Legacy** row (gold `#d4af37`, "spent on permanent perks"); Floor stats (crew, on stage, structures, night time); session deltas; house chips |
+| Systems | Tabs Club + Crew (always visible) / **Upgrades** (gated on first building owned) / **Research** (gated on first Clout earned) / **Perks** (gated on `prestiges > 0`) / **Talent** (0.16.3+); **Owner's List** as collapsible goal card under tabs; scrollable cards + crew assignments; purchase grid (0.16.3+) |
+| Footer | full version string, save format, saveState, tick count; multi-tab takeover banner above when stale; ticker text |
+| Modals | Changelog history; **Achievements**; Settings (save I/O + wipe + Look & feel incl. Ambient floor toggle) |
 
 Typography (loaded in `index.html`): **Monoton** (wordmark), **Space Grotesk** (UI), **IBM Plex Mono** (numbers). Palette is magenta `#ff2d78`, cyan `#22d3ee`, gold `#ffc94a` on near-black `#07050c`.
 

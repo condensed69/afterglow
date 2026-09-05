@@ -1184,6 +1184,10 @@ class Game {
     // tap to expand the rest (the full Ledger is taller than the viewport).
     // Desktop ignores the collapsed class (CSS only hides below 900px).
     ledgerOpen: false,
+    // Owner's List goal card expanded state (0.16.3+): collapsed by default.
+    goalOpen: false,
+    // Night log strip expanded state (0.16.4+): collapsed by default (3 lines).
+    logOpen: false,
     // true when another tab wrote KEY — autosave is off until reload (PLAN §2.3).
     tabStale: false,
     g: null
