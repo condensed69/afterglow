@@ -68,12 +68,7 @@ body::after {
   body::after { display: none; }
 }
 
-@keyframes bulb { 0%, 100% { opacity: 1; box-shadow: 0 0 8px 2px rgba(255,201,74,.9); } 50% { opacity: .35; box-shadow: 0 0 3px 0 rgba(255,201,74,.4); } }
-@keyframes sweepL { 0%, 100% { transform: rotate(-13deg) scaleY(1); opacity: .5; } 50% { transform: rotate(9deg) scaleY(1.06); opacity: .78; } }
-@keyframes sweepR { 0%, 100% { transform: rotate(12deg) scaleY(1.05); opacity: .72; } 50% { transform: rotate(-10deg) scaleY(1); opacity: .46; } }
 @keyframes neonFlicker { 0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% { opacity: 1; } 20%, 24%, 55% { opacity: .42; } }
-@keyframes hazeDrift { 0% { transform: translateX(-4%) scaleY(1); } 100% { transform: translateX(4%) scaleY(1.1); } }
-@keyframes crowdBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
 @keyframes pulseDot { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
 @keyframes onboardPulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(255,201,74,.15); border-color: #2a1738; }
@@ -94,7 +89,7 @@ body::after {
    / transition are set on almost no button, so these apply everywhere without
    !important. Filter brightness is additive on top of each button's inline
    gradient, so it never clashes with the look & feel prefs (which also use
-   filter but on #app / #stage, not on buttons).
+   filter but on #app / #ambient-canvas, not on buttons).
    
    0.11.21: Disabled on touch devices — transitions on every button caused
    severe scroll jank (content moved 1 frame, paused 3-4 frames). Touch
@@ -126,18 +121,25 @@ body::after {
   box-shadow: 0 0 0 2px rgba(34,211,238,.22);
 }
 
-/* The CSS/DOM performer and pole were removed in 0.7.0 — the stage is lighting,
-   haze, crowd silhouettes and the stage lip. Do not reintroduce a figure here. */
+/* The stage art panel was removed in 0.16.0 — there is no performer figure, no
+   lighting rig, no crowd row, no neon sign in the DOM. The canvas floorboard
+   survives only as an ambient backdrop (#ambient-canvas). Do not reintroduce a
+   figure or a stage panel here. */
 
-/* Stage panel is a size container so the neon sign can dodge the Main Stage caption
-   when the center column narrows (the caption's "hire crew to open the stage" CTA is
-   the widest state). Container-based, not viewport-based, so it holds at any layout. */
-#stage { container-type: inline-size; }
-@container (max-width: 660px) {
-  .stage-neon { top: 52px !important; font-size: 11px !important; }
-}
-@container (max-width: 300px) {
-  .stage-neon { opacity: 0 !important; }
+/* Ambient floorboard backdrop (0.16.0). The canvas lives behind .app-root at
+   35% opacity with pointer-events:none; the Look panel's Ambient floor toggle
+   flips its display. Negative z-index inside the isolated app root keeps it
+   above the app background but below every card, so it can never wash out
+   text. */
+.app-root { position: relative; isolation: isolate; }
+.ambient-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: -1;
+  opacity: .35;
 }
 
 /* --- Look & feel prefs (afterglow.look). Filters are applied only when a
@@ -145,43 +147,21 @@ body::after {
 html[data-mood="uv"] #app, html[data-mood="sodium"] #app {
   filter: hue-rotate(var(--mood-deg, 0deg)) saturate(var(--mood-sat, 1));
 }
-html[data-lights="on"] #stage {
+html[data-lights="on"] #ambient-canvas {
   filter: brightness(calc(1 + var(--lights, 0) * 0.8)) contrast(calc(1 - var(--lights, 0) * 0.3)) saturate(calc(1 - var(--lights, 0) * 0.5));
 }
-html[data-lights="on"] #stage::after {
+html[data-lights="on"] #ambient-canvas::after {
   content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 9;
   background: linear-gradient(180deg, rgba(255,238,214,.22), rgba(255,238,214,.05));
   opacity: var(--lights, 0);
 }
 html[data-motion="still"] #app, html[data-motion="still"] #app * { animation-play-state: paused !important; }
-html[data-motion="easy"] #stage > div,
-html[data-motion="easy"] #stage > div > span { animation-play-state: paused !important; }
 #look-panel input[type="range"] { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 3px; background: #2a1738; }
 #look-panel input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #ffc94a; box-shadow: 0 0 8px rgba(255,201,74,.6); cursor: pointer; border: 0; }
 #look-panel input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #ffc94a; box-shadow: 0 0 8px rgba(255,201,74,.6); cursor: pointer; border: 0; }
 
-/* Crowd row and silhouettes. The row is absolutely positioned at the bottom of
-   #stage and sized with flex. On narrow stages it shrinks gaps/padding and
-   hides the later silhouettes so the row never overflow the container. */
-.crowd-row {
-  position: absolute; left: 0; right: 0; bottom: 0; height: 74px;
-  display: flex; align-items: flex-end; justify-content: center;
-  gap: 22px; opacity: .85; padding: 0 20px;
-}
-.crowd-sil {
-  flex: 0 0 auto;
-  border-radius: 999px 999px 0 0;
-  animation: crowdBob var(--crowd-dur, 2.4s) ease-in-out infinite var(--crowd-del, 0s);
-}
-@container (max-width: 600px) {
-  .crowd-row { gap: 14px; padding: 0 12px; }
-  .crowd-sil:nth-child(n+11) { display: none; }
-}
-@container (max-width: 420px) {
-  .crowd-row { gap: 8px; padding: 0 8px; }
-  .crowd-sil:nth-child(n+7) { display: none; }
-  .crowd-sil { transform: scale(0.9); transform-origin: bottom center; }
-}
+/* (0.16.0: the crowd row lived inside the removed stage panel — rules deleted
+   with it. The floorboard canvas renders crowd particles now.) */
 
 /* Click floater spawned by workCrowd. Lives outside #app so the 1s render loop
    does not kill it mid-flight. */
@@ -215,40 +195,37 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
   100% { transform: translateY(-140px) scale(0.9); opacity: 0; }
 }
 
-/* Shell grid (v0.15.1) — fluid widescreen layout. Replaces the hard-capped
-   1460px box (which wasted 460px+ of dead side gutters on every desktop
-   monitor) with a full-viewport 3-column grid. Each column keeps a sane
-   min so text never stretches beyond readability, and the center stage
-   column absorbs all leftover space via 1fr. Padding-inline: 18px matches
-   the header and ticker bar so the grid sits flush under the brand title
-   and right-side controls instead of floating in a disconnected island. */
+/* Shell grid (v0.15.1, one-scroller 0.16.1, resource strip 0.16.2) — fluid
+   widescreen layout. Replaces the hard-capped 1460px box (which wasted
+   460px+ of dead side gutters on every desktop monitor) with a full-viewport
+   2-column grid: the Ledger column is gone (its content moved to the header
+   resource strip and the Books drawer), so the actions column and the Systems
+   column share the width. Each column keeps a sane min so text never
+   stretches beyond readability. Padding-inline: 18px matches the header so
+   the grid sits flush under the brand title and right-side controls instead
+   of floating in a disconnected island. Since 0.16.1 the grid is plain
+   content — the app root is the only vertical scroller, so there is no
+   overflow rule here. */
 .shell-grid {
   display: grid;
-  grid-template-columns: minmax(260px, 320px) minmax(440px, 1fr) minmax(360px, 480px);
+  grid-template-columns: minmax(440px, 1fr) minmax(360px, 480px);
   width: 100%;
   max-width: 100%;
   padding-inline: 18px;
   gap: 0;
   min-height: 0;
   min-width: 0;
-  overflow: auto;
 }
 
 /* Ultrawide display guard (> 2160px): cap the layout at 2200px so the fluid
-   center column does not stretch into illegible proportions on 3440px and
-   4K monitors. The left/right panels keep generous fixed widths. */
+   actions column does not stretch into illegible proportions on 3440px and
+   4K monitors. The Systems panel keeps a generous fixed width. */
 @media (min-width: 2160px) {
   .shell-grid {
-    grid-template-columns: 340px 1fr 520px;
+    grid-template-columns: 1fr 520px;
     max-width: 2200px;
     margin-inline: auto;
   }
-}
-
-/* Ledger collapse toggle: hidden on desktop (the Ledger is always expanded
-   ≥901px and the button only appears inside the narrow-screen media query). */
-.ledger-toggle {
-  display: none;
 }
 
 /* Desktop Modal Overlay & Dialog styles (v0.12 PR 2) */
@@ -277,27 +254,9 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
   display: none;
 }
 
-/* Canvas Floorboard (v0.12 PR 3) */
-.stage-canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 1;
-}
-
-/* Flavor ticker (REPLAY_ROADMAP.md §4) — slim rotating line under the header.
-   Inline-styled; this only guarantees a stable row height and text selection
-   hygiene. Never affects the sim (render-only). */
-.ticker-bar {
-  min-height: 22px;
-  user-select: none;
-}
-
-/* Explicit nowrap on the text span (not just inherited from the bar) so
-   ellipsis truncation is robust if the bar's inline whitespace rule ever
-   changes. */
+/* Ticker text (REPLAY_ROADMAP.md §4) — since 0.16.2 the flavor line lives in
+   the footer instead of under the header. Explicit nowrap so ellipsis
+   truncation is robust. Never affects the sim (render-only). */
 .ticker-text {
   white-space: nowrap;
 }
@@ -305,13 +264,13 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
 /* Small screens: stack Ledger / Stage / Systems vertically, no horizontal scroll.
    Below the sum of the three column minimums (232+320+320 = 872px) the fixed
    mins would force a page-level horizontal scrollbar; single-column removes it. */
-/* Golden ticket banner + Stage line/energy banner (PR: mobile-golden-ticket-access):
-   hidden on desktop where the stage shows them inline; shown on phones where
-   #stage is display:none. Visibility is owned by CSS — game.js wrappers no
-   longer set inline display so the hide works without !important. */
+/* Golden ticket banner + Stage line/energy banner (0.16.0: shown at every
+   width in the action bar's second row — the stage-less path the ≤900px
+   layout used since 0.10.8, now shared by desktop since the stage panel
+   is gone). */
 #golden-banner,
 #stage-line-energy-banner {
-  display: none;
+  display: flex;
 }
 /* Buy-a-round disabled feedback (RED-2): the reason line under the disabled
    button — cash-short vs hype-cap look identical otherwise. Full-width child
@@ -328,75 +287,25 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
     grid-template-columns: 1fr;
     max-width: none;
     padding-inline: 0;
-    overflow-y: auto;
-    overflow-x: hidden;
-    /* min-content, not the `auto` default. As a scroll container inside the
-       100dvh app root this grid has a *definite* height, so `auto` rows are
-       shrunk to fit it: the Ledger's content claims the whole ~620px and the
-       Stage and Systems rows resolve to zero, their contents spilling out and
-       painting on top of each other. Measured, not theorised — `auto` and
-       `grid-template-rows:auto auto auto` both leave scrollHeight at 1715px
-       with two collapsed rows; min-content takes it to 2082px with all three
-       panels at their real heights. min-content refuses to shrink below
-       content, which is the whole point when the shell is the scroller. */
-    grid-auto-rows: min-content;
-    /* No scroll chaining / pull-to-refresh at the edges (0.11.19, restored
-       0.11.42). The shell is the only scroller below 900px; without containment,
-       reaching the top or bottom hands the gesture to the browser (page refresh
-       on Android, rubber-band on iOS). contain keeps the gesture inside the
-       shell. 0.11.21's button-transition edit rewrote the comment above and
-       accidentally deleted the declaration — this restores it verbatim. */
-    overscroll-behavior-y: contain;
-    /* Legacy iOS momentum scrolling (0.11.19). Modern iOS has momentum by default;
-       this is a no-op on Android and modern iOS, but kept for older devices. */
-    -webkit-overflow-scrolling: touch;
-    /* Promote to compositor layer for smoother scroll (0.11.22). Offloads
-       scrolling to GPU, reducing main thread blocking during touch scroll.
-       0.11.28: `transform` here established a containing block for fixed
-       descendants, so .stage-cta's position:fixed resolved against the shell
-       and scrolled away with content. `scroll-position` keeps the compositing
-       hint without creating a containing block. */
-    will-change: scroll-position;
   }
   .shell-grid > section,
   .shell-grid > aside {
     min-width: 0;
   }
 
-  /* One scroller, not four (v0.10.7). The app root is height:100dvh;overflow:hidden,
-     and Ledger, Log and the Systems tab body each carry their own inline
-     `overflow-y:auto`. Side by side as three desktop columns that is right: each
-     column owns a full-height viewport. Stacked into one mobile column they all
-     share 100dvh minus header and footer, so every panel becomes a ~100px window
-     with its own scrollbar nested inside the shell's — two visible tracks, and a
-     card list you read three rows at a time.
+  /* Single-column stack: with the app root as the only scroller at every
+     width, the stacked panels simply size to content — no per-panel scroll
+     containment needed. */
 
-     Below 900px the inner panels size to content and `.shell-grid` (which already
-     carries data-scroll="main", so the existing save/restore covers it) is the
-     only thing that scrolls. `overflow` not `overflow-y`: the shorthand resets
-     both longhands, and !important is required because the inline style would
-     otherwise win on specificity. */
-  .shell-grid [data-scroll="ledger"],
-  .shell-grid [data-scroll="log"],
-  .shell-grid [data-scroll^="sys_"] {
-    overflow: visible !important;
-  }
+  /* Stage panel removed in 0.16.0 — no art to hide on phones. The banners live
+     in the action bar's second row at every width now (base rule above); the
+     flex display here is kept so the stacked single-column layout still
+     applies to them. */
 
-  /* Stage art is hidden on phones (v0.10.8, operator request). It is environment
-     only — lighting, haze, crowd silhouettes, the neon sign — with no controls
-     and no readout, so on a narrow screen it was 240px of scrolling past nothing
-     to reach the buttons. It stays in the DOM rather than being dropped from the
-     markup: the render path is shared with desktop, and the two JS references
-     (`getElementById('stage')` for the click brightness pulse and the keyboard
-     tip-floater anchor) both stay non-null and no-op. Desktop is untouched. */
-  #stage {
-    display: none;
-  }
-
-  /* Mobile banners — shown only when #stage is hidden (desktop hide is the base rule above).
-     The app-root grid is inline `auto auto 1fr auto` for header/ticker/shell/footer.
-     With 0-2 banners as siblings between ticker and shell they'd auto-place into
-     the shell's 1fr track and steal height. Add dedicated auto rows for banners. */
+  /* Mobile banners — the base rule already shows them; the app-root grid gains
+     a dedicated auto row only while the challenge chip can appear as a sibling
+     between ticker and shell (it auto-places into the shell's 1fr track and
+     would steal height otherwise). */
   #golden-banner,
   #stage-line-energy-banner {
     display: flex;
@@ -405,34 +314,8 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
     grid-template-rows: auto auto auto auto 1fr auto !important;
   }
 
-  /* Ledger collapses to the CASH row on narrow screens (v0.10.16). The full
-     Ledger — six resource rows plus the Floor block — measured 776px tall on a
-     390px phone, taller than the whole viewport, and sat first in the stacked
-     column: the primary action (Work the room) and the Systems tabs were both
-     below the fold. Collapsed, the Ledger is ~70px: CASH stays visible (the
-     number idle players watch), the toggle re-expands the rest. The toggle
-     button and the collapse rule both live inside this media query, so desktop
-     (≥901px) keeps the always-expanded Ledger and never sees the button. */
-  .ledger-toggle {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .ledger-detail {
-    max-height: min(45vh, 420px);
-    overflow-y: auto;
-    /* Nested scroller (0.11.42); hitting its bottom must not chain the gesture
-       into the shell. */
-    overscroll-behavior-y: contain;
-    transition: max-height 0.25s ease, opacity 0.2s ease;
-  }
-  .ledger-collapsed .ledger-detail {
-    max-height: 0 !important;
-    opacity: 0 !important;
-    overflow: hidden;
-    padding-top: 0 !important;
-    padding-bottom: 0 !important;
-  }
+  /* Ledger removed in 0.16.2 (resource strip + Books drawer) — no collapse
+     rules needed at any width. */
 
   /* Tap targets (v0.10.17): every button gets a 44px minimum hit area on
      touch. min-height/min-width override the inline height/width and padding
@@ -473,24 +356,13 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
     padding: 8px 12px !important;
   }
 
-  /* Both interior grids distribute a height they no longer have once the shell
-     is the scroller: with no free space, the stage's minmax(190px,1fr) collapses
-     to its 190px floor and the Systems body's minmax(0,1fr) resolves to zero and
-     disappears entirely. Content-sized rows instead. Two rows, not three — a
-     `display:none` grid item is removed from layout entirely, so the actions bar
-     and the Night log are the only children left to place. */
+  /* The center column is action bar + banner strip + Night log (the stage
+     panel was removed in 0.16.0): content-sized rows instead of the
+     inner-scroller distribution. The Systems column needs no override — the
+     base `auto auto minmax(0,1fr)` rows already size to content now that the
+     app root is the only scroller. */
   .stage-col {
-    grid-template-rows: auto auto !important;
-  }
-  .sys-col {
     grid-template-rows: auto auto auto !important;
-  }
-
-  /* Ticker stays a single truncated line on phones — tighter padding so the
-     ~22px strip doesn't eat vertical space the stacked panels need. */
-  .ticker-bar {
-    padding: 2px 12px !important;
-    min-height: 20px;
   }
 
   /* Bottom Thumb Cockpit (v0.12 PR 2): Pinned mobile bottom bar for one-thumb play */
@@ -651,20 +523,18 @@ html[data-motion="easy"] #stage > div > span { animation-play-state: paused !imp
     border: 2px solid #07050c !important;
   }
 
-  /* Polish & safe areas (v0.12 PR 9): ledger anim lives above with the base ledger rule; */
+  /* Polish & safe areas (v0.12 PR 9). */
 
   #look-panel {
     bottom: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
     right: calc(16px + env(safe-area-inset-right, 0px)) !important;
     max-width: calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 16px) !important;
   }
-  .ledger-toggle {
-    order: -1;
-    margin-right: auto;
-  }
   .tab-bar-wrap {
-    /* !important beats the inline position:relative game.js bakes into the
-       tab-bar-wrap div (same pattern as the 0.11.18 CTA-glow override). */
+    /* !important beats the inline top:62px game.js bakes into the
+       tab-bar-wrap div for the 62px desktop header — below 900px the header
+       wraps to multiple rows, so the bar pins to the viewport top instead
+       (same override pattern as the 0.11.18 CTA-glow rule). */
     position: sticky !important;
     top: 0;
     z-index: 10;
