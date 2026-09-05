@@ -3962,12 +3962,32 @@ class Game {
     return { width: Math.max(0, Math.min(100, pct)) + '%', height: '100%', background: color, borderRadius: '3px', transition: 'width .18s linear' };
   }
 
+  // Canonical tooltip definitions keyed by term. Single source of truth for
+  // helpIcon(): the resource/ledger layer used to write every tooltip string
+  // twice per term — once as the resource `tip` and again inline as the
+  // helpIcon() argument — so editing a tooltip meant editing two places.
+  // Call sites pass only the term; an explicit def still overrides it for
+  // ad-hoc terms (e.g. the escape test) that aren't in this table.
+  HELP = Object.freeze({
+    Cash: 'Money in the till. Used to hire crew, buy structures, upgrades, and rounds.',
+    Hype: 'Room energy. Multiplies all cash income and click value. Decays over time — feed it with DJ Booths and the stage crew.',
+    Buzz: 'Street awareness. Converts into patrons entering the club. Marquee Signs and Flyer Crews generate it.',
+    Patrons: 'Bodies on the floor. They pay cover at the door ($0.02/head), tip at Tip Rails, and slowly become Regulars. Cap grows with structures.',
+    Regulars: 'Customers who come back every night and never leave. Each one slowly builds your Clout. With the Reputation Loop upgrade, they also pay $0.04/s cash.',
+    Clout: 'Money for Research. Regulars earn it for you over time. Spent permanently on the Research tab for upgrades that help the whole club.',
+    Legacy: 'Prestige meta-currency. Earned by selling the club (franchise deal). Spent on permanent perks and managers that persist across runs.',
+    Crew: 'Hired dancers, bartenders, and hosts. Assign them to Main Stage (Hype), VIP (cash), or Floor (buzz + regulars). Wages tick every second.',
+    'On stage': 'Crew assigned to Main Stage. Each one generates Hype. More Hype = higher income multiplier.',
+    Structures: 'Total buildings owned. Tip Rails, Back Bars, DJ Booths, Marquee Signs, Flyer Crews, VIP Booths, Door Staff, Dressing Rooms.',
+    'Night time': 'Total time played this run. Shifts cycle: Early Doors → Peak Hours → Last Call → After Hours. After Hours is weak unless you research Late Kitchen.'
+  });
+
   // Help icon tooltip for jargon terms — hover/tap for plain-English definition.
   // Native title tooltips aren't reliably exposed to screen readers or reachable by keyboard,
   // so we also add aria-label + tabindex="0" for keyboard/AT users.
   helpIcon(term, def) {
     const safeTerm = this.escapeHtml(term);
-    const safeDef = this.escapeHtml(def);
+    const safeDef = this.escapeHtml(def != null ? def : (this.HELP[term] || ''));
     return `<span tabindex="0" style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;margin-left:4px;border:1px solid #3a2350;border-radius:50%;background:#100a19;color:#9c86ab;font-size:10px;font-weight:700;cursor:help;flex-shrink:0;position:relative" title="${safeDef}" aria-label="${safeTerm}: ${safeDef}">?</span>`;
   }
 
@@ -4120,32 +4140,31 @@ class Game {
     if (specials) houseChips.push(`<span><span style="color:#e879f9">★</span> ${specials} special shift${specials > 1 ? 's' : ''}</span>`);
     if (weekend >= 1 / 3) houseChips.push(`<span>Weekend energy <span style="color:${weekendTint}">${Math.round(weekend * 100)}%</span></span>`);
 
+    // Resource view contract: only the fields the resource strip renders.
+    // `term` carries the label, `tip` the tooltip — helpIcon() derives the
+    // icon from HELP[term], so the tooltip string is written once, not twice.
     const resources = [
-      { term: 'Cash', tip: 'Money in the till. Used to hire crew, buy structures, upgrades, and rounds.', name: 'Cash' + this.helpIcon('Cash', 'Money in the till. Used to hire crew, buy structures, upgrades, and rounds.'), val: '$' + this.fmt(c.cash), rate: sign(r.cash), pct: 100, color: '#ffc94a', note: r.strike ? 'crew unpaid — on strike' : (r.wage > 0 ? 'wages −$' + this.fmt(r.wage) + '/s' : 'no payroll yet') },
-      { term: 'Hype', tip: 'Room energy. Multiplies all cash income and click value. Decays over time — feed it with DJ Booths and the stage crew.', name: 'Hype' + this.helpIcon('Hype', 'Room energy. Multiplies all cash income and click value. Decays over time — feed it with DJ Booths and the stage crew.'), val: this.fmt(c.hype), rate: sign(r.hype), pct: c.hype / cap.hype * 100, color: '#ff2d78', note: 'cap ' + cap.hype + ' · x' + (1 + c.hype / 140).toFixed(2) + ' income' },
-      { term: 'Buzz', tip: 'Street awareness. Converts into patrons entering the club. Marquee Signs and Flyer Crews generate it.', name: 'Buzz' + this.helpIcon('Buzz', 'Street awareness. Converts into patrons entering the club. Marquee Signs and Flyer Crews generate it.'), val: this.fmt(c.buzz), rate: sign(r.buzz - r.buzzSpent), pct: c.buzz / cap.buzz * 100, color: '#22d3ee', note: 'cap ' + cap.buzz + ' · pulls patrons in' },
+      { term: 'Cash', tip: this.HELP.Cash, val: '$' + this.fmt(c.cash), rate: sign(r.cash), pct: 100, color: '#ffc94a' },
+      { term: 'Hype', tip: this.HELP.Hype, val: this.fmt(c.hype), rate: sign(r.hype), pct: c.hype / cap.hype * 100, color: '#ff2d78' },
+      { term: 'Buzz', tip: this.HELP.Buzz, val: this.fmt(c.buzz), rate: sign(r.buzz - r.buzzSpent), pct: c.buzz / cap.buzz * 100, color: '#22d3ee' },
       // Display whole people; sim keeps fractional c.patrons (PLAN §2.4).
-      { term: 'Patrons', tip: 'Bodies on the floor. They pay cover at the door ($0.02/head), tip at Tip Rails, and slowly become Regulars. Cap grows with structures.', name: 'Patrons' + this.helpIcon('Patrons', 'Bodies on the floor. They pay cover at the door ($0.02/head), tip at Tip Rails, and slowly become Regulars. Cap grows with structures.'), val: this.fmt(Math.floor(c.patrons)), rate: sign(r.patrons), pct: c.patrons / cap.patrons * 100, color: '#a855f7', note: 'floor cap ' + cap.patrons },
-      { term: 'Regulars', tip: 'Customers who come back every night and never leave. Each one slowly builds your Clout. With the Reputation Loop upgrade, they also pay $0.04/s cash.', name: 'Regulars' + this.helpIcon('Regulars', 'Customers who come back every night and never leave. Each one slowly builds your Clout. With the Reputation Loop upgrade, they also pay $0.04/s cash.'), val: this.fmt(c.regulars), rate: sign(r.regulars), pct: Math.min(100, c.regulars), color: '#4ade80', note: regularsNote },
-      { term: 'Clout', tip: 'Money for Research. Regulars earn it for you over time. Spent permanently on the Research tab for upgrades that help the whole club.', name: 'Clout' + this.helpIcon('Clout', 'Money for Research. Regulars earn it for you over time. Spent permanently on the Research tab for upgrades that help the whole club.'), val: this.fmt(g.clout), rate: sign(r.clout), pct: Math.min(100, g.clout * 2), color: '#e879f9', note: 'spent on research' }
+      { term: 'Patrons', tip: this.HELP.Patrons, val: this.fmt(Math.floor(c.patrons)), rate: sign(r.patrons), pct: c.patrons / cap.patrons * 100, color: '#a855f7' },
+      { term: 'Regulars', tip: this.HELP.Regulars, val: this.fmt(c.regulars), rate: sign(r.regulars), pct: Math.min(100, c.regulars), color: '#4ade80' },
+      { term: 'Clout', tip: this.HELP.Clout, val: this.fmt(g.clout), rate: sign(r.clout), pct: Math.min(100, g.clout * 2), color: '#e879f9' }
     ];
     // Legacy appears in the ledger only once meta is unlocked (first prestige or any lifetime Legacy).
     const metaUnlocked = (g.prestiges || 0) > 0 || (g.legacyTotal || 0) > 0 || Object.values(g.perks || {}).some(r => r > 0) || (g.renownTotal || 0) > 0;
     if (metaUnlocked) {
-      resources.push({ term: 'Legacy', tip: 'Prestige meta-currency. Earned by selling the club (franchise deal). Spent on permanent perks and managers that persist across runs.', name: 'Legacy' + this.helpIcon('Legacy', 'Prestige meta-currency. Earned by selling the club (franchise deal). Spent on permanent perks and managers that persist across runs.'), val: this.fmt(Math.floor(g.legacy || 0)), rate: 'perk shop', pct: Math.min(100, (g.legacy || 0) / 25 * 100), color: '#d4af37', note: 'spent on permanent perks' });
+      resources.push({ term: 'Legacy', tip: this.HELP.Legacy, val: this.fmt(Math.floor(g.legacy || 0)), rate: 'perk shop', pct: Math.min(100, (g.legacy || 0) / 25 * 100), color: '#d4af37' });
     }
-    const resourcesOut = resources.map(x => ({
-      term: x.term, tip: x.tip, name: x.name, val: x.val, rate: x.rate, note: x.note, pct: x.pct, color: x.color,
-      valStyle: { fontFamily: "'IBM Plex Mono',monospace", fontSize: '15px', fontWeight: 600, color: x.color },
-      barStyle: this.bar(x.pct, x.color)
-    }));
+    const resourcesOut = resources.map(x => ({ term: x.term, tip: x.tip, val: x.val, rate: x.rate, pct: x.pct, color: x.color }));
 
     const stats = [
-      { k: 'Crew' + this.helpIcon('Crew', 'Hired dancers, bartenders, and hosts. Assign them to Main Stage (Hype), VIP (cash), or Floor (buzz + regulars). Wages tick every second.'), v: (g.crew - g.jobs.off) + ' / ' + cap.crew },
-      { k: 'On stage' + this.helpIcon('On stage', 'Crew assigned to Main Stage. Each one generates Hype. More Hype = higher income multiplier.'), v: String(g.jobs.stage) },
+      { k: 'Crew' + this.helpIcon('Crew'), v: (g.crew - g.jobs.off) + ' / ' + cap.crew },
+      { k: 'On stage' + this.helpIcon('On stage'), v: String(g.jobs.stage) },
       // Sum only known building IDs (defense in depth vs unknown keys).
-      { k: 'Structures' + this.helpIcon('Structures', 'Total buildings owned. Tip Rails, Back Bars, DJ Booths, Marquee Signs, Flyer Crews, VIP Booths, Door Staff, Dressing Rooms.'), v: String(this.BUILDINGS.reduce((a, d) => a + (c.b[d.id] || 0), 0)) },
-      { k: 'Night time' + this.helpIcon('Night time', 'Total time played this run. Shifts cycle: Early Doors → Peak Hours → Last Call → After Hours. After Hours is weak unless you research Late Kitchen.'), v: Math.floor(c.elapsed / 60) + 'm ' + Math.floor(c.elapsed % 60) + 's' }
+      { k: 'Structures' + this.helpIcon('Structures'), v: String(this.BUILDINGS.reduce((a, d) => a + (c.b[d.id] || 0), 0)) },
+      { k: 'Night time' + this.helpIcon('Night time'), v: Math.floor(c.elapsed / 60) + 'm ' + Math.floor(c.elapsed % 60) + 's' }
     ];
 
     const tabDefs = [
