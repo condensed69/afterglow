@@ -977,7 +977,7 @@ test('books drawer is shut by default and toggles open (replaces ledger collapse
   strictEqual(game.renderVals().booksOpen, false, 'toggle shuts again');
 
   // CASH is always the first resource row — the one that stays visible in the strip.
-  ok(v.resources[0].name.includes('Cash'), 'CASH row first in the resource strip');
+  ok(v.resources[0].term === 'Cash', 'CASH row first in the resource strip');
   // term/tip fields exist for the books drawer rendering
   ok(v.resources[0].term, 'resources have term field for books drawer');
   ok(v.resources[0].tip, 'resources have tip field for books drawer');
@@ -3059,7 +3059,7 @@ test('Patrons ledger shows floor(g.patrons); sim value stays fractional', () => 
   const game = newGame(10);
   game.state.g.patrons = 3.87;
   const v = game.renderVals();
-  const row = v.resources.find(r => r.name && r.name.includes('Patrons'));
+  const row = v.resources.find(r => r.term === 'Patrons');
   ok(row, 'Patrons resource row present');
   // fmt(Math.floor(3.87)) → fmt(3) → "3.00" for values < 10
   strictEqual(row.val, game.fmt(3), `ledger must show floored patrons, got ${row.val}`);
@@ -5372,7 +5372,7 @@ test('Perks stays reachable after a challenge start post-sale (metaUnlocked)', (
   const tight = game.CHALLENGES.find(c => c.id === 'tight');
   game.startChallenge(tight); game.startChallenge(tight); // arm + confirm
   const v = game.renderVals();
-  ok(v.resources.some(r => r.name.startsWith('Legacy')), 'Legacy/meta row present — Perks panel reachable (metaUnlocked stayed true)');
+  ok(v.resources.some(r => r.term === 'Legacy'), 'Legacy/meta row present — Perks panel reachable (metaUnlocked stayed true)');
 });
 
 test('challenge incomeMult modifier hits passive AND active clicks', () => {
