@@ -91,7 +91,7 @@ function normalizePacks(g) {
 }
 
 class Game {
-  VERSION = { num: '0.16.4', build: 297, channel: 'alpha', date: '2026-09-04', codename: 'Night Log Strip' };
+  VERSION = { num: '0.16.4', build: 297, channel: 'alpha', date: '2026-09-05', codename: 'Night Log Strip' };
   SAVE_VER = 16;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -1194,6 +1194,10 @@ class Game {
     tab: 'club', showChangelog: false, showSettings: false, showPrestige: false, showOpenRoom: false, showFranchise: false, showAchievements: false, tick: 0, saveState: 'idle', resetArmed: false, challengeArmed: null, franchiseArmed: false,
     // Golden-ticket expanded state: badge is small by default; player taps to expand.
     goldenOpen: false,
+    // Owner's List goal card expanded state (0.16.3+): collapsed by default.
+    goalOpen: false,
+    // Night log strip expanded state (0.16.4+): collapsed by default (3 lines).
+    logOpen: false,
     // true when another tab wrote KEY — autosave is off until reload (PLAN §2.3).
     tabStale: false,
     g: null
@@ -5347,7 +5351,7 @@ class Game {
     }
 
     return `<div style="border-bottom:1px solid #2a1738;background:#0d0814;padding:8px 12px">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer" data-h="${this.bind(() => this.setState(s => ({ goalOpen: !s.goalOpen })))}">
+      <button style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;background:transparent;border:0;padding:0;cursor:pointer;text-align:left" data-h="${this.bind(() => this.setState(s => ({ goalOpen: !s.goalOpen })))}">
         <div style="display:flex;align-items:center;gap:7px;min-width:0">
           <span style="width:6px;height:6px;border-radius:50%;background:${ol.done ? '#4ade80' : '#ff2d78'};box-shadow:0 0 7px ${ol.done ? '#4ade80' : '#ff2d78'};flex-shrink:0;animation:pulseDot 2.2s infinite"></span>
           <span style="font-size:12px;font-weight:700;color:#f2e8f7;line-height:1.25">${ol.title}</span>
@@ -5356,7 +5360,7 @@ class Game {
           ${ol.reward ? `<span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#ffc94a;font-weight:600">${ol.reward}</span>` : ''}
           <span style="font-size:10px;color:#8f6f9c;transition:transform .15s">${this.state.goalOpen ? '▴' : '▾'}</span>
         </div>
-      </div>
+      </button>
       ${this.state.goalOpen ? `
         <div style="margin-top:8px;padding-top:8px;border-top:1px solid #2a1738">
           <div style="font-size:10.5px;color:#8f6f9c;font-style:italic;line-height:1.4;margin-bottom:4px">${ol.why}</div>
