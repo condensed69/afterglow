@@ -320,7 +320,7 @@ class Game {
   };
 
   CHANGELOG = [
-      { v: '0.16.4', date: '2026-09-04', codename: 'Night Log Strip', notes: [
+      { v: '0.16.4', date: '2026-09-05', codename: 'Night Log Strip', notes: [
         'UI OVERHAUL PR E — NIGHT LOG STRIP: collapsible 3-line night log with toggle button, FLUID_LAYOUT_PLAN.md retired. SAVE_VER stays 16 (no save migration needed), pacing bit-identical.'
       ] },
       { v: '0.16.3', date: '2026-09-03', codename: 'Purchase Grid', notes: [
