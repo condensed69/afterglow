@@ -32,5 +32,5 @@ already shipped, including the `Math.min(dt, this.MAX_DT)` clamp on the
 ## Docs / versioning
 
 - `CHANGELOG` gains a `TIMER DEDUPLICATION (PR #172)` note under the existing
-  `0.15.2` entry; `build` bumped 292 → 293.
+  `0.15.2` entry; `build` bumped 297 → 298 (rebased past UI overhaul PRs).
 - `SAVE_VER` stays 16 — the persisted save shape is unchanged.
