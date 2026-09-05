@@ -126,14 +126,37 @@ command cannot change it.
   invariant, not found many bugs. Revert to the last green state and re-approach
   in smaller steps rather than patching failures one by one.
 
+## Pull Request Review
+
+Every PR **must** receive an `/oc review` before merging. This is enforced by
+branch protection on `main` which requires the `opencode` status check to pass.
+
+To request an OpenCode review:
+1. Open a PR against `main`
+   - Note: Direct pushes to `main` are blocked; PRs are required
+2. Comment `/oc` on the PR
+   - Only collaborators/owners can trigger the review
+   - The review runs asynchronously (typically 1-3 minutes)
+   - A second `/oc` replaces the first if needed
+3. Wait for the "opencode" check to pass in the PR's status checks
+   - Both `gates` and `opencode` must be green
+4. Merge the PR
+
+The review checks for:
+- Correctness and potential bugs
+- Code quality and consistency with the codebase
+- Performance and security considerations
+- Test coverage where applicable
+- Adherence to AGENTS.md conventions
+
 ## Project invariants
 
 - This is an incremental/idle nightclub-management game using plain HTML, CSS, and JavaScript.
 - Saves use `localStorage`; offline progress and existing saves must remain reliable.
 - Preserve the neon-noir visual language unless a task explicitly changes it.
-- The stage carries no performer figure. The CSS/DOM dancer and pole were removed in v0.7.0 by
-  operator decision; do not reintroduce them. The stage is lighting, haze, crowd silhouettes and
-  the stage lip.
+- There is no stage panel (removed 0.16.0); the ambient canvas carries no figure. The CSS/DOM dancer and pole were removed in v0.7.0 by
+  operator decision; do not reintroduce them. The canvas is lighting, haze and
+  crowd particles only.
 - Pacing must stay deterministic. Random/burst events are live-session-only and must not
   shift the pacing bands `pacing.mjs` measures.
 - The sim steps at 10Hz; full re-render is throttled independently. Do not couple

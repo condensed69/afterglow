@@ -67,7 +67,7 @@ function clearWindowListeners() {
 }
 globalThis.document = {
   getElementById: (id) => {
-    if (id === 'stage') {
+    if (id === 'cta-work-crowd') {
       return {
         clientHeight: 300,
         querySelector: () => null,
@@ -964,20 +964,23 @@ test('fresh club keeps Club + Crew tabs; Upgrades/Research appear on unlock', ()
   }
 });
 
-test('ledger collapses to CASH row by default and toggles open', () => {
+test('books drawer is shut by default and toggles open (replaces ledger collapse)', () => {
   const game = newGame(20);
   const v = game.renderVals();
-  strictEqual(v.ledgerOpen, false, 'ledger starts collapsed on narrow screens');
-  ok(v.resources.length >= 2, 'ledger has CASH plus other resources');
-  strictEqual(typeof v.toggleLedger, 'function', 'toggle action exposed');
+  strictEqual(v.booksOpen, false, 'books drawer starts shut by default');
+  ok(v.resources.length >= 2, 'resource strip has CASH plus other resources');
+  strictEqual(typeof v.toggleBooks, 'function', 'toggle action exposed');
 
-  v.toggleLedger();
-  strictEqual(game.renderVals().ledgerOpen, true, 'toggle expands the ledger');
-  v.toggleLedger();
-  strictEqual(game.renderVals().ledgerOpen, false, 'toggle collapses again');
+  v.toggleBooks();
+  strictEqual(game.renderVals().booksOpen, true, 'toggle opens the books drawer');
+  v.toggleBooks();
+  strictEqual(game.renderVals().booksOpen, false, 'toggle shuts again');
 
-  // CASH is always the first resource row — the one that stays visible collapsed.
-  ok(v.resources[0].name.includes('Cash'), 'CASH row first in the ledger');
+  // CASH is always the first resource row — the one that stays visible in the strip.
+  ok(v.resources[0].name.includes('Cash'), 'CASH row first in the resource strip');
+  // term/tip fields exist for the books drawer rendering
+  ok(v.resources[0].term, 'resources have term field for books drawer');
+  ok(v.resources[0].tip, 'resources have tip field for books drawer');
 });
 
 test('golden claim actions from renderVals() resolve the offer when invoked', () => {
@@ -6827,7 +6830,7 @@ test('Game DOM engine preserves root structure across render ticks without full 
         if (selector === '#header-shift-mult') return elements.get('header-shift-mult');
         if (selector === '#header-settings-btn') return elements.get('header-settings-btn');
         if (selector === '.ticker-text') return elements.get('ticker-text');
-        if (selector === '#stage') return elements.get('stage');
+        if (selector === '#ambient-canvas') return elements.get('ambient-canvas');
         if (selector === '#cta-work-crowd') return elements.get('cta-work-crowd');
         if (selector === '#cta-buy-round') return elements.get('cta-buy-round');
         if (selector === '#cards-container') return elements.get('cards-container');
@@ -6925,7 +6928,7 @@ test('Responsive Layout: style.css contains mobile bottom-cockpit and touch-acti
   ok(css.includes('.thumb-cockpit'), 'style.css defines .thumb-cockpit styles');
   ok(css.includes('.modal-dialog'), 'style.css defines .modal-dialog drawer rules');
   ok(css.includes('slideUpDrawer'), 'style.css includes slideUpDrawer animation for mobile bottom sheets');
-  ok(css.includes('.stage-canvas'), 'style.css defines .stage-canvas layout rule');
+  ok(css.includes('.ambient-canvas'), 'style.css defines .ambient-canvas layout rule');
 });
 
 test('Web Audio Synthesizer: creates audio instance, toggles sound state, and triggers SFX without throwing', () => {
@@ -6995,7 +6998,7 @@ test('Canvas Floorboard Engine: initializes, manages particles, handles updates 
   floorboard.destroy();
 });
 
-test('Game Integration: renders #stage-canvas, #header-sound-btn and settings sound toggle', () => {
+test('Game Integration: renders #ambient-canvas, #header-sound-btn and settings sound toggle', () => {
   const root = {
     innerHTML: '',
     addEventListener: () => {},
@@ -7008,7 +7011,7 @@ test('Game Integration: renders #stage-canvas, #header-sound-btn and settings so
 
   const v = game.renderVals();
   const templateHtml = game.renderTemplate(v);
-  ok(templateHtml.includes('id="stage-canvas"'), 'template includes #stage-canvas element');
+  ok(templateHtml.includes('id="ambient-canvas"'), 'template includes #ambient-canvas element');
   ok(templateHtml.includes('id="header-sound-btn"'), 'template includes #header-sound-btn in header');
 
   v.showSettings = true;
@@ -7400,18 +7403,18 @@ test('UI Integration: renderVals & renderTemplate expose Personas & Talent cards
   ok(Array.isArray(v.talentList), 'renderVals exposes talentList array');
   strictEqual(v.talentList.length, 5, '5 named talent cards in catalog');
 
-  game.state.tab = 'crew';
-  const vCrew = game.renderVals();
-  const templateHtml = game.renderTemplate(vCrew);
-  ok(templateHtml.includes('Club Persona'), 'renderTemplate renders Club Persona section');
-  ok(templateHtml.includes('Named Talent Roster'), 'renderTemplate renders Named Talent Roster section');
+  game.state.tab = 'talent';
+  const vTalent = game.renderVals();
+  const templateHtml = game.renderTemplate(vTalent);
+  ok(templateHtml.includes('Club Persona'), 'renderTemplate renders Club Persona section on Talent tab');
+  ok(templateHtml.includes('Named Talent Roster'), 'renderTemplate renders Named Talent Roster section on Talent tab');
   ok(templateHtml.includes('data-persona-id="techno_bunker"'), 'renderTemplate renders techno_bunker button');
   ok(templateHtml.includes('data-talent-id="nova_cyan"'), 'renderTemplate renders nova_cyan card');
 });
 
-test('PR 7 & 8: Version 0.15.2 and SAVE_VER 16 migration & fail-closed validation', () => {
+test('PR 7 & 8: Version 0.16.4 and SAVE_VER 16 migration & fail-closed validation', () => {
   const game = newGame();
-  strictEqual(game.VERSION.num, '0.15.2', 'Game version is 0.15.2');
+  strictEqual(game.VERSION.num, '0.16.4', 'Game version is 0.16.4');
   strictEqual(game.SAVE_VER, 16, 'SAVE_VER is 16');
 
   // Test MIGRATIONS[14] (14 -> 15)
@@ -7919,16 +7922,18 @@ test('PR 8: addXp rejects non-finite XP amounts (Infinity, NaN, negative, zero)'
   strictEqual(g.packs.progress['season1-miami'].xp, 0, 'XP stays 0');
 });
 
-test('Fluid Widescreen Layout: shell-grid is full-width 3-column fluid grid, not a hard-capped centered island', () => {
+test('Fluid Widescreen Layout: shell-grid is full-width 2-column fluid grid (Ledger removed in 0.16.2), not a hard-capped centered island', () => {
   const css = readFileSync(new URL('./style.css', import.meta.url), 'utf8');
   // The desktop rule must be a fluid 100% grid — no max-width cap, no dead gutters.
-  ok(css.includes('grid-template-columns: minmax(260px, 320px) minmax(440px, 1fr) minmax(360px, 480px)'),
-     'shell-grid uses the fluid 3-column minmax spec');
+  // 0.16.2: Ledger column removed; resource strip lives in the header, books drawer
+  // is a separate overlay. Actions + Systems share the width.
+  ok(css.includes('grid-template-columns: minmax(440px, 1fr) minmax(360px, 480px)'),
+     'shell-grid uses the fluid 2-column minmax spec (Ledger removed)');
   ok(!/max-width:\s*1460px/.test(css), 'shell-grid no longer hard-capped at 1460px');
-  ok(css.includes('padding-inline: 18px'), 'shell-grid padding-inline matches header/ticker bar');
-  // Ultrawide guard re-caps so the 1fr center column cannot stretch into illegible proportions.
+  ok(css.includes('padding-inline: 18px'), 'shell-grid padding-inline matches header');
+  // Ultrawide guard re-caps so the 1fr actions column cannot stretch into illegible proportions.
   ok(css.includes('@media (min-width: 2160px)'), 'ultrawide media query guard present');
-  ok(css.includes('grid-template-columns: 340px 1fr 520px'), 'ultrawide guard recaps at 2200px');
+  ok(css.includes('grid-template-columns: 1fr 520px'), 'ultrawide guard recaps at 2200px (2-column)');
   // Mobile keeps full-bleed width — the padding reset that the reviewer flagged.
   ok(/@media \(max-width:\s*900px\) \{[\s\S]*?\.shell-grid \{[\s\S]*?padding-inline:\s*0/.test(css),
      'mobile shell-grid resets padding-inline to 0');

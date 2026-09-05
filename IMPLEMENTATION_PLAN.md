@@ -4,6 +4,15 @@ Status: **All legacy work shipped.** Active forward roadmap is defined in `AFTER
 
 ## Active Roadmap
 
+- **[UI Overhaul: No Stage, One Scroller, Purchases First](UI_OVERHAUL_PLAN.md)** (PR A through PR E; supersedes `FLUID_LAYOUT_PLAN.md`)
+  - PR A: Remove the stage panel → 0.16.0 (this branch)
+  - PR B: One scroller → 0.16.1
+  - PR C: Resource strip + header diet → 0.16.2
+  - PR D: Purchase grid + Talent tab → 0.16.3
+  - PR E: Night log strip → 0.16.4
+
+## Previous Roadmap (shipped)
+
 - **[Afterglow 2.0: Master Redesign & Agent Implementation Plan](AFTERGLOW_2.0_PLAN.md)** (PR 1 through PR 8)
   - PR 1: Reactive UI Store & Granular DOM Engine
   - PR 2: Responsive Dual-Surface Layout & Mobile Bottom-Cockpit
