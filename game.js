@@ -91,7 +91,7 @@ function normalizePacks(g) {
 }
 
 class Game {
-  VERSION = { num: '0.16.4', build: 297, channel: 'alpha', date: '2026-09-05', codename: 'Night Log Strip' };
+  VERSION = { num: '0.16.4', build: 298, channel: 'alpha', date: '2026-09-05', codename: 'Night Log Strip' };
   SAVE_VER = 16;
   KEY = 'afterglow.save';
   // Live ownership: sessionStorage holds this tab's unique token while it owns the save.
@@ -336,7 +336,8 @@ class Game {
         'UI OVERHAUL PR A — REMOVE THE STAGE PANEL: the `#stage` art panel (beams, bulbs, neon sign, sweeps, spot, divider, lip, crowd row, in-stage golden wrap) is removed from the DOM, not hidden. The sim/save concept `jobs.stage` (Main Stage assignment slot, stageHype, "hire crew to open the stage") is untouched — only the art panel goes. The canvas floorboard survives as an ambient background layer (`#ambient-canvas` behind `.app-root`, 35% opacity, pointer-events none, driven by the same `floorboard.update()` feed) with a Look-panel "Ambient floor" on/off toggle in `afterglow.look`. The Main Stage line, Room energy % and golden-ticket VIP badge now render at all widths via the stage-less banners, restyled as the action bar\'s second row. Dead keyframes (bulb, sweepL, sweepR, hazeDrift, crowdBob) and the `#stage` container/crowd CSS go with the panel; `neonFlicker` stays (brand wordmark). SAVE_VER stays 16 (no save migration needed), pacing bit-identical.'
       ] },
       { v: '0.15.2', date: '2026-09-04', codename: 'Repository Hardening', notes: [
-        'REPOSITORY HARDENING (PR #171): wrapped all localStorage/sessionStorage/JSON.parse access in safe helpers (safeGet/Set/Remove, safeSessionGet/Set/Remove, safeParse) that silently catch private-mode/quota errors. Critical persistence paths (save, init, claimOwnership, confirmPrestige, openFranchise, startChallenge) retain explicit try/catch with saveState signaling. Added MAX_DT/AUTOSAVE_INTERVAL_MS/SIM_INTERVAL_MS constants replacing magic numbers. Removed dead debugLine field and footer template. pagehide clears this.timer/saver/_probeTimer; pageshow re-arms full timer callback on BFCache restore. Bumps VERSION/build to 0.15.2/292. SAVE_VER stays 16 (save shape unchanged).'
+        'REPOSITORY HARDENING (PR #171): wrapped all localStorage/sessionStorage/JSON.parse access in safe helpers (safeGet/Set/Remove, safeSessionGet/Set/Remove, safeParse) that silently catch private-mode/quota errors. Critical persistence paths (save, init, claimOwnership, confirmPrestige, openFranchise, startChallenge) retain explicit try/catch with saveState signaling. Added MAX_DT/AUTOSAVE_INTERVAL_MS/SIM_INTERVAL_MS constants replacing magic numbers. Removed dead debugLine field and footer template. pagehide clears this.timer/saver/_probeTimer; pageshow re-arms full timer callback on BFCache restore. Bumps VERSION/build to 0.15.2/292. SAVE_VER stays 16 (save shape unchanged).',
+        'TIMER DEDUPLICATION (PR #172): extracted the 10Hz sim tick callback into startTickTimer() so init() and the BFCache pageshow re-arm path share one definition. The pageshow copy previously omitted the Math.min(dt, this.MAX_DT) clamp present in the init copy, so the two could diverge on a large BFCache gap; both now call the same method, which carries the clamp. Pure refactor — pacing bit-identical. Bumps build 297 → 298; SAVE_VER stays 16 (save shape unchanged).'
       ] },
       { v: '0.15.1', date: '2026-09-02', codename: 'Fluid Widescreen Layout', notes: [
         'FLUID WIDESCREEN LAYOUT & SIDEGUTTER ELIMINATION: replaced the hard-capped 1460px `.shell-grid` box (which wasted 460px+ of dead side gutters on every desktop monitor) with a full-viewport 3-column grid `minmax(260px, 320px) minmax(440px, 1fr) minmax(360px, 480px)` + `padding-inline: 18px` matching header/ticker. Added `min-width: 2160px` ultrawide media-query guard that re-caps at 2200px to keep text readable on 3440/4K. Floorboard canvas now scales crowd-particle spread and spotlight beam separation with canvas width instead of clustering in a 720px zone. Right-panel `×0` Max button now renders `Max (0)` with disabled styling when no units are affordable. Ticker bar gains a 4px left pad so the initial letter no longer clips the overflow bounds. Header Police Heat meter adds a subtle pink glow above 50% so players anchored to the center action bar notice an impending raid. SAVE_VER stays 16 (no save migration needed), pacing bit-identical.'
@@ -2211,31 +2212,7 @@ class Game {
       g.ts = Date.now();
     }
 
-    this.timer = setInterval(() => {
-      const g = this.state.g; if (!g) return;
-      // Non-owner / foreign-tab pause: do not advance the sim (progress would be lost).
-      if (this.state.tabStale || !this.isTabOwner()) return;
-      // Keep cross-tab lease fresh so age-only claimers see a live peer.
-      this.refreshLeaseThrottled();
-      const now = Date.now();
-      const dt = Math.max(0, (now - (g.ts || now)) / 1000);
-      // Skip sub-50ms ticks; leave g.ts untouched so elapsed time accrues to the next tick.
-      // (Previously floored dt to 0.1, which ran the sim faster than real time.)
-      if (dt < 0.05) return;
-      // Large gaps (tab hidden / suspended) use catchUp at 50% rate — same path as load-time offline.
-      if (dt > 2) {
-        const gap = Math.min(dt, this.MAX_DT);
-        const report = this.catchUp(g, gap);
-        if (dt > 60) this.push(g, this.awayMsg(gap, report), '#ffc94a');
-        // Large-gap catchUp is offline rate — peak stays live-only.
-        this.noteGoals(g, { live: false });
-        this.checkAchievements(g);
-        g.ts = Date.now();
-        this.setState(s => ({ tick: s.tick + 1 }));
-      } else {
-        this.liveStep(g, Math.min(dt, this.MAX_DT));
-      }
-    }, this.SIM_INTERVAL_MS);
+    this.startTickTimer();
     // Autosave only for the owning tab. A non-claiming second/duplicated tab
     // must not start the 10s timer — the first auto write would setItem a stale
     // snapshot, fire storage → onForeignSave on the live sibling, and pause it.
@@ -2381,6 +2358,32 @@ class Game {
   // pagehide fires on F5 / navigation / close / BFCache freeze. Write reload
   // intent only if this page context still owns — a live tab that is merely
   // duplicated never runs pagehide, so the duplicate does not inherit wasOwner.
+  // Extracted 10Hz sim tick callback — single source for init() and pageshow re-arm.
+  // Carries the Math.min(dt, this.MAX_DT) clamp on both catchUp and liveStep branches,
+  // fixing the latent divergence where pageshow omitted the clamp on liveStep.
+  startTickTimer() {
+    if (this.timer) return;
+    this.timer = setInterval(() => {
+      const g = this.state.g; if (!g) return;
+      if (this.state.tabStale || !this.isTabOwner()) return;
+      this.refreshLeaseThrottled();
+      const now = Date.now();
+      const dt = Math.max(0, (now - (g.ts || now)) / 1000);
+      if (dt < 0.05) return;
+      if (dt > 2) {
+        const gap = Math.min(dt, this.MAX_DT);
+        const report = this.catchUp(g, gap);
+        if (dt > 60) this.push(g, this.awayMsg(gap, report), '#ffc94a');
+        this.noteGoals(g, { live: false });
+        this.checkAchievements(g);
+        g.ts = Date.now();
+        this.setState(s => ({ tick: s.tick + 1 }));
+      } else {
+        this.liveStep(g, Math.min(dt, this.MAX_DT));
+      }
+    }, this.SIM_INTERVAL_MS);
+  }
+
   // pageshow clears RELOAD_KEY on resume (incl. BFCache) so a restored live
   // page does not leave a stealable marker for a later tab-duplicate.
   ensureOwnerLifecycle() {
@@ -2402,27 +2405,9 @@ class Game {
       this.safeSessionRemove(this.RELOAD_KEY);
       // BFCache restore: timers are natively paused by the browser, but we
       // may have cleared this.timer/saver in pagehide. Re-arm the full
-      // timer callback (matching game.js:2199) if still owner.
+      // timer callback via startTickTimer() if still owner.
       if (!this.timer && this.isTabOwner()) {
-        this.timer = setInterval(() => {
-          const g = this.state.g; if (!g) return;
-          if (this.state.tabStale || !this.isTabOwner()) return;
-          this.refreshLeaseThrottled();
-          const now = Date.now();
-          const dt = Math.max(0, (now - (g.ts || now)) / 1000);
-          if (dt < 0.05) return;
-          if (dt > 2) {
-            const gap = Math.min(dt, this.MAX_DT);
-            const report = this.catchUp(g, gap);
-            if (dt > 60) this.push(g, this.awayMsg(gap, report), '#ffc94a');
-            this.noteGoals(g, { live: false });
-            this.checkAchievements(g);
-            g.ts = Date.now();
-            this.setState(s => ({ tick: s.tick + 1 }));
-          } else {
-            this.liveStep(g, dt);
-          }
-        }, this.SIM_INTERVAL_MS);
+        this.startTickTimer();
         this.startAutosave();
       }
     });
