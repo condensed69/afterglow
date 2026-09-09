@@ -5858,14 +5858,18 @@ class Game {
     }
     const hwrap = this.dom('#header-heat-meter');
     if (hwrap) {
+      hwrap.setAttribute('data-h', String(this.bind(v.bribePolice)));
       hwrap.title = `Police Heat: ${v.heat}% (${v.heatRate}) — tap to bribe Chief ($${v.bribeCost})`;
     }
     const sndBtn = this.dom('#header-sound-btn');
     if (sndBtn) {
+      sndBtn.setAttribute('data-h', String(this.bind(v.toggleSound)));
       sndBtn.textContent = v.soundEnabled ? '🔊' : '🔇';
       sndBtn.title = v.soundEnabled ? 'Mute sound & procedural synth' : 'Enable sound & procedural synth';
       sndBtn.style.color = v.soundEnabled ? '#ffc94a' : '#8f6f9c';
     }
+    const settingsBtn = this.dom('#header-settings-btn');
+    if (settingsBtn) settingsBtn.setAttribute('data-h', String(this.bind(v.toggleSettings)));
 
     // 2. Ticker
     const tt = this.dom('.ticker-text');
