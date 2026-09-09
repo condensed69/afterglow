@@ -3953,7 +3953,7 @@ class Game {
   // helpIcon() argument — so editing a tooltip meant editing two places.
   // Call sites pass only the term; an explicit def still overrides it for
   // ad-hoc terms (e.g. the escape test) that aren't in this table.
-  HELP = Object.freeze({
+  static HELP = Object.freeze({
     Cash: 'Money in the till. Used to hire crew, buy structures, upgrades, and rounds.',
     Hype: 'Room energy. Multiplies all cash income and click value. Decays over time — feed it with DJ Booths and the stage crew.',
     Buzz: 'Street awareness. Converts into patrons entering the club. Marquee Signs and Flyer Crews generate it.',
@@ -3972,7 +3972,7 @@ class Game {
   // so we also add aria-label + tabindex="0" for keyboard/AT users.
   helpIcon(term, def) {
     const safeTerm = this.escapeHtml(term);
-    const safeDef = this.escapeHtml(def != null ? def : (this.HELP[term] || ''));
+    const safeDef = this.escapeHtml(def != null ? def : (Game.HELP[term] || ''));
     return `<span tabindex="0" style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;margin-left:4px;border:1px solid #3a2350;border-radius:50%;background:#100a19;color:#9c86ab;font-size:10px;font-weight:700;cursor:help;flex-shrink:0;position:relative" title="${safeDef}" aria-label="${safeTerm}: ${safeDef}">?</span>`;
   }
 
@@ -4105,11 +4105,6 @@ class Game {
     // Ticker text interpolates FLAVOR/REGULAR_NAMES source-controlled literals
     // (no escaping needed); escape first if they are ever fed dynamic strings.
     const ticker = this.flavorLine(g, c, this.state.tick);
-    const regName = this.regularName(g, c);
-    // Regulars ledger note: featured name when available, loop suffix when owned.
-    const regularsNote = g.r.loop
-      ? (regName ? regName + ' is a regular · $0.04/s each' : '$0.04/s each')
-      : (regName ? regName + ' is a regular' : 'made by Tip Rails + VIP Booths');
     // Post-polish PR 5 (flavor v2): back-half derivations — house reputation
     // (rounds bought), special-shift record, and weekend energy (nights elapsed).
     // All read existing counters in renderVals only; no save field, no pacing impact.
@@ -4129,20 +4124,20 @@ class Game {
     // `term` carries the label, `tip` the tooltip — helpIcon() derives the
     // icon from HELP[term], so the tooltip string is written once, not twice.
     const resources = [
-      { term: 'Cash', tip: this.HELP.Cash, val: '$' + this.fmt(c.cash), rate: sign(r.cash), pct: 100, color: '#ffc94a' },
-      { term: 'Hype', tip: this.HELP.Hype, val: this.fmt(c.hype), rate: sign(r.hype), pct: c.hype / cap.hype * 100, color: '#ff2d78' },
-      { term: 'Buzz', tip: this.HELP.Buzz, val: this.fmt(c.buzz), rate: sign(r.buzz - r.buzzSpent), pct: c.buzz / cap.buzz * 100, color: '#22d3ee' },
+      { term: 'Cash', tip: Game.HELP.Cash, val: '$' + this.fmt(c.cash), rate: sign(r.cash), pct: 100, color: '#ffc94a' },
+      { term: 'Hype', tip: Game.HELP.Hype, val: this.fmt(c.hype), rate: sign(r.hype), pct: c.hype / cap.hype * 100, color: '#ff2d78' },
+      { term: 'Buzz', tip: Game.HELP.Buzz, val: this.fmt(c.buzz), rate: sign(r.buzz - r.buzzSpent), pct: c.buzz / cap.buzz * 100, color: '#22d3ee' },
       // Display whole people; sim keeps fractional c.patrons (PLAN §2.4).
-      { term: 'Patrons', tip: this.HELP.Patrons, val: this.fmt(Math.floor(c.patrons)), rate: sign(r.patrons), pct: c.patrons / cap.patrons * 100, color: '#a855f7' },
-      { term: 'Regulars', tip: this.HELP.Regulars, val: this.fmt(c.regulars), rate: sign(r.regulars), pct: Math.min(100, c.regulars), color: '#4ade80' },
-      { term: 'Clout', tip: this.HELP.Clout, val: this.fmt(g.clout), rate: sign(r.clout), pct: Math.min(100, g.clout * 2), color: '#e879f9' }
+      { term: 'Patrons', tip: Game.HELP.Patrons, val: this.fmt(Math.floor(c.patrons)), rate: sign(r.patrons), pct: c.patrons / cap.patrons * 100, color: '#a855f7' },
+      { term: 'Regulars', tip: Game.HELP.Regulars, val: this.fmt(c.regulars), rate: sign(r.regulars), pct: Math.min(100, c.regulars), color: '#4ade80' },
+      { term: 'Clout', tip: Game.HELP.Clout, val: this.fmt(g.clout), rate: sign(r.clout), pct: Math.min(100, g.clout * 2), color: '#e879f9' }
     ];
     // Legacy appears in the ledger only once meta is unlocked (first prestige or any lifetime Legacy).
     const metaUnlocked = (g.prestiges || 0) > 0 || (g.legacyTotal || 0) > 0 || Object.values(g.perks || {}).some(r => r > 0) || (g.renownTotal || 0) > 0;
     if (metaUnlocked) {
-      resources.push({ term: 'Legacy', tip: this.HELP.Legacy, val: this.fmt(Math.floor(g.legacy || 0)), rate: 'perk shop', pct: Math.min(100, (g.legacy || 0) / 25 * 100), color: '#d4af37' });
+      resources.push({ term: 'Legacy', tip: Game.HELP.Legacy, val: this.fmt(Math.floor(g.legacy || 0)), rate: 'perk shop', pct: Math.min(100, (g.legacy || 0) / 25 * 100), color: '#d4af37' });
     }
-    const resourcesOut = resources.map(x => ({ term: x.term, tip: x.tip, val: x.val, rate: x.rate, pct: x.pct, color: x.color }));
+    const resourcesOut = resources;
 
     const stats = [
       { k: 'Crew' + this.helpIcon('Crew'), v: (g.crew - g.jobs.off) + ' / ' + cap.crew },
