@@ -102,7 +102,7 @@
     }
 
     _initParticles() {
-      const targetCount = Math.min(this.maxParticles, Math.max(6, Math.floor(Number(this.patrons) * 1.5 + Number(this.regulars))));
+      const targetCount = Math.min(this.maxParticles, Math.max(6, Math.floor((Number(this.patrons) || 0) * 1.5 + (Number(this.regulars) || 0))));
       // Spread particles across the full floor width rather than clustering
       // them in a fixed 720px zone. On a fluid widescreen stage the canvas can
       // stretch to 1fr of the remaining viewport, so horizontal bounds must
